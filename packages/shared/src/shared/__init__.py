@@ -19,6 +19,7 @@ from .extraction import (
     extract_docx,
     extract_txt,
 )
+from .chunking import create_document_chunks
 
 __version__ = "0.1.0"
 __all__ = [
@@ -43,4 +44,5 @@ __all__ = [
     "extract_pdf",
     "extract_docx",
     "extract_txt",
+    "create_document_chunks",
 ]

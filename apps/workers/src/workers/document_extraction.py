@@ -2,13 +2,11 @@
 
 import asyncio
 import logging
-from uuid import uuid4
 from celery import Task
 from celery_app import celery_app
 from lib import get_redis_client, ProgressPublisher
 from shared import (
     Document,
-    DocumentChunk,
     ProcessingStatus,
     DocumentExtractionJob,
     PermanentError,
@@ -17,6 +15,7 @@ from shared import (
     chunk_text,
     clean_text,
     extract_file,
+    create_document_chunks,
 )
 from sqlalchemy.future import select
 
@@ -85,21 +84,7 @@ def extract_text_from_document(self, job_payload: dict) -> dict:
                 )
 
                 chunk_texts = chunk_text(text, chunk_size=4000, overlap=400)
-                chunk_ids = []
-
-                for chunk_index, chunk_text_item in enumerate(chunk_texts):
-                    chunk = DocumentChunk(
-                        id=str(uuid4()),
-                        document_id=job.document_id,
-                        chunk_text=chunk_text_item,
-                        chunk_index=chunk_index,
-                    )
-                    db.add(chunk)
-                    chunk_ids.append(chunk.id)
-
-                    logger.debug(
-                        f"[chunks] Created chunk {chunk_index}: {len(chunk_text_item)} chars"
-                    )
+                chunk_ids = await create_document_chunks(db, job.document_id, chunk_texts)
 
                 # Update document status
                 doc.processing_status = ProcessingStatus.EXTRACTED
