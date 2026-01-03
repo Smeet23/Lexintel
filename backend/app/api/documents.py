@@ -5,6 +5,7 @@ from app.database import get_db
 from app.models import Document, DocumentType, ProcessingStatus
 from app.schemas.document import DocumentResponse
 from app.services.storage import storage_service
+from app.celery_app import celery_app
 from app.workers.tasks import process_document_pipeline
 from pathlib import Path
 from uuid import uuid4
@@ -59,7 +60,9 @@ async def upload_document(
         await db.refresh(new_document)
 
         # Start async processing pipeline
-        process_document_pipeline.delay(document_id)
+        # Use apply_async with explicit connection to avoid async context issues
+        with celery_app.connection() as conn:
+            process_document_pipeline.apply_async([document_id], connection=conn)
 
         logger.info(f"[documents] Uploaded document: {document_id}")
         return new_document

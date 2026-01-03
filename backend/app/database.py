@@ -3,12 +3,13 @@ from sqlalchemy.pool import NullPool
 from app.config import settings
 from typing import AsyncGenerator
 
-# Create async engine
+# Create async engine with asyncpg driver
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=settings.DATABASE_ECHO,
     future=True,
     poolclass=NullPool,
+    connect_args={"server_settings": {"application_name": "lex-intel"}},
 )
 
 # Create async session factory
@@ -29,11 +30,21 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 async def init_db():
     """Initialize database tables"""
     from app.models.base import Base
+    from sqlalchemy import text
 
+    # Try to enable extensions (non-critical for MVP)
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+    except Exception:
+        pass  # pgvector not available
+
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
+    except Exception:
+        pass  # pg_trgm not available
+
+    # Create all tables (critical)
     async with engine.begin() as conn:
-        # Enable pgvector extension
-        await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
-        # Enable pg_trgm for full-text search
-        await conn.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
-        # Create all tables
         await conn.run_sync(Base.metadata.create_all)

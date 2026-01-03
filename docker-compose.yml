@@ -57,7 +57,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql://lex_user:lex_password@postgres:5432/lex_intel_dev
+      DATABASE_URL: postgresql+asyncpg://lex_user:lex_password@postgres:5432/lex_intel_dev
       REDIS_URL: redis://redis:6379
       AZURE_STORAGE_CONNECTION_STRING: DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;
       OPENAI_API_KEY: ${OPENAI_API_KEY}
@@ -84,7 +84,7 @@ services:
       dockerfile: Dockerfile
     container_name: lex-intel-celery-worker
     environment:
-      DATABASE_URL: postgresql://lex_user:lex_password@postgres:5432/lex_intel_dev
+      DATABASE_URL: postgresql+asyncpg://lex_user:lex_password@postgres:5432/lex_intel_dev
       REDIS_URL: redis://redis:6379
       AZURE_STORAGE_CONNECTION_STRING: DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;
       OPENAI_API_KEY: ${OPENAI_API_KEY}
