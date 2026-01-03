@@ -2,7 +2,6 @@
 
 import json
 from redis.asyncio import Redis
-from typing import Optional
 
 
 class ProgressPublisher:

@@ -1,21 +1,17 @@
-"""Integration tests for document extraction workflow."""
+"""Integration tests for document extraction workflow.
+
+TODO: Implement integration tests that cover:
+- Full extraction workflow: document upload → text extraction → chunking → indexing
+- Concurrent document processing
+- Progress tracking through Redis Pub/Sub
+- Error recovery and retry behavior
+- Database state updates through the workflow
+- Integration with backend API
+
+These tests will require:
+- Docker services (PostgreSQL, Redis)
+- Real Celery worker instance
+- Test database fixtures
+"""
 
 import pytest
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
-
-
-@pytest.mark.asyncio
-async def test_full_extraction_workflow():
-    """Test complete extraction workflow from upload to completion."""
-    # Placeholder for full workflow test
-    pass
-
-
-@pytest.mark.asyncio
-async def test_concurrent_document_processing():
-    """Test processing multiple documents concurrently."""
-    # Placeholder for concurrency test
-    pass

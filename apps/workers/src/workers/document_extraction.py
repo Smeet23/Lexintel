@@ -1,11 +1,10 @@
 """Document text extraction worker."""
 
+import asyncio
+import logging
 from celery import Task
 from celery_app import celery_app
 from lib import get_redis_client, ProgressPublisher
-import sys
-sys.path.insert(0, '../../packages/shared/src')
-
 from shared import (
     Document,
     ProcessingStatus,
@@ -14,7 +13,7 @@ from shared import (
     RetryableError,
 )
 
-import asyncio
+logger = logging.getLogger(__name__)
 
 
 class CallbackTask(Task):
@@ -22,7 +21,7 @@ class CallbackTask(Task):
 
     def on_failure(self, exc, task_id, args, kwargs, einfo):
         """Called when task fails."""
-        print(f"Task {task_id} failed: {exc}")
+        logger.error(f"Task {task_id} failed: {exc}", exc_info=einfo)
 
 
 @celery_app.task(base=CallbackTask, bind=True, max_retries=3)
@@ -31,6 +30,7 @@ def extract_text_from_document(self, job_payload: dict) -> dict:
     async def async_extract():
         try:
             job = DocumentExtractionJob(**job_payload)
+            logger.info(f"Starting extraction for document {job.document_id}")
             redis_client = await get_redis_client()
             publisher = ProgressPublisher(redis_client)
 
@@ -42,8 +42,10 @@ def extract_text_from_document(self, job_payload: dict) -> dict:
                 "Starting text extraction..."
             )
 
-            # Update document status in database
-            # (placeholder - would use async_session)
+            # TODO: Phase 4 - Update document status in database
+            # Requires async_session from app.database
+            # Should update ProcessingStatus to EXTRACTED after text extraction
+            # and INDEXED after chunk creation
 
             # Publish completion
             await publisher.publish_progress(
@@ -53,6 +55,7 @@ def extract_text_from_document(self, job_payload: dict) -> dict:
                 "Extraction complete!"
             )
 
+            logger.info(f"Extraction completed for document {job.document_id}")
             return {
                 "status": "success",
                 "document_id": job.document_id,
@@ -60,10 +63,10 @@ def extract_text_from_document(self, job_payload: dict) -> dict:
             }
 
         except PermanentError as e:
-            print(f"Permanent error in extraction: {e}")
+            logger.error(f"Permanent error in extraction: {e}")
             raise
         except Exception as e:
-            print(f"Error: {e}")
+            logger.error(f"Extraction error for document {job_payload.get('document_id')}: {e}")
             raise self.retry(exc=e, countdown=60)
 
     loop = asyncio.get_event_loop()

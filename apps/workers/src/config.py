@@ -31,5 +31,5 @@ class WorkerConfig:
     TASK_SOFT_TIME_LIMIT = int(os.getenv("TASK_SOFT_TIME_LIMIT", "1500"))  # 25 min
     TASK_TIME_LIMIT = int(os.getenv("TASK_TIME_LIMIT", "1800"))  # 30 min
 
-    # Logging
-    LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+    # Note: Log levels are controlled via Celery's --loglevel parameter
+    # in __main__.py, not through configuration

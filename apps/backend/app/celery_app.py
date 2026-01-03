@@ -34,5 +34,5 @@ def task_prerun_handler(sender=None, task_id=None, task=None, **kwargs):
 def task_postrun_handler(sender=None, task_id=None, task=None, state=None, **kwargs):
     logger.info(f"[celery] Completed task: {task.name} (ID: {task_id})")
 
-# Auto-discover tasks
-celery_app.autodiscover_tasks(["app.workers"])
+# Note: Task discovery is handled by the separate /apps/workers/ service
+# Backend sends tasks by name via celery_app.send_task() without needing autodiscover
