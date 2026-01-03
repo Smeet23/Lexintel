@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy import MetaData, Table
+from sqlalchemy import MetaData, Table, Column, String, Text, Integer, ForeignKey
 from shared.models import Base, Document, DocumentChunk
 
 
@@ -19,12 +19,40 @@ async def db_session():
     # Create in-memory SQLite database for testing
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
 
-    # Create only the tables we need (Document and DocumentChunk)
+    # Create tables manually for SQLite (doesn't support pgvector Vector type)
     async with engine.begin() as conn:
-        # Create Document table
-        await conn.run_sync(Document.__table__.create, checkfirst=True)
-        # Create DocumentChunk table
-        await conn.run_sync(DocumentChunk.__table__.create, checkfirst=True)
+        # Create Document table using raw SQL
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS documents (
+                id TEXT PRIMARY KEY,
+                case_id TEXT NOT NULL,
+                title TEXT,
+                filename TEXT NOT NULL,
+                type TEXT,
+                extracted_text TEXT,
+                page_count INTEGER,
+                file_size INTEGER,
+                file_path TEXT,
+                processing_status TEXT DEFAULT 'pending',
+                error_message TEXT,
+                indexed_at TIMESTAMP,
+                created_at TIMESTAMP,
+                updated_at TIMESTAMP
+            )
+        """)
+
+        # Create DocumentChunk table using raw SQL (embedding as TEXT for SQLite)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS document_chunks (
+                id TEXT PRIMARY KEY,
+                document_id TEXT NOT NULL,
+                chunk_text TEXT NOT NULL,
+                chunk_index INTEGER NOT NULL,
+                embedding TEXT,
+                search_vector TEXT,
+                FOREIGN KEY(document_id) REFERENCES documents(id)
+            )
+        """)
 
     # Create session
     async_session_factory = async_sessionmaker(
@@ -36,7 +64,7 @@ async def db_session():
 
     # Cleanup
     async with engine.begin() as conn:
-        await conn.run_sync(DocumentChunk.__table__.drop, checkfirst=True)
-        await conn.run_sync(Document.__table__.drop, checkfirst=True)
+        await conn.execute("DROP TABLE IF EXISTS document_chunks")
+        await conn.execute("DROP TABLE IF EXISTS documents")
 
     await engine.dispose()
