@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lex-intel"
+version = "0.1.0"
+description = "AI-Powered Legal Research Platform"
+
+[tool.setuptools]
+packages = ["apps.backend", "apps.workers", "packages.shared"]
+
+[tool.pytest.ini_options]
+testpaths = ["apps/backend/tests", "apps/workers/tests", "packages/shared/tests"]
+asyncio_mode = "auto"
