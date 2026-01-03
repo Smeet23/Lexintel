@@ -30,6 +30,7 @@ from shared import (
     extract_txt,
     create_document_chunks,
 )
+from app.services.embeddings import create_chunk_embeddings
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +78,63 @@ async def create_text_chunks(
     return await create_document_chunks(session, document_id, chunk_texts)
 
 
+async def extract_and_embed_document(
+    session: AsyncSession,
+    document_id: str,
+    text: str,
+    chunk_size: int = 4000,
+    overlap: int = 400,
+    batch_size: int = 20,
+) -> List[str]:
+    """
+    Extract text, create chunks, and generate embeddings in one operation.
+
+    Phase 4: Unified extraction and embedding function that combines both steps.
+
+    Args:
+        session: SQLAlchemy async session
+        document_id: ID of parent document
+        text: Text to chunk and embed
+        chunk_size: Max chars per chunk (default 4000)
+        overlap: Char overlap between chunks (default 400)
+        batch_size: Embeddings batch size (default 20)
+
+    Returns:
+        List of chunk IDs that have embeddings
+
+    Raises:
+        Exception: If either chunking or embedding fails
+    """
+    # Clean the text first
+    text = clean_text(text)
+
+    if not text:
+        logger.info(f"[extract_and_embed] No text for document {document_id}")
+        return []
+
+    # Split into chunks
+    chunk_texts = chunk_text(text, chunk_size=chunk_size, overlap=overlap)
+
+    if not chunk_texts:
+        logger.warning(f"[extract_and_embed] No chunks created for {document_id}")
+        return []
+
+    # Create chunks in database
+    chunk_ids = await create_document_chunks(session, document_id, chunk_texts)
+    logger.info(f"[extract_and_embed] Created {len(chunk_ids)} chunks for {document_id}")
+
+    # Generate embeddings for chunks
+    await create_chunk_embeddings(
+        session,
+        document_id,
+        chunk_texts,
+        batch_size=batch_size,
+    )
+    logger.info(f"[extract_and_embed] Generated embeddings for {len(chunk_ids)} chunks")
+
+    return chunk_ids
+
+
 # Re-export shared extraction functions for convenience
 __all__ = [
     "extract_file",
@@ -87,4 +145,5 @@ __all__ = [
     "clean_text",
     "create_document_chunks",
     "create_text_chunks",
+    "extract_and_embed_document",
 ]
