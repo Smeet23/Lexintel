@@ -9,6 +9,9 @@ from .utils import (
     DocumentNotFound,
     FileNotFound,
     ExtractionFailed,
+    get_redis_client,
+    close_redis,
+    run_async,
 )
 from .schemas.jobs import DocumentExtractionJob, EmbeddingGenerationJob
 from .extraction import (
@@ -37,6 +40,9 @@ __all__ = [
     "DocumentNotFound",
     "FileNotFound",
     "ExtractionFailed",
+    "get_redis_client",
+    "close_redis",
+    "run_async",
     "DocumentExtractionJob",
     "EmbeddingGenerationJob",
     "chunk_text",
