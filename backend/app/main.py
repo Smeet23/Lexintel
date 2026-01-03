@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from app.api import cases, documents
+from app.database import init_db
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -10,7 +12,8 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("[backend] LexIntel backend starting...")
-    # TODO: Initialize database
+    await init_db()
+    logger.info("[backend] Database initialized")
     yield
     # Shutdown
     logger.info("[backend] LexIntel backend shutting down...")
@@ -39,9 +42,11 @@ async def root():
 async def health():
     return {"status": "ok"}
 
-# TODO: Include routers
-# from app.api import cases, documents, search, chat
-# app.include_router(cases.router)
-# app.include_router(documents.router)
+# Include routers
+app.include_router(cases.router)
+app.include_router(documents.router)
+
+# TODO: Add more routers
+# from app.api import search, chat
 # app.include_router(search.router)
 # app.include_router(chat.router)
