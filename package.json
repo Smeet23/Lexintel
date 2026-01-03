@@ -1,0 +1,25 @@
+{
+  "name": "lex-intel",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI-powered legal research platform for law firms",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "type-check": "pnpm -r type-check",
+    "test": "pnpm -r test",
+    "db:push": "pnpm -C packages/database db:push",
+    "db:migrate": "pnpm -C packages/database db:migrate",
+    "db:generate": "pnpm -C packages/database db:generate",
+    "db:studio": "pnpm -C packages/database db:studio"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": "20.x",
+    "pnpm": "9.x"
+  }
+}
