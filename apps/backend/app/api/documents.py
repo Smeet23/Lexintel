@@ -7,7 +7,6 @@ from app.models import Document, DocumentType, ProcessingStatus
 from app.schemas.document import DocumentResponse
 from app.services.storage import storage_service
 from app.celery_app import celery_app
-from app.workers.tasks import process_document_pipeline
 from app.config import settings
 from pathlib import Path
 from uuid import uuid4
@@ -74,11 +73,6 @@ async def upload_document(
             "workers.document_extraction.extract_text_from_document",
             args=[job_payload],
         )
-
-        # Start async processing pipeline
-        # Use apply_async with explicit connection to avoid async context issues
-        with celery_app.connection() as conn:
-            process_document_pipeline.apply_async([document_id], connection=conn)
 
         logger.info(f"[documents] Uploaded document: {document_id}")
         return new_document
