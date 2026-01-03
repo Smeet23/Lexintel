@@ -11,6 +11,14 @@ from .utils import (
     ExtractionFailed,
 )
 from .schemas.jobs import DocumentExtractionJob, EmbeddingGenerationJob
+from .extraction import (
+    chunk_text,
+    clean_text,
+    extract_file,
+    extract_pdf,
+    extract_docx,
+    extract_txt,
+)
 
 __version__ = "0.1.0"
 __all__ = [
@@ -29,4 +37,10 @@ __all__ = [
     "ExtractionFailed",
     "DocumentExtractionJob",
     "EmbeddingGenerationJob",
+    "chunk_text",
+    "clean_text",
+    "extract_file",
+    "extract_pdf",
+    "extract_docx",
+    "extract_txt",
 ]

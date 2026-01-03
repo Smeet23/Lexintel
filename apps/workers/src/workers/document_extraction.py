@@ -2,8 +2,6 @@
 
 import asyncio
 import logging
-import re
-from pathlib import Path
 from uuid import uuid4
 from celery import Task
 from celery_app import celery_app
@@ -16,187 +14,13 @@ from shared import (
     PermanentError,
     RetryableError,
     async_session,
+    chunk_text,
+    clean_text,
+    extract_file,
 )
 from sqlalchemy.future import select
 
 logger = logging.getLogger(__name__)
-
-
-# ===== TEXT EXTRACTION FUNCTIONS =====
-def chunk_text(
-    text: str,
-    chunk_size: int = 4000,
-    overlap: int = 400,
-    min_size: int = 200,
-) -> list:
-    """Split text into overlapping chunks."""
-    if not text:
-        return []
-
-    chunks = []
-    start = 0
-    text_len = len(text)
-
-    while start < text_len:
-        end = min(start + chunk_size, text_len)
-        slice_text = text[start:end].rstrip()
-
-        if len(slice_text) >= min_size or end >= text_len:
-            chunks.append(slice_text)
-            logger.debug(
-                f"[chunking] Created chunk {len(chunks)}: "
-                f"{len(slice_text)} chars at position {start}"
-            )
-
-        next_start = end - overlap
-        if next_start <= start:
-            break
-
-        start = next_start
-
-    logger.info(
-        f"[chunking] Split {text_len} chars into {len(chunks)} chunks "
-        f"(chunk_size={chunk_size}, overlap={overlap})"
-    )
-    return chunks
-
-
-def clean_text(text: str) -> str:
-    """Clean extracted text by removing artifacts and normalizing whitespace."""
-    if not text:
-        return text
-
-    # Remove NULL bytes
-    text = text.replace('\x00', '')
-
-    # Normalize line endings (CRLF to LF)
-    text = text.replace('\r\n', '\n')
-
-    # Convert form feeds to newlines
-    text = text.replace('\f', '\n')
-
-    # Remove control characters (except \n, \t)
-    text = re.sub(r'[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]', '', text)
-
-    # Trim leading/trailing whitespace
-    text = text.strip()
-
-    # Remove page numbers
-    text = re.sub(r'\n\s*\d+\s*\n', '\n', text)
-
-    # Remove page headers
-    text = re.sub(r'\nPage\s+\d+.*\n', '\n', text)
-
-    # Normalize multiple newlines
-    text = re.sub(r'\n{3,}', '\n\n', text)
-
-    # Normalize multiple spaces
-    text = re.sub(r'[ \t]{2,}', ' ', text)
-
-    # Final trim
-    text = text.strip()
-
-    logger.debug(f"[extraction] Cleaned text: {len(text)} chars")
-    return text
-
-
-async def extract_file(file_path: str) -> str:
-    """Extract text from file based on file type."""
-    file_lower = file_path.lower()
-
-    if file_lower.endswith('.pdf'):
-        return await extract_pdf(file_path)
-    elif file_lower.endswith('.docx'):
-        return await extract_docx(file_path)
-    elif file_lower.endswith('.txt'):
-        return await extract_txt(file_path)
-    else:
-        raise ValueError(f"Unsupported file type: {file_path}")
-
-
-async def extract_pdf(file_path: str) -> str:
-    """Extract text from PDF file."""
-    try:
-        from PyPDF2 import PdfReader
-    except ImportError:
-        raise PermanentError("PyPDF2 not installed in worker environment")
-
-    path = Path(file_path)
-    if not path.exists():
-        raise FileNotFoundError(f"PDF file not found: {file_path}")
-
-    try:
-        with open(file_path, 'rb') as f:
-            reader = PdfReader(f)
-            text_parts = []
-
-            for page_num, page in enumerate(reader.pages):
-                page_text = page.extract_text()
-                if page_text:
-                    text_parts.append(page_text)
-                else:
-                    logger.warning(f"[extraction] No text on PDF page {page_num + 1}: {file_path}")
-
-            text = "\n".join(text_parts)
-            logger.info(f"[extraction] Extracted {len(text)} chars from PDF: {file_path}")
-            return text
-
-    except FileNotFoundError:
-        raise
-    except Exception as e:
-        logger.error(f"[extraction] Failed to extract PDF {file_path}: {e}")
-        raise ValueError(f"Failed to extract PDF: {e}") from e
-
-
-async def extract_docx(file_path: str) -> str:
-    """Extract text from DOCX file."""
-    try:
-        from docx import Document
-    except ImportError:
-        raise PermanentError("python-docx not installed in worker environment")
-
-    path = Path(file_path)
-    if not path.exists():
-        raise FileNotFoundError(f"DOCX file not found: {file_path}")
-
-    try:
-        doc = Document(file_path)
-        text_parts = []
-
-        for para in doc.paragraphs:
-            if para.text.strip():
-                text_parts.append(para.text)
-
-        text = "\n".join(text_parts)
-        logger.info(f"[extraction] Extracted {len(text)} chars from DOCX: {file_path}")
-        return text
-
-    except FileNotFoundError:
-        raise
-    except Exception as e:
-        logger.error(f"[extraction] Failed to extract DOCX {file_path}: {e}")
-        raise ValueError(f"Failed to extract DOCX: {e}") from e
-
-
-async def extract_txt(file_path: str) -> str:
-    """Extract text from TXT file."""
-    path = Path(file_path)
-    if not path.exists():
-        raise FileNotFoundError(f"TXT file not found: {file_path}")
-
-    try:
-        text = path.read_text(encoding='utf-8')
-        logger.info(f"[extraction] Extracted {len(text)} chars from TXT: {file_path}")
-        return text
-    except UnicodeDecodeError:
-        text = path.read_text(encoding='latin-1')
-        logger.warning(f"[extraction] Used latin-1 encoding for TXT: {file_path}")
-        return text
-    except FileNotFoundError:
-        raise
-    except Exception as e:
-        logger.error(f"[extraction] Failed to extract TXT {file_path}: {e}")
-        raise
 
 
 class CallbackTask(Task):
