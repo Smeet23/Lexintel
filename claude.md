@@ -2,7 +2,7 @@
 
 > AI-Powered Legal Research Platform with RAG Capabilities
 
-**Status**: MVP Development (Phases 1-2 Complete)
+**Status**: MVP Development (Phases 1-3 Complete)
 **Last Updated**: January 3, 2026
 
 ## 📚 Documentation Structure
@@ -25,7 +25,7 @@ This project uses modular documentation for different concerns:
 
 ## 🎯 Quick Status
 
-### ✅ Completed (Phase 1-2)
+### ✅ Completed (Phase 1-3)
 - [x] Project structure & FastAPI setup
 - [x] PostgreSQL models + SQLAlchemy ORM
 - [x] Celery infrastructure + Redis
@@ -34,9 +34,11 @@ This project uses modular documentation for different concerns:
 - [x] File storage service (local filesystem)
 - [x] Cases CRUD API
 - [x] Documents upload/management API
+- [x] Text extraction workers (TXT files)
 
-### ⏳ TODO (Phase 3-6)
-- [ ] Text extraction workers (PDF, DOCX, TXT)
+### ⏳ TODO (Phase 3+ Enhancement & Phase 4-6)
+- [ ] PDF extraction (PyPDF2)
+- [ ] DOCX extraction (python-pptx)
 - [ ] Embeddings generation (OpenAI API)
 - [ ] Search APIs (full-text + semantic)
 - [ ] Chat/RAG APIs (streaming)
