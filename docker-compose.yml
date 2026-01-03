@@ -1,0 +1,111 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: lex-intel-postgres
+    environment:
+      POSTGRES_USER: lex_user
+      POSTGRES_PASSWORD: lex_password
+      POSTGRES_DB: lex_intel_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lex_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lex-network
+
+  # Redis Cache & Job Queue
+  redis:
+    image: redis:7-alpine
+    container_name: lex-intel-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - lex-network
+
+  # Azurite (Azure Storage Emulator)
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    container_name: lex-intel-azurite
+    ports:
+      - "10000:10000"  # Blob Storage
+      - "10001:10001"  # Queue Storage
+      - "10002:10002"  # Table Storage
+    volumes:
+      - azurite_data:/data
+    networks:
+      - lex-network
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: lex-intel-backend
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://lex_user:lex_password@postgres:5432/lex_intel_dev
+      REDIS_URL: redis://redis:6379
+      AZURE_STORAGE_CONNECTION_STRING: DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      DEBUG: "True"
+      ENVIRONMENT: development
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      azurite:
+        condition: service_started
+    volumes:
+      - ./backend:/app
+      - lex_uploads:/app/uploads
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - lex-network
+
+  # Celery Worker
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: lex-intel-celery-worker
+    environment:
+      DATABASE_URL: postgresql://lex_user:lex_password@postgres:5432/lex_intel_dev
+      REDIS_URL: redis://redis:6379
+      AZURE_STORAGE_CONNECTION_STRING: DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      DEBUG: "True"
+      ENVIRONMENT: development
+    depends_on:
+      - postgres
+      - redis
+      - azurite
+    volumes:
+      - ./backend:/app
+      - lex_uploads:/app/uploads
+    command: celery -A app.celery_app worker -l info
+    networks:
+      - lex-network
+
+volumes:
+  postgres_data:
+  azurite_data:
+  lex_uploads:
+
+networks:
+  lex-network:
+    driver: bridge
