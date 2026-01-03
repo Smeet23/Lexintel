@@ -9,7 +9,7 @@ from shared import Document, DocumentChunk
 
 
 @pytest.mark.asyncio
-async def test_rate_limit_error_propagates(async_session):
+async def test_rate_limit_error_propagates(db_session):
     """Test that rate limit errors are propagated without retries."""
     doc = Document(
         id="doc-err-1",
@@ -17,8 +17,8 @@ async def test_rate_limit_error_propagates(async_session):
         file_path="/tmp/test.txt",
         filename="test.txt",
     )
-    async_session.add(doc)
-    await async_session.flush()
+    db_session.add(doc)
+    await db_session.flush()
 
     chunk = DocumentChunk(
         id="chunk-err-1",
@@ -26,22 +26,22 @@ async def test_rate_limit_error_propagates(async_session):
         chunk_text="Legal text about contracts",
         chunk_index=0,
     )
-    async_session.add(chunk)
-    await async_session.flush()
+    db_session.add(chunk)
+    await db_session.flush()
 
     with patch("app.services.embeddings.generate_embeddings_batch") as mock_gen:
         mock_gen.side_effect = RateLimitError("Rate limit exceeded. Please retry after 60 seconds.")
 
         with pytest.raises(RateLimitError, match="Rate limit exceeded"):
             await create_chunk_embeddings(
-                async_session,
+                db_session,
                 "doc-err-1",
                 ["Legal text about contracts"],
             )
 
 
 @pytest.mark.asyncio
-async def test_invalid_api_key_error(async_session):
+async def test_invalid_api_key_error(db_session):
     """Test that invalid API key error is properly handled."""
     doc = Document(
         id="doc-err-2",
@@ -49,8 +49,8 @@ async def test_invalid_api_key_error(async_session):
         file_path="/tmp/test.txt",
         filename="test.txt",
     )
-    async_session.add(doc)
-    await async_session.flush()
+    db_session.add(doc)
+    await db_session.flush()
 
     chunk = DocumentChunk(
         id="chunk-err-2",
@@ -58,22 +58,22 @@ async def test_invalid_api_key_error(async_session):
         chunk_text="Legal text",
         chunk_index=0,
     )
-    async_session.add(chunk)
-    await async_session.flush()
+    db_session.add(chunk)
+    await db_session.flush()
 
     with patch("app.services.embeddings.generate_embeddings_batch") as mock_gen:
         mock_gen.side_effect = AuthenticationError("Invalid API key")
 
         with pytest.raises(AuthenticationError, match="Invalid API key"):
             await create_chunk_embeddings(
-                async_session,
+                db_session,
                 "doc-err-2",
                 ["Legal text"],
             )
 
 
 @pytest.mark.asyncio
-async def test_batch_partial_failure_aborts(async_session):
+async def test_batch_partial_failure_aborts(db_session):
     """Test that failure in middle of batch aborts operation."""
     doc = Document(
         id="doc-err-3",
@@ -81,8 +81,8 @@ async def test_batch_partial_failure_aborts(async_session):
         file_path="/tmp/test.txt",
         filename="test.txt",
     )
-    async_session.add(doc)
-    await async_session.flush()
+    db_session.add(doc)
+    await db_session.flush()
 
     # Create 4 chunks (2 batches of 2)
     for i in range(4):
@@ -92,8 +92,8 @@ async def test_batch_partial_failure_aborts(async_session):
             chunk_text=f"Text {i}",
             chunk_index=i,
         )
-        async_session.add(chunk)
-    await async_session.flush()
+        db_session.add(chunk)
+    await db_session.flush()
 
     # Fail on second batch
     call_count = 0
@@ -108,7 +108,7 @@ async def test_batch_partial_failure_aborts(async_session):
     with patch("app.services.embeddings.generate_embeddings_batch", side_effect=side_effect):
         with pytest.raises(APIError, match="Transient error"):
             await create_chunk_embeddings(
-                async_session,
+                db_session,
                 "doc-err-3",
                 [f"Text {i}" for i in range(4)],
                 batch_size=2,
@@ -119,7 +119,7 @@ async def test_batch_partial_failure_aborts(async_session):
 
 
 @pytest.mark.asyncio
-async def test_missing_openai_key_error(async_session):
+async def test_missing_openai_key_error(db_session):
     """Test that missing OPENAI_API_KEY raises ValueError."""
     doc = Document(
         id="doc-err-4",
@@ -127,8 +127,8 @@ async def test_missing_openai_key_error(async_session):
         file_path="/tmp/test.txt",
         filename="test.txt",
     )
-    async_session.add(doc)
-    await async_session.flush()
+    db_session.add(doc)
+    await db_session.flush()
 
     chunk = DocumentChunk(
         id="chunk-err-4",
@@ -136,8 +136,8 @@ async def test_missing_openai_key_error(async_session):
         chunk_text="Text",
         chunk_index=0,
     )
-    async_session.add(chunk)
-    await async_session.flush()
+    db_session.add(chunk)
+    await db_session.flush()
 
     with patch("app.services.embeddings.settings") as mock_settings:
         mock_settings.OPENAI_API_KEY = None
@@ -149,14 +149,14 @@ async def test_missing_openai_key_error(async_session):
 
             with pytest.raises(ValueError, match="OPENAI_API_KEY"):
                 await create_chunk_embeddings(
-                    async_session,
+                    db_session,
                     "doc-err-4",
                     ["Text"],
                 )
 
 
 @pytest.mark.asyncio
-async def test_chunk_mismatch_error(async_session):
+async def test_chunk_mismatch_error(db_session):
     """Test that chunk/embedding count mismatch raises ValueError."""
     doc = Document(
         id="doc-err-5",
@@ -164,8 +164,8 @@ async def test_chunk_mismatch_error(async_session):
         file_path="/tmp/test.txt",
         filename="test.txt",
     )
-    async_session.add(doc)
-    await async_session.flush()
+    db_session.add(doc)
+    await db_session.flush()
 
     # Create only 2 chunks
     for i in range(2):
@@ -175,8 +175,8 @@ async def test_chunk_mismatch_error(async_session):
             chunk_text=f"Text {i}",
             chunk_index=i,
         )
-        async_session.add(chunk)
-    await async_session.flush()
+        db_session.add(chunk)
+    await db_session.flush()
 
     with patch("app.services.embeddings.generate_embeddings_batch") as mock_gen:
         # Return 3 embeddings for 2 chunks (mismatch)
@@ -184,7 +184,7 @@ async def test_chunk_mismatch_error(async_session):
 
         with pytest.raises(ValueError, match="Chunk count mismatch"):
             await create_chunk_embeddings(
-                async_session,
+                db_session,
                 "doc-err-5",
                 ["Text 0", "Text 1"],
                 batch_size=10,
@@ -208,7 +208,7 @@ async def test_empty_texts_validation_error():
 
 
 @pytest.mark.asyncio
-async def test_network_error_during_embedding(async_session):
+async def test_network_error_during_embedding(db_session):
     """Test that network errors during embedding are propagated."""
     doc = Document(
         id="doc-err-7",
@@ -216,8 +216,8 @@ async def test_network_error_during_embedding(async_session):
         file_path="/tmp/test.txt",
         filename="test.txt",
     )
-    async_session.add(doc)
-    await async_session.flush()
+    db_session.add(doc)
+    await db_session.flush()
 
     chunk = DocumentChunk(
         id="chunk-err-7",
@@ -225,22 +225,22 @@ async def test_network_error_during_embedding(async_session):
         chunk_text="Text",
         chunk_index=0,
     )
-    async_session.add(chunk)
-    await async_session.flush()
+    db_session.add(chunk)
+    await db_session.flush()
 
     with patch("app.services.embeddings.generate_embeddings_batch") as mock_gen:
         mock_gen.side_effect = APIError("Connection timeout")
 
         with pytest.raises(APIError, match="Connection timeout"):
             await create_chunk_embeddings(
-                async_session,
+                db_session,
                 "doc-err-7",
                 ["Text"],
             )
 
 
 @pytest.mark.asyncio
-async def test_api_error_with_status_code(async_session):
+async def test_api_error_with_status_code(db_session):
     """Test handling of API errors with specific status codes."""
     doc = Document(
         id="doc-err-8",
@@ -248,8 +248,8 @@ async def test_api_error_with_status_code(async_session):
         file_path="/tmp/test.txt",
         filename="test.txt",
     )
-    async_session.add(doc)
-    await async_session.flush()
+    db_session.add(doc)
+    await db_session.flush()
 
     chunk = DocumentChunk(
         id="chunk-err-8",
@@ -257,8 +257,8 @@ async def test_api_error_with_status_code(async_session):
         chunk_text="Text",
         chunk_index=0,
     )
-    async_session.add(chunk)
-    await async_session.flush()
+    db_session.add(chunk)
+    await db_session.flush()
 
     with patch("app.services.embeddings.generate_embeddings_batch") as mock_gen:
         error = APIError("Service unavailable")
@@ -267,7 +267,7 @@ async def test_api_error_with_status_code(async_session):
 
         with pytest.raises(APIError):
             await create_chunk_embeddings(
-                async_session,
+                db_session,
                 "doc-err-8",
                 ["Text"],
             )

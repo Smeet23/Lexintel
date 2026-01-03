@@ -10,7 +10,7 @@ from app.services.embeddings import create_chunk_embeddings
 
 
 @pytest.mark.asyncio
-async def test_extraction_with_embeddings_integration(async_session):
+async def test_extraction_with_embeddings_integration(db_session):  # db_session fixture from conftest
     """Test complete extraction + embedding flow."""
     # Create test document
     doc = Document(
@@ -20,8 +20,8 @@ async def test_extraction_with_embeddings_integration(async_session):
         filename="test.txt",
         processing_status=ProcessingStatus.PENDING,
     )
-    async_session.add(doc)
-    await async_session.commit()
+    db_session.add(doc)
+    await db_session.commit()
 
     # Prepare test text
     test_text = "Legal text about contracts and agreements. " * 50  # Long text to create multiple chunks
@@ -38,7 +38,7 @@ async def test_extraction_with_embeddings_integration(async_session):
 
         # Run extraction with embeddings
         chunk_ids = await extract_and_embed_document(
-            async_session,
+            db_session,
             doc.id,
             test_text,
             chunk_size=500,
@@ -51,7 +51,7 @@ async def test_extraction_with_embeddings_integration(async_session):
 
     # Verify chunks exist in database
     stmt = select(DocumentChunk).where(DocumentChunk.document_id == doc.id)
-    result = await async_session.execute(stmt)
+    result = await db_session.execute(stmt)
     db_chunks = result.scalars().all()
 
     assert len(db_chunks) > 0
@@ -60,7 +60,7 @@ async def test_extraction_with_embeddings_integration(async_session):
 
 
 @pytest.mark.asyncio
-async def test_embedding_failure_preserves_extracted_text(async_session):
+async def test_embedding_failure_preserves_extracted_text(db_session):
     """Test that embedding failure keeps document in EXTRACTED status."""
     from openai import APIError
 
@@ -74,8 +74,8 @@ async def test_embedding_failure_preserves_extracted_text(async_session):
         extracted_text=test_text,
         processing_status=ProcessingStatus.EXTRACTED,
     )
-    async_session.add(doc)
-    await async_session.commit()
+    db_session.add(doc)
+    await db_session.commit()
 
     # Create chunks
     chunk = DocumentChunk(
@@ -84,8 +84,8 @@ async def test_embedding_failure_preserves_extracted_text(async_session):
         chunk_text=test_text,
         chunk_index=0,
     )
-    async_session.add(chunk)
-    await async_session.commit()
+    db_session.add(chunk)
+    await db_session.commit()
 
     # Mock embedding failure
     with patch("app.services.embeddings.generate_embeddings_batch") as mock_gen:
@@ -93,21 +93,21 @@ async def test_embedding_failure_preserves_extracted_text(async_session):
 
         with pytest.raises(APIError):
             await create_chunk_embeddings(
-                async_session,
+                db_session,
                 "doc-embed-2",
                 [test_text],
             )
 
     # Verify document still has extracted text
     stmt = select(Document).where(Document.id == "doc-embed-2")
-    result = await async_session.execute(stmt)
+    result = await db_session.execute(stmt)
     db_doc = result.scalar_one()
     assert db_doc.extracted_text == test_text
     assert db_doc.processing_status == ProcessingStatus.EXTRACTED
 
 
 @pytest.mark.asyncio
-async def test_chunks_have_embeddings_after_generation(async_session):
+async def test_chunks_have_embeddings_after_generation(db_session):
     """Test that chunks are updated with embeddings after generation."""
     # Create document and chunks
     doc = Document(
@@ -116,8 +116,8 @@ async def test_chunks_have_embeddings_after_generation(async_session):
         file_path="/tmp/test.txt",
         filename="test.txt",
     )
-    async_session.add(doc)
-    await async_session.flush()
+    db_session.add(doc)
+    await db_session.flush()
 
     chunks = [
         DocumentChunk(
@@ -133,12 +133,12 @@ async def test_chunks_have_embeddings_after_generation(async_session):
             chunk_index=1,
         ),
     ]
-    async_session.add_all(chunks)
-    await async_session.commit()
+    db_session.add_all(chunks)
+    await db_session.commit()
 
     # Verify chunks don't have embeddings yet
     stmt = select(DocumentChunk).where(DocumentChunk.document_id == "doc-embed-3")
-    result = await async_session.execute(stmt)
+    result = await db_session.execute(stmt)
     chunks_before = result.scalars().all()
     assert all(chunk.embedding is None for chunk in chunks_before)
 
@@ -149,14 +149,14 @@ async def test_chunks_have_embeddings_after_generation(async_session):
         mock_gen.return_value = mock_embeddings
 
         await create_chunk_embeddings(
-            async_session,
+            db_session,
             "doc-embed-3",
             ["Text 1 about contracts", "Text 2 about patents"],
         )
 
     # Verify embeddings are stored
     stmt = select(DocumentChunk).where(DocumentChunk.document_id == "doc-embed-3")
-    result = await async_session.execute(stmt)
+    result = await db_session.execute(stmt)
     stored_chunks = result.scalars().all()
 
     assert len(stored_chunks) == 2
@@ -166,7 +166,7 @@ async def test_chunks_have_embeddings_after_generation(async_session):
 
 
 @pytest.mark.asyncio
-async def test_extract_and_embed_with_batch_processing(async_session):
+async def test_extract_and_embed_with_batch_processing(db_session):
     """Test that large document is processed in batches during embedding."""
     doc = Document(
         id="doc-embed-4",
@@ -174,8 +174,8 @@ async def test_extract_and_embed_with_batch_processing(async_session):
         file_path="/tmp/test.txt",
         filename="test.txt",
     )
-    async_session.add(doc)
-    await async_session.commit()
+    db_session.add(doc)
+    await db_session.commit()
 
     # Create text that will result in multiple chunks
     test_text = "Legal document text. " * 200  # Will create many chunks
@@ -189,7 +189,7 @@ async def test_extract_and_embed_with_batch_processing(async_session):
 
     with patch("app.services.embeddings.generate_embeddings_batch", side_effect=track_batch_calls):
         chunk_ids = await extract_and_embed_document(
-            async_session,
+            db_session,
             doc.id,
             test_text,
             chunk_size=400,
@@ -205,13 +205,13 @@ async def test_extract_and_embed_with_batch_processing(async_session):
 
     # Verify all chunks got embeddings
     stmt = select(DocumentChunk).where(DocumentChunk.document_id == doc.id)
-    result = await async_session.execute(stmt)
+    result = await db_session.execute(stmt)
     db_chunks = result.scalars().all()
     assert all(chunk.embedding is not None for chunk in db_chunks)
 
 
 @pytest.mark.asyncio
-async def test_empty_text_returns_empty_chunks(async_session):
+async def test_empty_text_returns_empty_chunks(db_session):
     """Test that empty text results in no chunks created."""
     doc = Document(
         id="doc-embed-5",
@@ -219,11 +219,11 @@ async def test_empty_text_returns_empty_chunks(async_session):
         file_path="/tmp/test.txt",
         filename="test.txt",
     )
-    async_session.add(doc)
-    await async_session.commit()
+    db_session.add(doc)
+    await db_session.commit()
 
     chunk_ids = await extract_and_embed_document(
-        async_session,
+        db_session,
         doc.id,
         "",  # Empty text
     )
@@ -232,6 +232,6 @@ async def test_empty_text_returns_empty_chunks(async_session):
 
     # Verify no chunks created
     stmt = select(DocumentChunk).where(DocumentChunk.document_id == doc.id)
-    result = await async_session.execute(stmt)
+    result = await db_session.execute(stmt)
     db_chunks = result.scalars().all()
     assert len(db_chunks) == 0
