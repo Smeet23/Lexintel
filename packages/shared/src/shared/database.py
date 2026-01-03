@@ -1,12 +1,22 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import NullPool
-from app.config import settings
 from typing import AsyncGenerator
+from os import getenv
+
+# Import Base from models
+from shared.models import Base
+
+# Get database URL from environment
+DATABASE_URL = getenv(
+    "DATABASE_URL",
+    "postgresql+asyncpg://postgres:postgres@localhost:5432/lex_intel"
+)
+DATABASE_ECHO = getenv("DATABASE_ECHO", "false").lower() == "true"
 
 # Create async engine with asyncpg driver
 engine = create_async_engine(
-    settings.DATABASE_URL,
-    echo=settings.DATABASE_ECHO,
+    DATABASE_URL,
+    echo=DATABASE_ECHO,
     future=True,
     poolclass=NullPool,
     connect_args={"server_settings": {"application_name": "lex-intel"}},
@@ -29,7 +39,6 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 async def init_db():
     """Initialize database tables"""
-    from app.models.base import Base
     from sqlalchemy import text
 
     # Try to enable extensions (non-critical for MVP)
