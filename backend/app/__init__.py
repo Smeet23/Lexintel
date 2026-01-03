@@ -1,0 +1,1 @@
+# LexIntel Backend Application
