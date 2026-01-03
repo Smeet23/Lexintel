@@ -1,24 +1,25 @@
-"""Celery application configuration."""
+"""Celery application configuration using shared settings."""
 
 from celery import Celery
-from config import WorkerConfig
+from shared import settings
 
 # Create Celery app
 celery_app = Celery(__name__)
 
-# Configure Celery
+# Configure Celery with shared settings
 celery_app.conf.update(
-    broker_url=WorkerConfig.CELERY_BROKER_URL,
-    result_backend=WorkerConfig.CELERY_RESULT_BACKEND,
-    task_serializer=WorkerConfig.CELERY_TASK_SERIALIZER,
-    result_serializer=WorkerConfig.CELERY_RESULT_SERIALIZER,
-    accept_content=WorkerConfig.CELERY_ACCEPT_CONTENT,
-    timezone=WorkerConfig.CELERY_TIMEZONE,
+    broker_url=settings.CELERY_BROKER_URL,
+    result_backend=settings.CELERY_RESULT_BACKEND,
+    task_serializer=settings.CELERY_TASK_SERIALIZER,
+    result_serializer=settings.CELERY_RESULT_SERIALIZER,
+    accept_content=settings.CELERY_ACCEPT_CONTENT,
+    timezone=settings.CELERY_TIMEZONE,
+    # Worker-specific settings
     task_acks_late=True,
-    worker_prefetch_multiplier=WorkerConfig.WORKER_PREFETCH_MULTIPLIER,
+    worker_prefetch_multiplier=settings.WORKER_PREFETCH_MULTIPLIER,
     task_reject_on_worker_lost=True,
-    task_soft_time_limit=WorkerConfig.TASK_SOFT_TIME_LIMIT,
-    task_time_limit=WorkerConfig.TASK_TIME_LIMIT,
+    task_soft_time_limit=settings.TASK_SOFT_TIME_LIMIT,
+    task_time_limit=settings.TASK_TIME_LIMIT,
     task_track_started=True,
 )
 
