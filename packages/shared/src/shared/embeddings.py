@@ -2,7 +2,7 @@
 
 from typing import List
 import logging
-from openai import OpenAI, APIError
+from openai import AsyncOpenAI, APIError
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ async def generate_embeddings_batch(
     if not api_key:
         raise ValueError("OPENAI_API_KEY not configured")
 
-    client = OpenAI(api_key=api_key)
+    client = AsyncOpenAI(api_key=api_key)
 
     try:
         response = await client.embeddings.create(
