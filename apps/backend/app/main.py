@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.api import cases, documents
-from app.database import init_db
+from shared.database import init_db
 import logging
 
 logging.basicConfig(level=logging.INFO)
