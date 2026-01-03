@@ -1,5 +1,7 @@
 from sqlalchemy import Column, String, Text, Integer, Boolean, DateTime, ForeignKey, ARRAY, Enum
 from sqlalchemy.orm import relationship
+from pgvector.sqlalchemy import Vector
+from typing import Optional
 import enum
 from shared.models.base import Base, TimestampMixin
 
@@ -45,7 +47,8 @@ class DocumentChunk(Base):
     document_id = Column(String, ForeignKey("documents.id"), nullable=False, index=True)
     chunk_text = Column(Text, nullable=False)
     chunk_index = Column(Integer, nullable=False)
-    embedding = Column(String)  # pgvector stored as string
+    # Phase 4: Embedding vector (512-dimensional for text-embedding-3-small)
+    embedding = Column(Vector(512), nullable=True)
     search_vector = Column(String)  # PostgreSQL tsvector
 
     # Relationships
