@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.database import get_db
@@ -7,9 +8,12 @@ from app.schemas.document import DocumentResponse
 from app.services.storage import storage_service
 from app.celery_app import celery_app
 from app.workers.tasks import process_document_pipeline
+from app.config import settings
 from pathlib import Path
 from uuid import uuid4
 import logging
+import redis.asyncio as redis
+import json
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -138,3 +142,23 @@ async def delete_document(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete document",
         )
+
+@router.get("/documents/{document_id}/progress")
+async def stream_document_progress(document_id: str):
+    """Stream document processing progress via SSE."""
+    async def event_generator():
+        redis_client = redis.from_url(settings.REDIS_URL)
+        try:
+            pubsub = redis_client.pubsub()
+            await pubsub.subscribe(f"progress:{document_id}")
+
+            async for message in pubsub.listen():
+                if message["type"] == "message":
+                    data = message["data"]
+                    if isinstance(data, bytes):
+                        data = data.decode()
+                    yield f"data: {data}\n\n"
+        finally:
+            await redis_client.close()
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
