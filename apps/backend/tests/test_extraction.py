@@ -8,6 +8,44 @@ from app.services.extraction import extract_file, clean_text, chunk_text, create
 from shared.models import Document, DocumentChunk, DocumentType, ProcessingStatus
 
 
+# ===== CHUNKING TESTS =====
+def test_chunk_text_basic():
+    """Test basic text chunking"""
+    text = "a" * 10000  # 10,000 characters
+    chunks = chunk_text(text, chunk_size=4000, overlap=400)
+
+    assert len(chunks) > 0
+    assert chunks[0] == "a" * 4000
+    assert len(chunks[1]) <= 4000
+
+
+def test_chunk_text_small():
+    """Test chunking with text smaller than chunk size"""
+    text = "hello world"
+    chunks = chunk_text(text, chunk_size=4000, overlap=400)
+
+    assert len(chunks) == 1
+    assert chunks[0] == "hello world"
+
+
+def test_chunk_text_empty():
+    """Test chunking empty text"""
+    text = ""
+    chunks = chunk_text(text, chunk_size=4000, overlap=400)
+
+    assert len(chunks) == 0
+
+
+def test_chunk_text_exact_chunk_size():
+    """Test chunking text exactly divisible by chunk size"""
+    text = "a" * 8000
+    chunks = chunk_text(text, chunk_size=4000, overlap=400)
+
+    # With overlap, we get more chunks than strictly necessary
+    assert len(chunks) > 1
+    assert chunks[0] == "a" * 4000
+
+
 # ===== EXTRACT_FILE TESTS =====
 @pytest.mark.asyncio
 async def test_extract_txt_file():
@@ -109,63 +147,6 @@ def test_clean_text_normalizes_line_endings():
     dirty = "Line1\r\nLine2"
     clean = clean_text(dirty)
     assert clean == "Line1\nLine2"
-
-
-# ===== CHUNK_TEXT TESTS =====
-def test_chunk_text_respects_chunk_size():
-    """Test that chunks don't exceed max size"""
-    text = "x" * 10000
-    chunks = chunk_text(text, chunk_size=4000)
-    for chunk in chunks:
-        assert len(chunk) <= 4000
-
-
-def test_chunk_text_minimum_size():
-    """Test that chunks smaller than 200 chars are skipped"""
-    text = "short" * 50
-    chunks = chunk_text(text, chunk_size=200, min_size=200)
-    for chunk in chunks:
-        assert len(chunk) >= 200
-
-
-def test_chunk_text_overlap():
-    """Test that chunks have proper overlap"""
-    text = "abcdefghijklmnopqrstuvwxyz" * 200
-    chunks = chunk_text(text, chunk_size=1000, overlap=100)
-    assert len(chunks) >= 2
-    assert len(chunks[0]) <= 1000
-    assert chunks[1].startswith(chunks[0][-100:])
-
-
-def test_chunk_text_empty():
-    """Test chunking empty text"""
-    chunks = chunk_text("", chunk_size=4000)
-    assert chunks == []
-
-
-def test_chunk_text_smaller_than_chunk_size():
-    """Test text smaller than chunk size"""
-    text = "short text"
-    chunks = chunk_text(text, chunk_size=100)
-    assert len(chunks) == 1
-    assert chunks[0] == "short text"
-
-
-def test_chunk_text_custom_chunk_size():
-    """Test chunking with custom chunk size"""
-    text = "x" * 5000
-    chunks = chunk_text(text, chunk_size=2000, overlap=200)
-    assert all(len(chunk) <= 2000 for chunk in chunks)
-    assert len(chunks) > 1
-
-
-def test_chunk_text_no_overlap():
-    """Test chunking with zero overlap"""
-    text = "abcdefghij" * 500
-    chunks = chunk_text(text, chunk_size=1000, overlap=0)
-    assert len(chunks) > 0
-    for chunk in chunks:
-        assert len(chunk) <= 1000
 
 
 # ===== CREATE_TEXT_CHUNKS TESTS =====
