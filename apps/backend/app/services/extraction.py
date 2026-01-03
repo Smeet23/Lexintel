@@ -35,16 +35,14 @@ async def extract_file(file_path: str) -> str:
         FileNotFoundError: If file doesn't exist
     """
 
-    # Phase 3: TXT files only
-    if file_path.lower().endswith('.txt'):
-        try:
-            with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
-                text = f.read()
-            logger.info(f"[extraction] Extracted {len(text)} chars from {file_path}")
-            return text
-        except FileNotFoundError:
-            logger.error(f"[extraction] File not found: {file_path}")
-            raise
+    file_lower = file_path.lower()
+
+    if file_lower.endswith('.pdf'):
+        return await extract_pdf(file_path)
+    elif file_lower.endswith('.docx'):
+        return await extract_docx(file_path)
+    elif file_lower.endswith('.txt'):
+        return await extract_txt(file_path)
     else:
         raise ValueError(f"Unsupported file type: {file_path}")
 
@@ -231,17 +229,130 @@ async def create_text_chunks(
         raise
 
 
-# Stub implementations for other file types (to be implemented in Phase 3)
+# ===== FUNCTION 5: extract_pdf =====
 async def extract_pdf(file_path: str) -> str:
-    """Extract text from PDF file (not yet implemented)"""
-    raise NotImplementedError("PDF extraction coming in Phase 3")
+    """
+    Extract text from PDF file using PyPDF2
+
+    Args:
+        file_path: Path to PDF file
+
+    Returns:
+        Extracted text content
+
+    Raises:
+        FileNotFoundError: If file doesn't exist
+        ValueError: If PDF is corrupted or unreadable
+    """
+    from pathlib import Path
+    from PyPDF2 import PdfReader
+
+    path = Path(file_path)
+    if not path.exists():
+        logger.error(f"[extraction] PDF file not found: {file_path}")
+        raise FileNotFoundError(f"PDF file not found: {file_path}")
+
+    try:
+        with open(file_path, 'rb') as f:
+            reader = PdfReader(f)
+            text_parts = []
+
+            for page_num, page in enumerate(reader.pages):
+                page_text = page.extract_text()
+                if page_text:
+                    text_parts.append(page_text)
+                else:
+                    logger.warning(f"[extraction] No text found on PDF page {page_num + 1}: {file_path}")
+
+            text = "\n".join(text_parts)
+            logger.info(f"[extraction] Extracted {len(text)} chars from PDF: {file_path}")
+            return text
+
+    except FileNotFoundError:
+        logger.error(f"[extraction] PDF file not found: {file_path}")
+        raise
+    except Exception as e:
+        logger.error(f"[extraction] Failed to extract PDF {file_path}: {e}")
+        raise ValueError(f"Failed to extract PDF {file_path}: {e}") from e
 
 
+# ===== FUNCTION 6: extract_docx =====
 async def extract_docx(file_path: str) -> str:
-    """Extract text from DOCX file (not yet implemented)"""
-    raise NotImplementedError("DOCX extraction coming in Phase 3")
+    """
+    Extract text from DOCX file using python-docx
+
+    Args:
+        file_path: Path to DOCX file
+
+    Returns:
+        Extracted text content
+
+    Raises:
+        FileNotFoundError: If file doesn't exist
+        ValueError: If DOCX is corrupted or unreadable
+    """
+    from pathlib import Path
+    from docx import Document
+
+    path = Path(file_path)
+    if not path.exists():
+        logger.error(f"[extraction] DOCX file not found: {file_path}")
+        raise FileNotFoundError(f"DOCX file not found: {file_path}")
+
+    try:
+        doc = Document(file_path)
+        text_parts = []
+
+        for para in doc.paragraphs:
+            if para.text.strip():
+                text_parts.append(para.text)
+
+        text = "\n".join(text_parts)
+        logger.info(f"[extraction] Extracted {len(text)} chars from DOCX: {file_path}")
+        return text
+
+    except FileNotFoundError:
+        logger.error(f"[extraction] DOCX file not found: {file_path}")
+        raise
+    except Exception as e:
+        logger.error(f"[extraction] Failed to extract DOCX {file_path}: {e}")
+        raise ValueError(f"Failed to extract DOCX {file_path}: {e}") from e
 
 
+# ===== FUNCTION 7: extract_txt =====
 async def extract_txt(file_path: str) -> str:
-    """Extract text from TXT file"""
-    return await extract_file(file_path)
+    """
+    Extract text from TXT file
+
+    Args:
+        file_path: Path to TXT file
+
+    Returns:
+        Extracted text content
+
+    Raises:
+        FileNotFoundError: If file doesn't exist
+    """
+    from pathlib import Path
+
+    path = Path(file_path)
+    if not path.exists():
+        logger.error(f"[extraction] TXT file not found: {file_path}")
+        raise FileNotFoundError(f"TXT file not found: {file_path}")
+
+    try:
+        # Try UTF-8 first
+        text = path.read_text(encoding='utf-8')
+        logger.info(f"[extraction] Extracted {len(text)} chars from TXT: {file_path}")
+        return text
+    except UnicodeDecodeError:
+        # Fallback to latin-1 for files with different encoding
+        text = path.read_text(encoding='latin-1')
+        logger.warning(f"[extraction] Used latin-1 encoding for TXT: {file_path}")
+        return text
+    except FileNotFoundError:
+        logger.error(f"[extraction] TXT file not found: {file_path}")
+        raise
+    except Exception as e:
+        logger.error(f"[extraction] Failed to extract TXT {file_path}: {e}")
+        raise
