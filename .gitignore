@@ -38,3 +38,6 @@ coverage/
 
 # Misc
 .turbo/
+
+# Git Worktrees
+.worktrees/
