@@ -63,6 +63,18 @@ async def upload_document(
         await db.commit()
         await db.refresh(new_document)
 
+        # Queue extraction task
+        job_payload = {
+            "document_id": document_id,
+            "case_id": case_id,
+            "source": "upload",
+        }
+
+        task = celery_app.send_task(
+            "workers.document_extraction.extract_text_from_document",
+            args=[job_payload],
+        )
+
         # Start async processing pipeline
         # Use apply_async with explicit connection to avoid async context issues
         with celery_app.connection() as conn:
