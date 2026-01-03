@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional
-from app.models import DocumentType, ProcessingStatus
+from shared.models import DocumentType, ProcessingStatus
 
 class DocumentBase(BaseModel):
     title: str

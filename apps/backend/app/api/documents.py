@@ -3,16 +3,14 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.database import get_db
-from app.models import Document, DocumentType, ProcessingStatus
+from shared.models import Document, DocumentType, ProcessingStatus
 from app.schemas.document import DocumentResponse
 from app.services.storage import storage_service
 from app.celery_app import celery_app
 from app.config import settings
-from pathlib import Path
 from uuid import uuid4
 import logging
 import redis.asyncio as redis
-import json
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -69,7 +67,7 @@ async def upload_document(
             "source": "upload",
         }
 
-        task = celery_app.send_task(
+        celery_app.send_task(
             "workers.document_extraction.extract_text_from_document",
             args=[job_payload],
         )

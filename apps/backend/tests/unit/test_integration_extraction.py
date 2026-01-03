@@ -13,7 +13,7 @@ from reportlab.lib.pagesizes import letter
 async def test_extraction_pipeline_txt(tmp_path, db_session):
     """Test complete extraction pipeline with TXT file"""
     from app.services.extraction import extract_file, create_text_chunks
-    from app.models.document import Document, DocumentChunk
+    from shared.models import Document, DocumentChunk
 
     # Create a test document in database
     test_doc_id = "doc_test_001"
@@ -67,7 +67,7 @@ async def test_extraction_pipeline_txt(tmp_path, db_session):
 async def test_extraction_pipeline_pdf(tmp_path, db_session):
     """Test complete extraction pipeline with PDF file"""
     from app.services.extraction import extract_file, create_text_chunks
-    from app.models.document import Document, DocumentChunk
+    from shared.models import Document, DocumentChunk
 
     # Create a test document in database
     test_doc_id = "doc_test_002"
@@ -119,7 +119,7 @@ async def test_extraction_pipeline_pdf(tmp_path, db_session):
 async def test_extraction_pipeline_docx(tmp_path, db_session):
     """Test complete extraction pipeline with DOCX file"""
     from app.services.extraction import extract_file, create_text_chunks
-    from app.models.document import Document, DocumentChunk
+    from shared.models import Document, DocumentChunk
 
     # Create a test document in database
     test_doc_id = "doc_test_003"
@@ -171,7 +171,7 @@ async def test_extraction_pipeline_docx(tmp_path, db_session):
 async def test_extraction_pipeline_overlap(tmp_path, db_session):
     """Test that chunks have proper overlap"""
     from app.services.extraction import extract_file, create_text_chunks
-    from app.models.document import Document, DocumentChunk
+    from shared.models import Document, DocumentChunk
 
     # Create a test document in database
     test_doc_id = "doc_test_overlap"

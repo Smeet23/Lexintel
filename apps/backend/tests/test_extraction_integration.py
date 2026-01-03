@@ -16,7 +16,7 @@ The worker extraction logic is now tested in:
 import pytest
 from uuid import uuid4
 from unittest.mock import patch, AsyncMock
-from app.models import Document, ProcessingStatus, DocumentType
+from shared.models import Document, ProcessingStatus, DocumentType
 from sqlalchemy import select
 
 

@@ -2,8 +2,7 @@ import pytest
 import asyncio
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy import MetaData, Table
-from app.models.base import Base
-from app.models.document import Document, DocumentChunk
+from shared.models import Base, Document, DocumentChunk
 
 
 @pytest.fixture(scope="session")

@@ -14,7 +14,7 @@ from typing import List
 from uuid import uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import DocumentChunk
+from shared.models import DocumentChunk
 
 logger = logging.getLogger(__name__)
 

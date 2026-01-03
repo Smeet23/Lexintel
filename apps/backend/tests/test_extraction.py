@@ -5,7 +5,7 @@ import os
 import tempfile
 from uuid import uuid4
 from app.services.extraction import extract_file, clean_text, chunk_text, create_text_chunks
-from app.models import Document, DocumentChunk, DocumentType, ProcessingStatus
+from shared.models import Document, DocumentChunk, DocumentType, ProcessingStatus
 
 
 # ===== EXTRACT_FILE TESTS =====

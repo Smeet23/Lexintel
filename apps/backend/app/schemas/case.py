@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional
-from app.models import CaseStatus
+from shared.models import CaseStatus
 
 class CaseBase(BaseModel):
     name: str
