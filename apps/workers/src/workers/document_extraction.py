@@ -21,6 +21,17 @@ from sqlalchemy.future import select
 
 logger = logging.getLogger(__name__)
 
+# Import embeddings service - deferred to avoid circular imports
+async def _get_create_chunk_embeddings():
+    """Lazy import of embeddings service to avoid circular dependencies."""
+    try:
+        from app.services.embeddings import create_chunk_embeddings
+        return create_chunk_embeddings
+    except ImportError:
+        # If running in worker, use shared service
+        from shared.services import create_chunk_embeddings
+        return create_chunk_embeddings
+
 
 class CallbackTask(Task):
     """Task with error handling callback."""
@@ -86,7 +97,7 @@ def extract_text_from_document(self, job_payload: dict) -> dict:
                 chunk_texts = chunk_text(text, chunk_size=4000, overlap=400)
                 chunk_ids = await create_document_chunks(db, job.document_id, chunk_texts)
 
-                # Update document status
+                # Update document status to EXTRACTED
                 doc.processing_status = ProcessingStatus.EXTRACTED
                 await db.commit()
 
@@ -94,12 +105,49 @@ def extract_text_from_document(self, job_payload: dict) -> dict:
                     f"[extract_text] Created {len(chunk_ids)} chunks for document {job.document_id}"
                 )
 
+                # Step 3: Generate embeddings (NEW - Phase 4)
+                try:
+                    await publisher.publish_progress(
+                        job.document_id,
+                        70,
+                        "generating_embeddings",
+                        f"Generating embeddings for {len(chunk_texts)} chunks..."
+                    )
+
+                    create_chunk_embeddings = await _get_create_chunk_embeddings()
+                    await create_chunk_embeddings(
+                        db,
+                        job.document_id,
+                        chunk_texts,
+                        batch_size=20
+                    )
+
+                    # Mark as complete (INDEXED status)
+                    doc.processing_status = ProcessingStatus.INDEXED
+                    await db.commit()
+
+                    logger.info(
+                        f"[extract_text] Generated embeddings for {len(chunk_ids)} chunks"
+                    )
+
+                except Exception as e:
+                    # If embedding fails, keep document in EXTRACTED status
+                    # This allows the text to be preserved for a retry via the reingest API
+                    logger.error(
+                        f"[extract_text] Embedding generation failed for {job.document_id}: {e}",
+                        exc_info=True
+                    )
+                    doc.processing_status = ProcessingStatus.EXTRACTED
+                    await db.commit()
+                    # Re-raise the exception so it's handled by outer error handling
+                    raise
+
             # Publish completion
             await publisher.publish_progress(
                 job.document_id,
                 100,
                 "completed",
-                f"Extraction complete! Created {len(chunk_ids)} chunks"
+                f"Extraction and embedding complete! {len(chunk_ids)} chunks indexed"
             )
 
             logger.info(f"[extract_text] Completed for document {job.document_id}")
