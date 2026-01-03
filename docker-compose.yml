@@ -51,7 +51,7 @@ services:
   # FastAPI Backend
   backend:
     build:
-      context: ./backend
+      context: ./apps/backend
       dockerfile: Dockerfile
     container_name: lex-intel-backend
     ports:
@@ -71,7 +71,7 @@ services:
       azurite:
         condition: service_started
     volumes:
-      - ./backend:/app
+      - ./apps/backend:/app
       - lex_uploads:/app/uploads
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     networks:
@@ -80,7 +80,7 @@ services:
   # Celery Worker
   celery-worker:
     build:
-      context: ./backend
+      context: ./apps/backend
       dockerfile: Dockerfile
     container_name: lex-intel-celery-worker
     environment:
@@ -95,9 +95,22 @@ services:
       - redis
       - azurite
     volumes:
-      - ./backend:/app
+      - ./apps/backend:/app
       - lex_uploads:/app/uploads
     command: celery -A app.celery_app worker -l info
+    networks:
+      - lex-network
+
+  # Workers Service
+  workers:
+    build: ./apps/workers
+    volumes:
+      - ./apps/workers:/app
+    depends_on:
+      - redis
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql+asyncpg://lex_user:lex_password@postgres:5432/lex_intel_dev
     networks:
       - lex-network
 
