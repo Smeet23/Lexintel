@@ -10,7 +10,6 @@ from shared import (
     ProcessingStatus,
     DocumentExtractionJob,
     PermanentError,
-    RetryableError,
     async_session,
     chunk_text,
     clean_text,
@@ -154,12 +153,25 @@ def extract_text_from_document(self, job_payload: dict) -> dict:
                 except Exception as e:
                     # If embedding fails, keep document in EXTRACTED status
                     # This allows the text to be preserved for a retry via the reingest API
+                    error_message = (
+                        f"Embedding generation failed: {type(e).__name__}: {str(e)}"
+                    )
                     logger.error(
-                        f"[extract_text] Embedding generation failed for {job.document_id}: {e}",
+                        f"[extract_text] {error_message} for {job.document_id}",
                         exc_info=True
                     )
                     doc.processing_status = ProcessingStatus.EXTRACTED
+                    doc.error_message = error_message
                     await db.commit()
+
+                    # Publish error to progress stream
+                    await publisher.publish_progress(
+                        job.document_id,
+                        70,
+                        "embedding_failed",
+                        f"Embedding generation failed: {str(e)}"
+                    )
+
                     # Re-raise the exception so it's handled by outer error handling
                     raise
 
@@ -180,16 +192,25 @@ def extract_text_from_document(self, job_payload: dict) -> dict:
             }
 
         except FileNotFoundError as e:
-            logger.error(f"[extract_text] File not found: {e}")
-            raise PermanentError(f"File not found: {e}") from e
+            error_msg = f"Document not found in database: {e}"
+            logger.error(f"[extract_text] {error_msg}")
+            raise PermanentError(error_msg) from e
         except ValueError as e:
-            logger.error(f"[extract_text] Invalid input: {e}")
-            raise PermanentError(f"Invalid input: {e}") from e
+            error_msg = f"Invalid input - missing blob_url or invalid file: {e}"
+            logger.error(f"[extract_text] {error_msg}")
+            raise PermanentError(error_msg) from e
         except PermanentError as e:
-            logger.error(f"[extract_text] Permanent error: {e}")
+            logger.error(f"[extract_text] Permanent error (no retry): {e}")
             raise
         except Exception as e:
-            logger.error(f"[extract_text] Error for document {job_payload.get('document_id')}: {e}")
+            error_type = type(e).__name__
+            error_msg = f"Unexpected error ({error_type}): {str(e)}"
+            logger.error(
+                f"[extract_text] {error_msg} for document {job_payload.get('document_id')}",
+                exc_info=True
+            )
+            # Retry with exponential backoff (60s first retry)
+            logger.info(f"[extract_text] Retrying task (attempt {self.request.retries + 1}/3)")
             raise self.retry(exc=e, countdown=60)
 
     try:
