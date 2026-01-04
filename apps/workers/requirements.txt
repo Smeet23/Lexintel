@@ -1,6 +1,10 @@
 celery[redis]==5.3.4
 sqlalchemy[asyncio]==2.0.23
-redis==5.0.1
+redis>=4.5.2,<5.0.0
 python-dotenv==1.0.0
 pydantic==2.5.0
+pydantic-settings==2.1.0
 aioredis==2.0.1
+aiohttp==3.9.1
+pgvector==0.2.5
+asyncpg==0.29.0

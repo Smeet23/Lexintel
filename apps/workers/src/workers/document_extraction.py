@@ -3,8 +3,8 @@
 import asyncio
 import logging
 from celery import Task
-from celery_app import celery_app
-from lib import get_redis_client, ProgressPublisher
+from ..celery_app import celery_app
+from ..lib import get_redis_client, ProgressPublisher
 from shared import (
     Document,
     ProcessingStatus,
@@ -23,14 +23,9 @@ logger = logging.getLogger(__name__)
 
 # Import embeddings service - deferred to avoid circular imports
 async def _get_create_chunk_embeddings():
-    """Lazy import of embeddings service to avoid circular dependencies."""
-    try:
-        from app.services.embeddings import create_chunk_embeddings
-        return create_chunk_embeddings
-    except ImportError:
-        # If running in worker, use shared service
-        from shared.services import create_chunk_embeddings
-        return create_chunk_embeddings
+    """Lazy import of embeddings service from shared package."""
+    from shared import create_chunk_embeddings
+    return create_chunk_embeddings
 
 
 class CallbackTask(Task):
@@ -41,7 +36,12 @@ class CallbackTask(Task):
         logger.error(f"Task {task_id} failed: {exc}", exc_info=einfo)
 
 
-@celery_app.task(base=CallbackTask, bind=True, max_retries=3)
+@celery_app.task(
+    base=CallbackTask,
+    bind=True,
+    max_retries=3,
+    name="workers.document_extraction.extract_text_from_document"
+)
 def extract_text_from_document(self, job_payload: dict) -> dict:
     """Extract text from document and create chunks."""
     async def async_extract():
@@ -68,8 +68,8 @@ def extract_text_from_document(self, job_payload: dict) -> dict:
                 if not doc:
                     raise FileNotFoundError(f"Document {job.document_id} not found")
 
-                if not doc.file_path:
-                    raise ValueError(f"Document {job.document_id} has no file_path")
+                if not doc.blob_url:
+                    raise ValueError(f"Document {job.document_id} has no blob_url")
 
                 # Publish extraction start
                 await publisher.publish_progress(
@@ -79,10 +79,31 @@ def extract_text_from_document(self, job_payload: dict) -> dict:
                     "Extracting text from file..."
                 )
 
-                # Extract text
-                text = await extract_file(doc.file_path)
-                text = clean_text(text)
-                doc.extracted_text = text
+                # Download file from presigned URL
+                import aiohttp
+                import tempfile
+                from pathlib import Path as PathlibPath
+
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(doc.blob_url) as response:
+                        if response.status != 200:
+                            raise ValueError(f"Failed to download file: HTTP {response.status}")
+                        file_content = await response.read()
+
+                # Save to temporary file for extraction
+                file_extension = PathlibPath(doc.filename).suffix
+                with tempfile.NamedTemporaryFile(suffix=file_extension, delete=False) as tmp_file:
+                    tmp_file.write(file_content)
+                    tmp_file_path = tmp_file.name
+
+                try:
+                    # Extract text from temporary file
+                    text = await extract_file(tmp_file_path)
+                    text = clean_text(text)
+                    doc.extracted_text = text
+                finally:
+                    # Clean up temporary file
+                    PathlibPath(tmp_file_path).unlink(missing_ok=True)
 
                 logger.info(f"[extract_text] Extracted {len(text)} chars for document {job.document_id}")
 

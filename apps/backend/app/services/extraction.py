@@ -30,7 +30,6 @@ from shared import (
     extract_txt,
     create_document_chunks,
 )
-from app.services.embeddings import create_chunk_embeddings
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +123,7 @@ async def extract_and_embed_document(
     logger.info(f"[extract_and_embed] Created {len(chunk_ids)} chunks for {document_id}")
 
     # Generate embeddings for chunks
+    from shared import create_chunk_embeddings
     await create_chunk_embeddings(
         session,
         document_id,

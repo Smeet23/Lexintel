@@ -2,7 +2,7 @@
 
 import redis.asyncio as redis
 from typing import Optional
-from config import WorkerConfig
+from ..config import settings
 
 _redis_client: Optional[redis.Redis] = None
 
@@ -11,7 +11,7 @@ async def get_redis_client() -> redis.Redis:
     """Get or create Redis client."""
     global _redis_client
     if _redis_client is None:
-        _redis_client = await redis.from_url(WorkerConfig.REDIS_URL)
+        _redis_client = await redis.from_url(settings.REDIS_URL)
     return _redis_client
 
 

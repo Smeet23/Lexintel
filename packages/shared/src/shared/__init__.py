@@ -24,7 +24,7 @@ from .extraction import (
 )
 from .chunking import create_document_chunks
 from .config import Settings, settings
-from .embeddings import generate_embeddings_batch
+from .embeddings import generate_embeddings_batch, create_chunk_embeddings
 
 __version__ = "0.1.0"
 __all__ = [
@@ -56,4 +56,5 @@ __all__ = [
     "Settings",
     "settings",
     "generate_embeddings_batch",
+    "create_chunk_embeddings",
 ]

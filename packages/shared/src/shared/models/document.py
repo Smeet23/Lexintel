@@ -32,7 +32,7 @@ class Document(Base, TimestampMixin):
     extracted_text = Column(Text)
     page_count = Column(Integer)
     file_size = Column(Integer)
-    file_path = Column(String)  # Local file path
+    blob_url = Column(String)  # Azure Blob Storage presigned URL (SAS URL)
     processing_status = Column(Enum(ProcessingStatus), default=ProcessingStatus.PENDING, index=True)
     error_message = Column(Text)
     indexed_at = Column(DateTime)
@@ -47,8 +47,8 @@ class DocumentChunk(Base):
     document_id = Column(String, ForeignKey("documents.id"), nullable=False, index=True)
     chunk_text = Column(Text, nullable=False)
     chunk_index = Column(Integer, nullable=False)
-    # Phase 4: Embedding vector (512-dimensional for text-embedding-3-small)
-    embedding = Column(Vector(512), nullable=True)
+    # Phase 4: Embedding vector (1536-dimensional for text-embedding-3-small)
+    embedding = Column(Vector(1536), nullable=True)
     search_vector = Column(String)  # PostgreSQL tsvector
 
     # Relationships

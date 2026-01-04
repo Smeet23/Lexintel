@@ -53,9 +53,9 @@ async def upload_document(
         await db.commit()
         await db.refresh(new_document)
 
-        # Save file
-        file_path = storage_service.save_file(document_id, file.filename, file_content)
-        new_document.file_path = file_path
+        # Save file and get presigned URL
+        blob_url = storage_service.save_file(document_id, file.filename, file_content)
+        new_document.blob_url = blob_url
 
         await db.commit()
         await db.refresh(new_document)
@@ -128,9 +128,11 @@ async def delete_document(
                 detail="Document not found",
             )
 
-        # Delete file
-        if document.file_path:
-            storage_service.delete_file(document.file_path)
+        # Delete file from blob storage
+        if document.blob_url:
+            # Extract blob name from presigned URL
+            blob_name = storage_service.extract_blob_name_from_url(document.blob_url)
+            storage_service.delete_file(blob_name)
 
         # Delete document
         await db.delete(document)

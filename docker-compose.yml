@@ -1,9 +1,9 @@
 version: '3.8'
 
 services:
-  # PostgreSQL Database
+  # PostgreSQL Database with pgvector
   postgres:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15
     container_name: lex-intel-postgres
     environment:
       POSTGRES_USER: lex_user
@@ -51,18 +51,21 @@ services:
   # FastAPI Backend
   backend:
     build:
-      context: ./apps/backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/backend/Dockerfile
     container_name: lex-intel-backend
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql+asyncpg://lex_user:lex_password@postgres:5432/lex_intel_dev
-      REDIS_URL: redis://redis:6379
-      AZURE_STORAGE_CONNECTION_STRING: DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
-      DEBUG: "True"
-      ENVIRONMENT: development
+      OPENAI_MODEL: ${OPENAI_MODEL}
+      OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL}
+      DEBUG: ${DEBUG}
+      ENV: ${ENV}
+      LOG_LEVEL: ${LOG_LEVEL}
     depends_on:
       postgres:
         condition: service_healthy
@@ -72,52 +75,37 @@ services:
         condition: service_started
     volumes:
       - ./apps/backend:/app
-      - lex_uploads:/app/uploads
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-    networks:
-      - lex-network
-
-  # Celery Worker
-  celery-worker:
-    build:
-      context: ./apps/backend
-      dockerfile: Dockerfile
-    container_name: lex-intel-celery-worker
-    environment:
-      DATABASE_URL: postgresql+asyncpg://lex_user:lex_password@postgres:5432/lex_intel_dev
-      REDIS_URL: redis://redis:6379
-      AZURE_STORAGE_CONNECTION_STRING: DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      DEBUG: "True"
-      ENVIRONMENT: development
-    depends_on:
-      - postgres
-      - redis
-      - azurite
-    volumes:
-      - ./apps/backend:/app
-      - lex_uploads:/app/uploads
-    command: celery -A app.celery_app worker -l info
     networks:
       - lex-network
 
   # Workers Service
   workers:
-    build: ./apps/workers
+    build:
+      context: .
+      dockerfile: apps/workers/Dockerfile
+    container_name: lex-intel-workers
     volumes:
       - ./apps/workers:/app
     depends_on:
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
-      - REDIS_URL=redis://redis:6379/0
-      - DATABASE_URL=postgresql+asyncpg://lex_user:lex_password@postgres:5432/lex_intel_dev
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_MODEL: ${OPENAI_MODEL}
+      DEBUG: ${DEBUG}
+      ENV: ${ENV}
+      LOG_LEVEL: ${LOG_LEVEL}
     networks:
       - lex-network
 
 volumes:
   postgres_data:
   azurite_data:
-  lex_uploads:
 
 networks:
   lex-network:

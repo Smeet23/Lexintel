@@ -23,9 +23,6 @@ class Settings(SharedSettings):
     """Enable SQLAlchemy echo for SQL debugging."""
 
     # ===== FILE UPLOAD =====
-    UPLOAD_DIR: str = "/app/uploads"
-    """Directory for uploaded files."""
-
     MAX_UPLOAD_SIZE: int = 104857600  # 100MB
     """Maximum upload size in bytes."""
 

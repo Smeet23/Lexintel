@@ -2,9 +2,15 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
+# First, install the shared package from packages/shared
+COPY packages/shared ./packages/shared
+RUN pip install --no-cache-dir ./packages/shared
+
+# Then install worker requirements
+COPY apps/workers/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+# Copy the worker application
+COPY apps/workers .
 
 CMD ["python", "-m", "src"]

@@ -23,3 +23,7 @@ dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
 ]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+packages = ["shared", "shared.models", "shared.schemas", "shared.utils", "shared.services"]

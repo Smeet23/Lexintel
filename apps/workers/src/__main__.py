@@ -4,8 +4,8 @@ import signal
 import sys
 import asyncio
 import logging
-from celery_app import celery_app
-from lib import close_redis
+from .celery_app import celery_app
+from .lib import close_redis
 
 logger = logging.getLogger(__name__)
 

@@ -1,14 +1,10 @@
-"""Backend service for managing document chunk embeddings."""
+"""Service for managing document chunk embeddings."""
 
 from typing import List
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import select
 
-from shared import (
-    generate_embeddings_batch,
-    DocumentChunk,
-    setup_logging,
-)
+from shared import generate_embeddings_batch, DocumentChunk, setup_logging
 
 logger = setup_logging(__name__)
 

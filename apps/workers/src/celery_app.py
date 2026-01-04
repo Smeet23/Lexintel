@@ -23,5 +23,10 @@ celery_app.conf.update(
     task_track_started=True,
 )
 
-# Auto-discover tasks from workers module
-celery_app.autodiscover_tasks(["workers"])
+# Register tasks from workers module
+# Import directly to ensure tasks are available to Celery
+try:
+    from . import workers  # noqa: F401
+except ImportError:
+    # If workers module not found, that's ok - tasks will fail with clear error
+    pass

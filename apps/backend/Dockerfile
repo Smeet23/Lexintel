@@ -2,9 +2,15 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
+# First, install the shared package from packages/shared
+COPY packages/shared ./packages/shared
+RUN pip install --no-cache-dir ./packages/shared
+
+# Then install backend requirements
+COPY apps/backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+# Copy the backend application
+COPY apps/backend .
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
