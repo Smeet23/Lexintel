@@ -216,3 +216,73 @@ class TestCaseProcessing:
         # Verify job status changed
         updated_job = db.query(ProcessingJob).filter(ProcessingJob.id == job.id).first()
         assert updated_job.status == "completed"
+
+    @pytest.mark.asyncio
+    async def test_process_case_chunks_database_storage(
+        self, db: Session, mock_storage, mock_chunking, mock_embeddings, mock_vector_store
+    ):
+        """Chunks are properly stored in database with metadata"""
+        # Create user and case
+        user = User(email="lawyer@example.com", password_hash="hash")
+        db.add(user)
+        db.commit()
+
+        case = Case(
+            user_id=user.id,
+            name="Case with metadata",
+            blob_storage_path="cases/test.pdf",
+            status="processing"
+        )
+        db.add(case)
+        db.commit()
+
+        # Create job
+        job = ProcessingJob(id=str(uuid4()), case_id=case.id, status="pending")
+        db.add(job)
+        db.commit()
+
+        # Process case
+        await process_case(case.id, db)
+
+        # Verify chunks in database
+        chunks = db.query(Chunk).filter(Chunk.case_id == case.id).all()
+        assert len(chunks) == 2
+        assert chunks[0].page_num == "1"
+        assert chunks[0].section_name == "Intro"
+        assert chunks[0].content == "Legal text 1"
+        assert chunks[0].chunk_sequence == 1
+        assert chunks[1].page_num == "2"
+        assert chunks[1].section_name == "Body"
+        assert chunks[1].content == "Legal text 2"
+        assert chunks[1].chunk_sequence == 2
+
+    @pytest.mark.asyncio
+    async def test_process_case_vector_storage(
+        self, db: Session, mock_storage, mock_chunking, mock_embeddings, mock_vector_store
+    ):
+        """Vectors are properly stored in vector store"""
+        # Create user and case
+        user = User(email="lawyer@example.com", password_hash="hash")
+        db.add(user)
+        db.commit()
+
+        case = Case(
+            user_id=user.id,
+            name="Case for vectors",
+            blob_storage_path="cases/test.pdf",
+            status="processing"
+        )
+        db.add(case)
+        db.commit()
+
+        # Create job
+        job = ProcessingJob(id=str(uuid4()), case_id=case.id, status="pending")
+        db.add(job)
+        db.commit()
+
+        # Process case
+        await process_case(case.id, db)
+
+        # Verify vector store was called
+        mock_vector_store["create"].assert_called_once()
+        mock_vector_store["upsert"].assert_called_once()
