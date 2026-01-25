@@ -14,6 +14,17 @@ from backend.config import get_settings
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+# Cache for tiktoken encoder (Issue 1)
+_TIKTOKEN_ENCODER = None
+
+def _get_encoder():
+    """Get cached tiktoken encoder for GPT-4o"""
+    global _TIKTOKEN_ENCODER
+    if _TIKTOKEN_ENCODER is None:
+        _TIKTOKEN_ENCODER = tiktoken.encoding_for_model("gpt-4o")
+    return _TIKTOKEN_ENCODER
+
+
 # Configuration
 CONTEXT_TOKEN_BUDGET = 12_800
 LEGAL_SYSTEM_PROMPT = """You are an expert legal assistant specialized in analyzing court documents, case law, and legal statutes. Your role is to: 1. Answer questions ONLY based on the provided document excerpts 2. Provide precise, factually accurate responses 3. Always cite the exact page in square brackets [Page X] 4. Distinguish between facts, arguments, and judgments 5. Flag any ambiguities or gaps in the source material 6. Never speculate beyond what the documents state. For each claim, include the page number [Page X] and reference the specific section when available."""
@@ -41,12 +52,12 @@ def count_tokens_gpt4o(text: str) -> int:
         raise ValueError("Text cannot be empty")
 
     try:
-        encoder = tiktoken.encoding_for_model("gpt-4o")
+        encoder = _get_encoder()
         tokens = encoder.encode(text)
         return len(tokens)
     except Exception as e:
         logger.error(f"Failed to count tokens: {str(e)}")
-        raise
+        raise ValueError(f"Failed to count tokens: {str(e)}") from e
 
 
 def validate_token_budget(token_count: int, budget: int) -> bool:
@@ -137,14 +148,19 @@ def retrieve_chunks(case_id: str, query_embedding: List[float], top_k: int = RET
         List of chunk dicts with score, page_num, content, etc.
 
     Raises:
+        ValueError: If top_k is not positive
         Exception: If vector search fails
     """
+    # Validate top_k parameter (Issue 6)
+    if top_k <= 0:
+        raise ValueError(f"top_k must be positive, got {top_k}")
+
     try:
         results = search_vectors(case_id, query_embedding, limit=top_k)
         return results
     except Exception as e:
         logger.error(f"Failed to retrieve chunks: {str(e)}")
-        raise
+        raise ValueError(f"Failed to retrieve chunks: {str(e)}") from e
 
 
 def extract_citations(answer: str, chunks: List[Dict]) -> List[Dict]:
@@ -175,6 +191,7 @@ def extract_citations(answer: str, chunks: List[Dict]) -> List[Dict]:
             page_to_chunks[page_num] = chunk
 
     # Extract citations and match to chunks
+    unmatched_pages = []
     for match in matches:
         page_num = match.group(1)
         if page_num in page_to_chunks:
@@ -186,6 +203,12 @@ def extract_citations(answer: str, chunks: List[Dict]) -> List[Dict]:
             }
             if citation not in citations:  # Avoid duplicates
                 citations.append(citation)
+        else:
+            unmatched_pages.append(page_num)
+
+    # Log warning if any citations couldn't be matched (Issue 5)
+    if unmatched_pages:
+        logger.warning(f"Citation mismatch: answer references pages {unmatched_pages} not in retrieved chunks. Potential hallucination detected.")
 
     return citations
 
@@ -207,8 +230,14 @@ async def generate_answer(
         Tuple of (answer, tokens_used)
 
     Raises:
+        ValueError: If API key is not configured
         Exception: If API call fails
     """
+    # Validate API key before using (Issue 3)
+    if not settings.openai_api_key:
+        logger.error("OpenAI API key not configured")
+        raise ValueError("OpenAI API key is not configured. Check OPENAI_API_KEY environment variable.")
+
     try:
         client = AsyncOpenAI(api_key=settings.openai_api_key)
 
@@ -221,7 +250,8 @@ async def generate_answer(
             model="gpt-4o",
             messages=messages,
             temperature=temperature,
-            max_tokens=2000
+            max_tokens=2000,
+            timeout=30
         )
 
         answer = response.choices[0].message.content
@@ -231,7 +261,7 @@ async def generate_answer(
 
     except Exception as e:
         logger.error(f"Failed to generate answer: {str(e)}")
-        raise
+        raise ValueError(f"Failed to generate answer: {str(e)}") from e
 
 
 async def query_case(
