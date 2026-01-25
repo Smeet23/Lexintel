@@ -1,5 +1,6 @@
 """OpenAI embeddings service for text and chunk embedding"""
 import logging
+from functools import lru_cache
 from typing import List
 from langchain_community.embeddings import OpenAIEmbeddings
 from backend.config import get_settings
@@ -12,6 +13,7 @@ EMBEDDING_MODEL = "text-embedding-3-large"
 EMBEDDING_DIMENSIONS = 3072  # Output dimension for text-embedding-3-large
 
 
+@lru_cache(maxsize=1)
 def get_embeddings_client() -> OpenAIEmbeddings:
     """
     Get OpenAI embeddings client with configured model.
