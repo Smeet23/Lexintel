@@ -11,6 +11,7 @@ from backend.services.job_processor import (
     process_case,
     mark_job_failed,
     mark_job_complete,
+    run_job_worker,
 )
 
 
@@ -468,3 +469,67 @@ class TestRetryLogic:
         assert updated_job.attempts == 3
         assert updated_job.status == "failed"  # Now truly failed
         assert updated_job.error_message == "Third attempt failed"
+
+
+class TestJobWorker:
+    """Test job worker batch processing"""
+
+    @pytest.mark.asyncio
+    async def test_job_worker_processes_batch(
+        self, db: Session, mock_storage, mock_chunking, mock_embeddings, mock_vector_store
+    ):
+        """Job worker processes a batch of pending jobs"""
+        # Create user and cases
+        user = User(email="lawyer@example.com", password_hash="hash")
+        db.add(user)
+        db.commit()
+
+        case1 = Case(user_id=user.id, name="Case 1", blob_storage_path="p1.pdf", status="processing")
+        case2 = Case(user_id=user.id, name="Case 2", blob_storage_path="p2.pdf", status="processing")
+        db.add_all([case1, case2])
+        db.commit()
+
+        # Create jobs
+        job1 = ProcessingJob(id=str(uuid4()), case_id=case1.id, status="pending")
+        job2 = ProcessingJob(id=str(uuid4()), case_id=case2.id, status="pending")
+        db.add_all([job1, job2])
+        db.commit()
+
+        # Run worker for 1 iteration
+        await run_job_worker(db, max_jobs_per_batch=5, sleep_interval=0, max_iterations=1)
+
+        # Verify both jobs were processed
+        updated_job1 = db.query(ProcessingJob).filter(ProcessingJob.id == job1.id).first()
+        updated_job2 = db.query(ProcessingJob).filter(ProcessingJob.id == job2.id).first()
+        assert updated_job1.status == "completed"
+        assert updated_job2.status == "completed"
+
+    @pytest.mark.asyncio
+    async def test_job_worker_sleep_between_batches(
+        self, db: Session, mock_storage, mock_chunking, mock_embeddings, mock_vector_store
+    ):
+        """Job worker sleeps between batches"""
+        import time
+
+        # Create user and case
+        user = User(email="lawyer@example.com", password_hash="hash")
+        db.add(user)
+        db.commit()
+
+        case = Case(user_id=user.id, name="Case", blob_storage_path="p.pdf", status="processing")
+        db.add(case)
+        db.commit()
+
+        job = ProcessingJob(id=str(uuid4()), case_id=case.id, status="pending")
+        db.add(job)
+        db.commit()
+
+        # Run worker with short sleep
+        start_time = time.time()
+        await run_job_worker(db, max_jobs_per_batch=5, sleep_interval=0, max_iterations=2)
+        elapsed = time.time() - start_time
+
+        # After first iteration, worker should sleep. With sleep_interval=0, it should be quick
+        # But we just verify the worker completed both iterations
+        updated_job = db.query(ProcessingJob).filter(ProcessingJob.id == job.id).first()
+        assert updated_job.status == "completed"

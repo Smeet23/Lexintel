@@ -1,7 +1,8 @@
 """Background job processor for case document analysis"""
 import logging
-from datetime import datetime, timezone
-from typing import List, Dict
+import asyncio
+from datetime import datetime, timezone, timedelta
+from typing import List, Dict, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from backend.models import ProcessingJob, Case, Chunk
@@ -146,3 +147,75 @@ async def process_case(case_id: str, db: Session) -> Dict:
         logger.error(f"Error processing case {case_id}: {str(e)}")
         db.rollback()
         return {"success": False, "error": str(e)}
+
+
+async def run_job_worker(
+    db: Session,
+    max_jobs_per_batch: int = 5,
+    sleep_interval: int = 10,
+    max_iterations: Optional[int] = None
+) -> None:
+    """
+    Run job worker that continuously processes pending jobs in batches.
+
+    Args:
+        db: Database session
+        max_jobs_per_batch: Maximum jobs to process per batch (default: 5)
+        sleep_interval: Seconds to sleep between batches (default: 10)
+        max_iterations: For testing: stop after N iterations (default: None for infinite)
+    """
+    iteration = 0
+    while True:
+        try:
+            # Check if we should stop (for testing)
+            if max_iterations is not None and iteration >= max_iterations:
+                logger.info(f"Job worker reached max iterations ({max_iterations}), stopping")
+                break
+
+            iteration += 1
+            logger.debug(f"Job worker iteration {iteration}")
+
+            # Get pending jobs
+            pending_jobs = get_pending_jobs(db, limit=max_jobs_per_batch)
+            if not pending_jobs:
+                logger.debug("No pending jobs, sleeping")
+                await asyncio.sleep(sleep_interval)
+                continue
+
+            logger.info(f"Processing {len(pending_jobs)} pending jobs")
+
+            # Process each job sequentially
+            for job in pending_jobs:
+                try:
+                    logger.info(f"Processing job {job.id} for case {job.case_id}")
+
+                    # Update job to processing
+                    job.status = "processing"
+                    job.started_at = datetime.now(timezone.utc)
+                    db.commit()
+
+                    # Process the case
+                    result = await process_case(job.case_id, db)
+
+                    if result["success"]:
+                        logger.info(f"Job {job.id} completed successfully")
+                    else:
+                        logger.error(f"Job {job.id} failed: {result.get('error')}")
+                        # Schedule retry
+                        delay_seconds = calculate_retry_delay(job.attempts + 1)
+                        retry_time = datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)
+                        mark_job_failed(job.case_id, db, result.get("error"), next_retry_at=retry_time)
+
+                except Exception as e:
+                    logger.error(f"Error processing job {job.id}: {str(e)}")
+                    delay_seconds = calculate_retry_delay(job.attempts + 1)
+                    retry_time = datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)
+                    mark_job_failed(job.case_id, db, str(e), next_retry_at=retry_time)
+
+            # Sleep before next batch
+            logger.debug(f"Batch complete, sleeping {sleep_interval} seconds")
+            await asyncio.sleep(sleep_interval)
+
+        except Exception as e:
+            logger.error(f"Job worker error: {str(e)}")
+            await asyncio.sleep(sleep_interval)
