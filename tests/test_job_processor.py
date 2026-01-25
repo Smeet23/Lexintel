@@ -2,9 +2,54 @@
 import pytest
 from uuid import uuid4
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, Mock
 from sqlalchemy.orm import Session
-from backend.models import User, Case, ProcessingJob, CaseStatus
-from backend.services.job_processor import get_pending_jobs, calculate_retry_delay
+from backend.models import User, Case, ProcessingJob, CaseStatus, Chunk
+from backend.services.job_processor import (
+    get_pending_jobs,
+    calculate_retry_delay,
+    process_case,
+)
+
+
+@pytest.fixture
+def mock_storage(monkeypatch):
+    """Mock Azure Blob Storage"""
+    mock = AsyncMock()
+    mock.return_value = b"%PDF-1.4..."  # valid PDF bytes
+    monkeypatch.setattr("backend.services.job_processor.download_pdf_from_blob", mock)
+    return mock
+
+
+@pytest.fixture
+def mock_chunking(monkeypatch):
+    """Mock chunking service"""
+    mock = Mock()
+    mock.return_value = [
+        {"id": "chunk-1", "content": "Legal text 1", "page_num": "1", "section_name": "Intro"},
+        {"id": "chunk-2", "content": "Legal text 2", "page_num": "2", "section_name": "Body"},
+    ]
+    monkeypatch.setattr("backend.services.job_processor.chunk_pdf_from_blob", mock)
+    return mock
+
+
+@pytest.fixture
+def mock_embeddings(monkeypatch):
+    """Mock embeddings service"""
+    mock = Mock()
+    mock.return_value = [[0.1] * 3072, [0.2] * 3072]  # 2 embeddings, 3072 dims
+    monkeypatch.setattr("backend.services.job_processor.embed_chunks", mock)
+    return mock
+
+
+@pytest.fixture
+def mock_vector_store(monkeypatch):
+    """Mock vector store"""
+    create_mock = AsyncMock()
+    upsert_mock = AsyncMock(return_value=2)  # 2 vectors upserted
+    monkeypatch.setattr("backend.services.job_processor.create_collection", create_mock)
+    monkeypatch.setattr("backend.services.job_processor.upsert_vectors", upsert_mock)
+    return {"create": create_mock, "upsert": upsert_mock}
 
 
 class TestProcessingJob:
@@ -125,3 +170,49 @@ class TestJobHelper:
         assert calculate_retry_delay(1) == 0
         assert calculate_retry_delay(2) == 5
         assert calculate_retry_delay(3) == 10
+
+
+class TestCaseProcessing:
+    """Test case processing pipeline"""
+
+    @pytest.mark.asyncio
+    async def test_process_case_success(
+        self, db: Session, mock_storage, mock_chunking, mock_embeddings, mock_vector_store
+    ):
+        """process_case successfully processes a case"""
+        # Create user and case
+        user = User(email="lawyer@example.com", password_hash="hash")
+        db.add(user)
+        db.commit()
+
+        case = Case(
+            user_id=user.id,
+            name="Smith v. Jones",
+            blob_storage_path="cases/abc123.pdf",
+            status="processing"
+        )
+        db.add(case)
+        db.commit()
+
+        # Create job
+        job = ProcessingJob(
+            id=str(uuid4()),
+            case_id=case.id,
+            status="pending"
+        )
+        db.add(job)
+        db.commit()
+
+        # Process case
+        result = await process_case(case.id, db)
+
+        assert result["success"] is True
+        assert result["chunks_created"] == 2
+
+        # Verify case status changed
+        updated_case = db.query(Case).filter(Case.id == case.id).first()
+        assert updated_case.status == "ready"
+
+        # Verify job status changed
+        updated_job = db.query(ProcessingJob).filter(ProcessingJob.id == job.id).first()
+        assert updated_job.status == "completed"
