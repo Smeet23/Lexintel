@@ -2,7 +2,7 @@
 from sqlalchemy import Column, String, DateTime, Boolean, ForeignKey, Text, JSON, Integer, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, declarative_base
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 import enum
 
@@ -102,3 +102,22 @@ class Query(Base):
 
     def __repr__(self):
         return f"<Query(id={self.id}, case_id={self.case_id})>"
+
+
+class ProcessingJob(Base):
+    """Background processing job for case document analysis"""
+    __tablename__ = "processing_jobs"
+
+    id = Column(String, primary_key=True)
+    case_id = Column(UUID(as_uuid=True), ForeignKey("cases.id"), nullable=False, index=True)
+    status = Column(String, default="pending")  # pending, processing, completed, failed
+    error_message = Column(String, nullable=True)
+    attempts = Column(Integer, default=0)
+    max_attempts = Column(Integer, default=3)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    next_retry_at = Column(DateTime, nullable=True)
+
+    def __repr__(self):
+        return f"<ProcessingJob(id={self.id}, case_id={self.case_id}, status={self.status})>"
