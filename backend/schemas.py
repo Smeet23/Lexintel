@@ -34,6 +34,12 @@ class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class TokenResponse(BaseModel):
+    """Token response for login"""
+    access_token: str
+    token_type: str = "bearer"
+
+
 # ============================================
 # CASE SCHEMAS
 # ============================================
