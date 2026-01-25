@@ -9,6 +9,8 @@ from backend.services.job_processor import (
     get_pending_jobs,
     calculate_retry_delay,
     process_case,
+    mark_job_failed,
+    mark_job_complete,
 )
 
 
@@ -389,3 +391,80 @@ class TestErrorHandling:
 
         assert result["success"] is False
         assert "Vector store error" in result["error"]
+
+
+class TestRetryLogic:
+    """Test retry mechanism"""
+
+    def test_retry_scheduling(self, db: Session):
+        """Retry is scheduled with correct next_retry_at timestamp"""
+        # Create user and case
+        user = User(email="lawyer@example.com", password_hash="hash")
+        db.add(user)
+        db.commit()
+
+        case = Case(
+            user_id=user.id,
+            name="Case for retry",
+            blob_storage_path="cases/test.pdf",
+            status="processing"
+        )
+        db.add(case)
+        db.commit()
+
+        # Create job
+        job = ProcessingJob(id=str(uuid4()), case_id=case.id, status="pending", attempts=0)
+        db.add(job)
+        db.commit()
+
+        # Mark job failed with retry scheduling
+        retry_time = datetime.now(timezone.utc)
+        mark_job_failed(
+            case.id,
+            db,
+            "First attempt failed",
+            next_retry_at=retry_time
+        )
+
+        # Verify retry was scheduled
+        updated_job = db.query(ProcessingJob).filter(ProcessingJob.id == job.id).first()
+        assert updated_job.attempts == 1
+        assert updated_job.status == "pending"  # Still pending for retry
+        assert updated_job.next_retry_at is not None  # Retry time is set
+        assert updated_job.error_message == "First attempt failed"
+
+    def test_max_attempts_exceeded(self, db: Session):
+        """Job marked as failed when max attempts exceeded"""
+        # Create user and case
+        user = User(email="lawyer@example.com", password_hash="hash")
+        db.add(user)
+        db.commit()
+
+        case = Case(
+            user_id=user.id,
+            name="Case with max attempts",
+            blob_storage_path="cases/test.pdf",
+            status="processing"
+        )
+        db.add(case)
+        db.commit()
+
+        # Create job with 2 attempts already
+        job = ProcessingJob(
+            id=str(uuid4()),
+            case_id=case.id,
+            status="pending",
+            attempts=2,
+            max_attempts=3
+        )
+        db.add(job)
+        db.commit()
+
+        # Mark job failed (will be 3rd attempt)
+        mark_job_failed(case.id, db, "Third attempt failed")
+
+        # Verify job is now marked as failed (not pending)
+        updated_job = db.query(ProcessingJob).filter(ProcessingJob.id == job.id).first()
+        assert updated_job.attempts == 3
+        assert updated_job.status == "failed"  # Now truly failed
+        assert updated_job.error_message == "Third attempt failed"

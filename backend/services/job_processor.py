@@ -26,6 +26,52 @@ def calculate_retry_delay(attempt: int) -> int:
     return delays.get(attempt, 10)
 
 
+def mark_job_complete(case_id: str, db: Session) -> bool:
+    """Mark a job as complete"""
+    try:
+        job = db.query(ProcessingJob).filter(ProcessingJob.case_id == case_id).first()
+        if not job:
+            return False
+        job.status = "completed"
+        job.completed_at = datetime.now(timezone.utc)
+        db.commit()
+        return True
+    except Exception as e:
+        logger.error(f"Error marking job complete: {str(e)}")
+        db.rollback()
+        return False
+
+
+def mark_job_failed(
+    case_id: str,
+    db: Session,
+    error_message: str,
+    next_retry_at: datetime = None
+) -> bool:
+    """Mark a job as failed and schedule retry if attempts remaining"""
+    try:
+        job = db.query(ProcessingJob).filter(ProcessingJob.case_id == case_id).first()
+        if not job:
+            return False
+
+        job.attempts += 1
+        job.error_message = error_message
+        job.next_retry_at = next_retry_at
+
+        # Check if max attempts exceeded
+        if job.attempts >= job.max_attempts:
+            job.status = "failed"
+        else:
+            job.status = "pending"
+
+        db.commit()
+        return True
+    except Exception as e:
+        logger.error(f"Error marking job failed: {str(e)}")
+        db.rollback()
+        return False
+
+
 async def process_case(case_id: str, db: Session) -> Dict:
     """
     Process a case: download PDF, chunk, embed, and store vectors.
