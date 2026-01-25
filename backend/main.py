@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Header
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 import uuid
 
@@ -24,8 +24,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"] if settings.debug else ["https://yourdomain.com"],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 @app.get("/health")
@@ -92,7 +92,7 @@ def register(user_data: UserCreate, db: Session = Depends(get_db)):
         id=uuid.uuid4(),
         email=user_data.email,
         password_hash=hash_password(user_data.password),
-        created_at=datetime.utcnow()
+        created_at=datetime.now(timezone.utc)
     )
     db.add(new_user)
     db.commit()

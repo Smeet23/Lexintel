@@ -2,7 +2,7 @@
 import pytest
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 import uuid
 
@@ -61,7 +61,7 @@ class TestJWTTokens:
         user_id = str(uuid.uuid4())
 
         # Create an already-expired token
-        past_time = datetime.utcnow() - timedelta(hours=1)
+        past_time = datetime.now(timezone.utc) - timedelta(hours=1)
         to_encode = {"sub": user_id, "exp": past_time}
         token = jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
 
@@ -77,7 +77,7 @@ class TestJWTTokens:
         settings = get_settings()
 
         # Create token without sub claim
-        future_time = datetime.utcnow() + timedelta(hours=1)
+        future_time = datetime.now(timezone.utc) + timedelta(hours=1)
         to_encode = {"exp": future_time}
         token = jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
 
@@ -144,7 +144,7 @@ class TestAuthEndpointsIntegration:
             id=user_id,
             email=email,
             password_hash=mock_hash,
-            created_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc)
         )
         test_db_session.add(new_user)
         test_db_session.commit()
@@ -168,7 +168,7 @@ class TestAuthEndpointsIntegration:
             id=user_id,
             email=email,
             password_hash=mock_hash,
-            created_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc)
         )
         test_db_session.add(new_user)
         test_db_session.commit()
