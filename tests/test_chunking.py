@@ -121,12 +121,11 @@ class TestChunkingFunctions:
 class TestBlobChunking:
     """Test chunking from blob storage content"""
 
-    @pytest.mark.asyncio
-    async def test_chunk_pdf_from_blob_success(self):
+    def test_chunk_pdf_from_blob_success(self):
         """Test chunking blob content"""
         pdf_content = create_test_pdf()
 
-        chunks = await chunk_pdf_from_blob(pdf_content)
+        chunks = chunk_pdf_from_blob(pdf_content)
 
         assert chunks is not None
         assert isinstance(chunks, list)
@@ -138,19 +137,17 @@ class TestBlobChunking:
             assert "page_num" in chunk
             assert "section_name" in chunk
 
-    @pytest.mark.asyncio
-    async def test_chunk_pdf_from_blob_empty(self):
+    def test_chunk_pdf_from_blob_empty(self):
         """Test chunking with empty blob"""
         with pytest.raises(ValueError, match="empty"):
-            await chunk_pdf_from_blob(b"")
+            chunk_pdf_from_blob(b"")
 
-    @pytest.mark.asyncio
-    async def test_chunk_pdf_from_blob_invalid(self):
+    def test_chunk_pdf_from_blob_invalid(self):
         """Test chunking with invalid PDF content"""
         invalid_content = b"This is not a PDF file"
 
         with pytest.raises(Exception):
-            await chunk_pdf_from_blob(invalid_content)
+            chunk_pdf_from_blob(invalid_content)
 
 
 class TestTokenEstimation:

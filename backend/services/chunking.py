@@ -94,7 +94,7 @@ def chunk_pdf(pdf_path: str) -> List[Dict[str, str]]:
         raise
 
 
-async def chunk_pdf_from_blob(blob_content: bytes) -> List[Dict[str, str]]:
+def chunk_pdf_from_blob(blob_content: bytes) -> List[Dict[str, str]]:
     """
     Chunk PDF from blob storage content (bytes).
 
