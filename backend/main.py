@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Header
+from fastapi import FastAPI, Depends, HTTPException, status, Header, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
@@ -7,9 +7,10 @@ import uuid
 
 from .config import get_settings
 from .database import get_db
-from .models import User
+from .models import User, Case
 from .schemas import UserCreate, UserResponse, TokenResponse
 from .auth import hash_password, verify_password, create_access_token, decode_token
+from .services.storage import upload_pdf_to_blob
 
 settings = get_settings()
 
@@ -124,6 +125,77 @@ def get_profile(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
+
+
+# ============================================
+# CASE MANAGEMENT ENDPOINTS
+# ============================================
+
+@app.post("/cases", response_model=dict)
+async def upload_case(
+    name: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user_id: UUID = Depends(get_current_user)
+):
+    """Upload a case PDF document"""
+    # Validate file is PDF
+    if file.content_type != "application/pdf":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only PDF files allowed"
+        )
+
+    # Validate filename
+    if not file.filename or not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid filename: must be a PDF"
+        )
+
+    # Validate name parameter
+    if not name or len(name) > 255:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Case name must be between 1 and 255 characters"
+        )
+
+    try:
+        # Create case record with status "processing"
+        case_id = uuid.uuid4()
+        case = Case(
+            id=case_id,
+            user_id=current_user_id,
+            name=name,
+            blob_storage_path="",
+            status="processing"
+        )
+        db.add(case)
+        db.commit()
+
+        # Upload file to blob storage
+        file_content = await file.read()
+        blob_path = await upload_pdf_to_blob(file_content, str(case_id), file.filename)
+
+        # Update case with blob path
+        case.blob_storage_path = blob_path
+        db.commit()
+        db.refresh(case)
+
+        return {
+            "id": str(case.id),
+            "name": case.name,
+            "status": case.status,
+            "blob_storage_path": case.blob_storage_path,
+            "created_at": case.created_at.isoformat()
+        }
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload case: {str(e)}"
+        )
 
 
 if __name__ == "__main__":
