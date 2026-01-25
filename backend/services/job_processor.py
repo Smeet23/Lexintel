@@ -146,6 +146,13 @@ async def process_case(case_id: str, db: Session) -> Dict:
     except Exception as e:
         logger.error(f"Error processing case {case_id}: {str(e)}")
         db.rollback()
+
+        # Update case status to failed
+        case = db.query(Case).filter(Case.id == case_id).first()
+        if case:
+            case.status = "error"
+            db.commit()
+
         return {"success": False, "error": str(e)}
 
 
