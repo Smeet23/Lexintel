@@ -18,6 +18,7 @@ from backend.services.vector_store import (
     upsert_vectors,
     search_vectors,
     delete_collection,
+    _generate_point_id,
     VECTOR_SIZE,
     DISTANCE_METRIC
 )
@@ -235,6 +236,12 @@ class TestVectorUpsert:
         # Verify upsert was called with points containing metadata
         call_args = mock_client.upsert.call_args
         assert call_args is not None
+        points = call_args[1]['points']
+        assert len(points) == 1
+        assert points[0].payload['chunk_id'] == "chunk-1"
+        assert points[0].payload['page_num'] == "5"
+        assert points[0].payload['section_name'] == "Discussion"
+        assert "content_preview" in points[0].payload
 
     def test_upsert_vectors_invalid_embedding_dimension(self):
         """Test that embeddings with wrong dimension are rejected"""
@@ -258,6 +265,66 @@ class TestVectorUpsert:
 
         with pytest.raises(Exception, match="Upsert failed"):
             upsert_vectors(case_id, chunks, embeddings)
+
+    @patch('backend.services.vector_store.get_qdrant_client')
+    def test_upsert_vectors_content_preview_truncation(self, mock_get_client):
+        """Test that content preview is truncated to 200 characters"""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        case_id = "test-case-uuid"
+        long_content = "a" * 500  # Content longer than 200 chars
+        chunks = [
+            {
+                "id": "chunk-1",
+                "content": long_content,
+                "page_num": "1",
+                "section_name": "Section"
+            }
+        ]
+        embeddings = [[0.5] * VECTOR_SIZE]
+
+        upsert_vectors(case_id, chunks, embeddings)
+
+        # Verify content preview is truncated
+        call_args = mock_client.upsert.call_args
+        points = call_args[1]['points']
+        content_preview = points[0].payload['content_preview']
+
+        assert len(content_preview) == 200
+        assert content_preview == "a" * 200
+
+
+class TestPointIDGeneration:
+    """Test point ID generation"""
+
+    def test_point_id_idempotency(self):
+        """Test that same chunk_id and case_id always generate same point_id"""
+        chunk_id = "chunk-1"
+        case_id = "case-1"
+
+        point_id_1 = _generate_point_id(chunk_id, case_id)
+        point_id_2 = _generate_point_id(chunk_id, case_id)
+
+        assert point_id_1 == point_id_2
+
+    def test_point_id_uniqueness(self):
+        """Test that different chunk_ids generate different point_ids"""
+        case_id = "case-1"
+
+        point_id_1 = _generate_point_id("chunk-1", case_id)
+        point_id_2 = _generate_point_id("chunk-2", case_id)
+
+        assert point_id_1 != point_id_2
+
+    def test_point_id_is_positive(self):
+        """Test that point IDs are always positive (Qdrant requirement)"""
+        chunk_id = "chunk-1"
+        case_id = "case-1"
+
+        point_id = _generate_point_id(chunk_id, case_id)
+
+        assert point_id > 0
 
 
 class TestVectorSearch:
@@ -315,6 +382,7 @@ class TestVectorSearch:
         # Verify limit was passed to search
         call_args = mock_client.search.call_args
         assert call_args is not None
+        assert call_args[1]['limit'] == 10
 
     @patch('backend.services.vector_store.get_qdrant_client')
     def test_search_vectors_default_limit(self, mock_get_client):
@@ -331,6 +399,7 @@ class TestVectorSearch:
         # Default limit should be 5
         call_args = mock_client.search.call_args
         assert call_args is not None
+        assert call_args[1]['limit'] == 5
 
     @patch('backend.services.vector_store.get_qdrant_client')
     def test_search_vectors_returns_ordered_by_score(self, mock_get_client):

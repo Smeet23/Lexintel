@@ -27,7 +27,8 @@ def get_qdrant_client() -> QdrantClient:
         ValueError: If Qdrant URL is not configured
     """
     if not settings.qdrant_url:
-        raise ValueError("QDRANT_URL environment variable not set")
+        logger.error("QDRANT_URL environment variable not set")
+        raise ValueError("Vector store is not properly configured")
 
     logger.debug(f"Creating Qdrant client for URL: {settings.qdrant_url}")
 
@@ -64,6 +65,7 @@ def _generate_point_id(chunk_id: str, case_id: str) -> int:
     """
     # Create deterministic hash from chunk_id and case_id
     combined = f"{case_id}:{chunk_id}"
+    # MD5 used here only for deterministic ID generation, not for security
     hash_value = hashlib.md5(combined.encode()).digest()
     # Convert first 8 bytes to unsigned int (Qdrant requires positive IDs)
     point_id = int.from_bytes(hash_value[:8], byteorder='big', signed=False)
