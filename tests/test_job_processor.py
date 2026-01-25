@@ -1,6 +1,6 @@
 """Test background job processor for case document analysis"""
 import pytest
-from uuid import uuid4
+from uuid import uuid4, UUID
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock
 from sqlalchemy.orm import Session
@@ -76,7 +76,7 @@ class TestProcessingJob:
 
         # Create processing job
         job = ProcessingJob(
-            id=str(uuid4()),
+            id=uuid4(),
             case_id=case.id,
             status="pending"
         )
@@ -111,7 +111,7 @@ class TestProcessingJob:
 
         # Create job
         job = ProcessingJob(
-            id=str(uuid4()),
+            id=uuid4(),
             case_id=case.id,
             status="pending"
         )
@@ -156,9 +156,9 @@ class TestJobHelper:
         db.commit()
 
         # Create jobs with different statuses
-        job1 = ProcessingJob(id=str(uuid4()), case_id=case1.id, status="pending")
-        job2 = ProcessingJob(id=str(uuid4()), case_id=case2.id, status="pending")
-        job3 = ProcessingJob(id=str(uuid4()), case_id=case3.id, status="completed")
+        job1 = ProcessingJob(id=uuid4(), case_id=case1.id, status="pending")
+        job2 = ProcessingJob(id=uuid4(), case_id=case2.id, status="pending")
+        job3 = ProcessingJob(id=uuid4(), case_id=case3.id, status="completed")
         db.add_all([job1, job2, job3])
         db.commit()
 
@@ -199,7 +199,7 @@ class TestCaseProcessing:
 
         # Create job
         job = ProcessingJob(
-            id=str(uuid4()),
+            id=uuid4(),
             case_id=case.id,
             status="pending"
         )
@@ -240,7 +240,7 @@ class TestCaseProcessing:
         db.commit()
 
         # Create job
-        job = ProcessingJob(id=str(uuid4()), case_id=case.id, status="pending")
+        job = ProcessingJob(id=uuid4(), case_id=case.id, status="pending")
         db.add(job)
         db.commit()
 
@@ -279,7 +279,7 @@ class TestCaseProcessing:
         db.commit()
 
         # Create job
-        job = ProcessingJob(id=str(uuid4()), case_id=case.id, status="pending")
+        job = ProcessingJob(id=uuid4(), case_id=case.id, status="pending")
         db.add(job)
         db.commit()
 
@@ -317,7 +317,7 @@ class TestErrorHandling:
         db.commit()
 
         # Create job
-        job = ProcessingJob(id=str(uuid4()), case_id=case.id, status="pending")
+        job = ProcessingJob(id=uuid4(), case_id=case.id, status="pending")
         db.add(job)
         db.commit()
 
@@ -350,7 +350,7 @@ class TestErrorHandling:
         db.commit()
 
         # Create job
-        job = ProcessingJob(id=str(uuid4()), case_id=case.id, status="pending")
+        job = ProcessingJob(id=uuid4(), case_id=case.id, status="pending")
         db.add(job)
         db.commit()
 
@@ -383,7 +383,7 @@ class TestErrorHandling:
         db.commit()
 
         # Create job
-        job = ProcessingJob(id=str(uuid4()), case_id=case.id, status="pending")
+        job = ProcessingJob(id=uuid4(), case_id=case.id, status="pending")
         db.add(job)
         db.commit()
 
@@ -414,7 +414,7 @@ class TestRetryLogic:
         db.commit()
 
         # Create job
-        job = ProcessingJob(id=str(uuid4()), case_id=case.id, status="pending", attempts=0)
+        job = ProcessingJob(id=uuid4(), case_id=case.id, status="pending", attempts=0)
         db.add(job)
         db.commit()
 
@@ -452,7 +452,7 @@ class TestRetryLogic:
 
         # Create job with 2 attempts already
         job = ProcessingJob(
-            id=str(uuid4()),
+            id=uuid4(),
             case_id=case.id,
             status="pending",
             attempts=2,
@@ -490,8 +490,8 @@ class TestJobWorker:
         db.commit()
 
         # Create jobs
-        job1 = ProcessingJob(id=str(uuid4()), case_id=case1.id, status="pending")
-        job2 = ProcessingJob(id=str(uuid4()), case_id=case2.id, status="pending")
+        job1 = ProcessingJob(id=uuid4(), case_id=case1.id, status="pending")
+        job2 = ProcessingJob(id=uuid4(), case_id=case2.id, status="pending")
         db.add_all([job1, job2])
         db.commit()
 
@@ -520,7 +520,7 @@ class TestJobWorker:
         db.add(case)
         db.commit()
 
-        job = ProcessingJob(id=str(uuid4()), case_id=case.id, status="pending")
+        job = ProcessingJob(id=uuid4(), case_id=case.id, status="pending")
         db.add(job)
         db.commit()
 

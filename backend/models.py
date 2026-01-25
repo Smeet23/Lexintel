@@ -108,10 +108,10 @@ class ProcessingJob(Base):
     """Background processing job for case document analysis"""
     __tablename__ = "processing_jobs"
 
-    id = Column(String, primary_key=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     case_id = Column(UUID(as_uuid=True), ForeignKey("cases.id"), nullable=False, index=True)
-    status = Column(String, default="pending")  # pending, processing, completed, failed
-    error_message = Column(String, nullable=True)
+    status = Column(String(50), default="pending")  # pending, processing, completed, failed
+    error_message = Column(String(500), nullable=True)
     attempts = Column(Integer, default=0)
     max_attempts = Column(Integer, default=3)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
