@@ -7,6 +7,22 @@ from backend.config import get_settings
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+# PDF magic bytes for validation
+PDF_MAGIC_BYTES = b"%PDF"
+
+
+def validate_pdf(file_content: bytes) -> bool:
+    """
+    Validate that file content is actually a PDF by checking magic bytes.
+
+    Args:
+        file_content: Raw file bytes
+
+    Returns:
+        True if file starts with PDF magic bytes
+    """
+    return file_content.startswith(PDF_MAGIC_BYTES)
+
 
 def get_blob_client():
     """Get Azure Blob Storage client"""

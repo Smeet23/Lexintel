@@ -4,13 +4,16 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 from uuid import UUID
 import uuid
+import logging
+
+logger = logging.getLogger(__name__)
 
 from .config import get_settings
 from .database import get_db
 from .models import User, Case
 from .schemas import UserCreate, UserResponse, TokenResponse
 from .auth import hash_password, verify_password, create_access_token, decode_token
-from .services.storage import upload_pdf_to_blob
+from .services.storage import upload_pdf_to_blob, validate_pdf
 
 settings = get_settings()
 
@@ -161,6 +164,16 @@ async def upload_case(
         )
 
     try:
+        # Read file content early for validation
+        file_content = await file.read()
+
+        # Validate PDF magic bytes
+        if not validate_pdf(file_content):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid filename: must be a PDF"
+            )
+
         # Create case record with status "processing"
         case_id = uuid.uuid4()
         case = Case(
@@ -174,7 +187,6 @@ async def upload_case(
         db.commit()
 
         # Upload file to blob storage
-        file_content = await file.read()
         blob_path = await upload_pdf_to_blob(file_content, str(case_id), file.filename)
 
         # Update case with blob path
@@ -190,11 +202,15 @@ async def upload_case(
             "created_at": case.created_at.isoformat()
         }
 
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
+        logger.error(f"Failed to upload case: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to upload case: {str(e)}"
+            detail="Failed to upload case. Please try again."
         )
 
 
