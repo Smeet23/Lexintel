@@ -1,0 +1,172 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: lexintel_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-legal_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev_password_change_in_prod}
+      POSTGRES_DB: ${POSTGRES_DB:-legal_rag}
+      POSTGRES_INITDB_ARGS: "-c max_connections=50 -c shared_buffers=256MB"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-legal_user} -d ${POSTGRES_DB:-legal_rag}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - lexintel
+
+  # Qdrant Vector Database
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: lexintel_qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/readyz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - lexintel
+
+  # Azure Blob Storage Emulator
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    container_name: lexintel_azurite
+    ports:
+      - "10000:10000"
+      - "10001:10001"
+    volumes:
+      - azurite_data:/data
+    command: azurite-blob --blobHost 0.0.0.0 --blobPort 10000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:10000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - lexintel
+
+  # Redis Message Broker (for Celery)
+  redis:
+    image: redis:7-alpine
+    container_name: lexintel_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - lexintel
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: lexintel_backend
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://legal_user:dev_password_change_in_prod@postgres:5432/legal_rag}
+      QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
+      AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING:-DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXOU+FIH3Iv5/5M=;BlobEndpoint=http://azurite:10000/devstoreaccount1;}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
+      DEBUG: ${DEBUG:-True}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      azurite:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app/backend:cached
+      - /app/backend/__pycache__
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - lexintel
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Celery Worker (Background Jobs)
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: lexintel_celery
+    command: celery -A backend.celery_app worker -l info
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://legal_user:dev_password_change_in_prod@postgres:5432/legal_rag}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+      QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
+      AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app/backend:cached
+    networks:
+      - lexintel
+
+  # Next.js Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: lexintel_frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      - ./frontend:/app:cached
+      - /app/node_modules
+    networks:
+      - lexintel
+    command: npm run dev
+
+volumes:
+  postgres_data:
+    driver: local
+  qdrant_data:
+    driver: local
+  azurite_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  lexintel:
+    driver: bridge
