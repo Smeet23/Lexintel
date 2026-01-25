@@ -45,8 +45,8 @@ def mock_embeddings(monkeypatch):
 @pytest.fixture
 def mock_vector_store(monkeypatch):
     """Mock vector store"""
-    create_mock = AsyncMock()
-    upsert_mock = AsyncMock(return_value=2)  # 2 vectors upserted
+    create_mock = Mock()
+    upsert_mock = Mock(return_value=2)  # 2 vectors upserted
     monkeypatch.setattr("backend.services.job_processor.create_collection", create_mock)
     monkeypatch.setattr("backend.services.job_processor.upsert_vectors", upsert_mock)
     return {"create": create_mock, "upsert": upsert_mock}
@@ -286,3 +286,106 @@ class TestCaseProcessing:
         # Verify vector store was called
         mock_vector_store["create"].assert_called_once()
         mock_vector_store["upsert"].assert_called_once()
+
+
+class TestErrorHandling:
+    """Test error scenarios"""
+
+    @pytest.mark.asyncio
+    async def test_process_case_chunking_failure(
+        self, db: Session, mock_storage, mock_chunking, mock_embeddings, mock_vector_store
+    ):
+        """process_case handles chunking failure gracefully"""
+        # Mock chunking to raise error
+        mock_chunking.side_effect = ValueError("Invalid PDF")
+
+        # Create user and case
+        user = User(email="lawyer@example.com", password_hash="hash")
+        db.add(user)
+        db.commit()
+
+        case = Case(
+            user_id=user.id,
+            name="Case with error",
+            blob_storage_path="cases/bad.pdf",
+            status="processing"
+        )
+        db.add(case)
+        db.commit()
+
+        # Create job
+        job = ProcessingJob(id=str(uuid4()), case_id=case.id, status="pending")
+        db.add(job)
+        db.commit()
+
+        # Process case
+        result = await process_case(case.id, db)
+
+        assert result["success"] is False
+        assert "Invalid PDF" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_process_case_embedding_failure(
+        self, db: Session, mock_storage, mock_chunking, mock_embeddings, mock_vector_store
+    ):
+        """process_case handles embedding failure gracefully"""
+        # Mock embeddings to raise error
+        mock_embeddings.side_effect = Exception("Embedding API error")
+
+        # Create user and case
+        user = User(email="lawyer@example.com", password_hash="hash")
+        db.add(user)
+        db.commit()
+
+        case = Case(
+            user_id=user.id,
+            name="Case with embedding error",
+            blob_storage_path="cases/test.pdf",
+            status="processing"
+        )
+        db.add(case)
+        db.commit()
+
+        # Create job
+        job = ProcessingJob(id=str(uuid4()), case_id=case.id, status="pending")
+        db.add(job)
+        db.commit()
+
+        # Process case
+        result = await process_case(case.id, db)
+
+        assert result["success"] is False
+        assert "Embedding API error" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_process_case_vector_store_failure(
+        self, db: Session, mock_storage, mock_chunking, mock_embeddings, mock_vector_store
+    ):
+        """process_case handles vector store failure gracefully"""
+        # Mock vector store upsert to raise error
+        mock_vector_store["upsert"].side_effect = Exception("Vector store error")
+
+        # Create user and case
+        user = User(email="lawyer@example.com", password_hash="hash")
+        db.add(user)
+        db.commit()
+
+        case = Case(
+            user_id=user.id,
+            name="Case with vector store error",
+            blob_storage_path="cases/test.pdf",
+            status="processing"
+        )
+        db.add(case)
+        db.commit()
+
+        # Create job
+        job = ProcessingJob(id=str(uuid4()), case_id=case.id, status="pending")
+        db.add(job)
+        db.commit()
+
+        # Process case
+        result = await process_case(case.id, db)
+
+        assert result["success"] is False
+        assert "Vector store error" in result["error"]
