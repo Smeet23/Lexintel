@@ -59,8 +59,27 @@ cd ..
 
 ## Running the System
 
-### Terminal 1: Start the FastAPI Server
+### All Services at Once
 
+```bash
+# Start all services (API, Celery workers, databases)
+docker-compose up -d
+
+# Wait 30 seconds for services to be healthy
+sleep 30
+
+# Initialize database
+cd backend
+python -m alembic upgrade head
+cd ..
+
+# Run the test
+python test_workflow.py
+```
+
+### OR Run Services Separately (for development)
+
+**Terminal 1: Start FastAPI Server**
 ```bash
 cd backend
 python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
@@ -71,21 +90,21 @@ Expected output:
 INFO:     Uvicorn running on http://0.0.0.0:8000
 ```
 
-### Terminal 2: Start the Worker (Background Jobs)
-
+**Terminal 2: Start Celery Worker(s)**
 ```bash
 cd backend
-python worker.py
+celery -A celery_app worker -l info
 ```
 
 Expected output:
 ```
-INFO:root:Starting worker loop
-INFO:root:No pending jobs
+[Tasks]
+  . backend.tasks.process_document_task
+
+[2025-01-26 10:00:00,000: INFO/MainProcess] celery@hostname ready.
 ```
 
-### Terminal 3: Run the Test
-
+**Terminal 3: Run the Test**
 ```bash
 python test_workflow.py
 ```
@@ -190,18 +209,21 @@ Response:
 ### 1. **Upload** (`POST /cases`)
    - Validates PDF file
    - Uploads to Azure Blob Storage
-   - Creates `ProcessingJob` in database
-   - Returns immediately with `status: processing`
+   - **Sends `process_document_task` to Celery queue** (via Redis)
+   - Returns immediately with `status: processing` + `task_id`
 
-### 2. **Process** (Worker Loop)
-   - Worker polls for pending jobs every 5 seconds
-   - For each job:
+### 2. **Process** (Event-Driven via Celery)
+   - Celery worker(s) listen to Redis queue
+   - When task arrives:
      - Downloads PDF from Blob Storage
      - **Chunks** PDF using LangChain (800 chars/chunk, 150 overlap)
      - **Embeds** chunks using OpenAI `text-embedding-3-large`
      - **Stores** vectors in Qdrant + metadata in PostgreSQL
      - Updates case `status: ready`
-   - Handles errors with retry logic (3 attempts)
+   - On error:
+     - Automatically retries (3 attempts max)
+     - Exponential backoff: 5s, 10s, 15s
+     - Updates case `status: error` if all retries fail
 
 ### 3. **Query** (`POST /cases/{case_id}/ask`)
    - Validates case is `ready`
@@ -213,20 +235,41 @@ Response:
    - Stores query in database
    - Returns answer + sources
 
+## Why Celery Instead of Polling?
+
+✅ **Event-Driven**: Tasks are processed immediately when they arrive
+✅ **No Overhead**: No constant polling of the database
+✅ **Scalable**: Run multiple Celery workers for parallel processing
+✅ **Reliable**: Built-in retry logic with exponential backoff
+✅ **Monitoring**: Can inspect task status, queue length, worker health
+✅ **Standard**: Industry-standard for Python async task processing
+
 ## Troubleshooting
 
-### Worker Not Processing Jobs
+### Celery Worker Not Processing Tasks
 
-Check logs:
+Check Celery logs:
 ```bash
-docker-compose logs postgres
-docker-compose logs qdrant
-docker-compose logs azurite
+# If running via docker-compose:
+docker-compose logs celery-worker
+
+# If running locally:
+# Look at the terminal where you ran 'celery -A celery_app worker'
 ```
 
-Verify `processing_jobs` table:
+Verify Redis is connected:
 ```bash
-psql -U legal_user -d legal_rag -h localhost -c "SELECT * FROM processing_jobs LIMIT 5;"
+redis-cli ping
+# Should return: PONG
+```
+
+Verify tasks in queue:
+```bash
+# Check pending tasks
+celery -A celery_app inspect active
+
+# Check queue length
+redis-cli LLEN celery  # Default queue
 ```
 
 ### API Errors

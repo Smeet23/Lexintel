@@ -86,6 +86,8 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://legal_user:dev_password_change_in_prod@postgres:5432/legal_rag}
       QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
       AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING:-DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXOU+FIH3Iv5/5M=;BlobEndpoint=http://azurite:10000/devstoreaccount1;}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}

@@ -83,8 +83,10 @@ def test_upload_pdf():
     assert response.status_code == 200, f"Upload failed: {response.text}"
     result = response.json()
     case_id = result['id']
+    task_id = result.get('task_id', 'unknown')
     print(f"✓ PDF uploaded successfully!")
     print(f"  Case ID: {case_id}")
+    print(f"  Task ID: {task_id}")
     print(f"  Status: {result['status']}")
     return case_id
 

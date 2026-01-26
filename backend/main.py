@@ -195,21 +195,17 @@ async def upload_case(
         db.commit()
         db.refresh(case)
 
-        # Create processing job to handle document chunking & embedding
-        from .models import ProcessingJob
-        job = ProcessingJob(
-            id=uuid.uuid4(),
-            case_id=case_id,
-            status="pending"
-        )
-        db.add(job)
-        db.commit()
+        # Send document processing task to Celery queue
+        from .tasks import process_document_task
+        task = process_document_task.delay(str(case_id))
+        logger.info(f"Queued document processing task {task.id} for case {case_id}")
 
         return {
             "id": str(case.id),
             "name": case.name,
             "status": case.status,
             "blob_storage_path": case.blob_storage_path,
+            "task_id": task.id,
             "created_at": case.created_at.isoformat()
         }
 

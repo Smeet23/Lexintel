@@ -1,7 +1,7 @@
 # Changes Summary - RAG Workflow Implementation
 
 ## Overview
-Implemented a complete end-to-end working RAG pipeline without authentication requirements for testing.
+Implemented a complete end-to-end working RAG pipeline using Celery task queue (no polling) for efficient background processing.
 
 ## Files Modified
 
@@ -9,7 +9,7 @@ Implemented a complete end-to-end working RAG pipeline without authentication re
 **Changes:**
 - Removed authentication requirement from `/cases` upload endpoint
 - Uses demo user ID (`00000000-0000-0000-0000-000000000001`) for testing
-- Added `ProcessingJob` creation after successful PDF upload
+- **Sends document processing tasks to Celery queue** instead of polling
 - **Added new endpoint: `POST /cases/{case_id}/ask`**
   - Query documents with natural language questions
   - Returns answer + citations from RAG pipeline
@@ -23,8 +23,8 @@ Implemented a complete end-to-end working RAG pipeline without authentication re
 # Upload endpoint now:
 1. Validates PDF file
 2. Uploads to Blob Storage
-3. Creates ProcessingJob in database
-4. Returns case_id + status
+3. Sends process_document_task to Celery queue
+4. Returns case_id + task_id + status
 
 # Query endpoint now:
 1. Verifies case exists and is "ready"
@@ -33,13 +33,24 @@ Implemented a complete end-to-end working RAG pipeline without authentication re
 4. Returns answer + sources + confidence
 ```
 
-### 2. **backend/worker.py** (NEW FILE)
-**Purpose:** Background worker for document processing
-**Function:** Continuously polls and processes pending jobs
+### 2. **backend/celery_app.py** (NEW FILE)
+**Purpose:** Celery application configuration
+**Function:** Initializes Celery with Redis broker and result backend
 
 **Features:**
-- Async job processing loop (checks every 5 seconds)
-- Full RAG pipeline:
+- Redis message broker for task queue
+- JSON task serialization
+- Task timeouts (25-30 minutes)
+- Worker prefetch multiplier=1 (process one task at a time)
+- Automatic worker respawn (every 1000 tasks)
+- Imports and registers all tasks
+
+### 3. **backend/tasks.py** (NEW FILE)
+**Purpose:** Celery task definitions
+**Function:** Defines document processing task
+
+**Features:**
+- `process_document_task`: Async task for document processing
   1. Download PDF from Blob Storage
   2. Chunk PDF using LangChain (800 chars, 150 overlap)
   3. Generate embeddings using OpenAI text-embedding-3-large
@@ -47,14 +58,18 @@ Implemented a complete end-to-end working RAG pipeline without authentication re
   5. Upsert vectors with metadata
   6. Store chunk metadata in PostgreSQL
   7. Update case status to "ready"
-- Retry logic: 3 attempts with exponential backoff (0s, 5s, 10s)
-- Error handling with logging
-- Batch processing: processes up to 5 jobs per cycle
+- Automatic retry on failure (3 attempts, exponential backoff)
+- Error handling with detailed logging
+- Task tracking and status updates
+- Proper database session management
 
 **Usage:**
 ```bash
-cd backend
-python worker.py
+# Start Celery worker(s)
+celery -A backend.celery_app worker -l info
+
+# Or via Docker:
+docker-compose up celery-worker
 ```
 
 ### 3. **backend/services/vector_store.py**
@@ -82,12 +97,21 @@ result_dict = {
 
 ## New Files Created
 
-### 1. **backend/worker.py**
-- Background job processor
-- Runs continuously to process queued cases
-- Full error handling and retry logic
+### 1. **backend/celery_app.py**
+- Celery application initialization
+- Connects to Redis broker and result backend
+- Task auto-discovery and registration
 
-### 2. **test_workflow.py**
+### 2. **backend/tasks.py**
+- Document processing Celery task
+- Full RAG pipeline orchestration
+- Retry logic and error handling
+
+### 3. **backend/run_worker.sh**
+- Shell script to start Celery worker
+- Configurable concurrency and queue selection
+
+### 4. **test_workflow.py**
 - End-to-end workflow test
 - Tests all 3 main operations:
   1. Upload PDF
@@ -96,7 +120,7 @@ result_dict = {
 - Validates each step with assertions
 - Generates test PDF automatically
 
-### 3. **QUICKSTART.md**
+### 5. **QUICKSTART.md**
 - Complete setup and usage guide
 - Docker configuration
 - Environment setup
@@ -107,7 +131,7 @@ result_dict = {
 
 ### Prerequisites
 ```bash
-# Terminal 1 - Start infrastructure
+# Terminal 1 - Start all infrastructure (including Celery worker)
 docker-compose up -d
 
 # Wait 30 seconds, then initialize database
@@ -118,15 +142,12 @@ cd ..
 
 ### Run the System
 ```bash
-# Terminal 2 - Start FastAPI server
-cd backend
-python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+# All services start automatically with docker-compose:
+# - FastAPI backend on port 8000
+# - Celery worker processing tasks
+# - PostgreSQL, Qdrant, Redis, Azurite running
 
-# Terminal 3 - Start background worker
-cd backend
-python worker.py
-
-# Terminal 4 - Run test
+# Terminal 2 - Run test
 python test_workflow.py
 ```
 
@@ -142,16 +163,16 @@ POST /cases (name, file)
   ↓
 Create Case (status=processing)
   ↓
-Create ProcessingJob (status=pending)
+Send process_document_task to Celery Queue (via Redis)
   ↓
-Return case_id to user
+Return case_id + task_id to user
 ```
 
-### Processing Phase
+### Processing Phase (Event-Driven)
 ```
-Worker Loop (every 5 seconds)
+Celery Worker (listening to Redis queue)
   ↓
-Get pending ProcessingJob
+Receives process_document_task from queue
   ↓
 [Download PDF] → [Chunk] → [Embed] → [Create collection]
   ↓
@@ -159,7 +180,12 @@ Get pending ProcessingJob
   ↓
 Update Case (status=ready)
   ↓
-Update Job (status=completed)
+Task completes (no polling required!)
+
+If task fails:
+  → Automatic retry (3 attempts)
+  → Exponential backoff (5s, 10s, 15s)
+  → Update Case (status=error) after max retries
 ```
 
 ### Query Phase
