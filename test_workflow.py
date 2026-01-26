@@ -72,7 +72,7 @@ def test_upload_pdf():
     print("\n[2] Uploading test PDF...")
 
     with open(TEST_PDF_PATH, 'rb') as f:
-        files = {'file': f}
+        files = {'file': ('test.pdf', f, 'application/pdf')}
         data = {'name': 'Test Case Document'}
         response = requests.post(
             f"{API_URL}/cases",

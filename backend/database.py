@@ -1,7 +1,15 @@
 """Database configuration and session management"""
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from backend.models import Base
+
+# Handle both module import styles
+try:
+    from backend.models import Base
+except ImportError:
+    from models import Base
+
+# Export SessionLocal for backward compatibility
+SessionLocal = None
 
 
 def init_db(database_url: str):
@@ -23,7 +31,10 @@ def get_engine():
     """Get database engine (initialized at runtime)"""
     global _engine
     if _engine is None:
-        from backend.config import get_settings
+        try:
+            from backend.config import get_settings
+        except ImportError:
+            from config import get_settings
         settings = get_settings()
         _engine, _ = init_db(settings.database_url)
     return _engine
@@ -31,11 +42,15 @@ def get_engine():
 
 def get_session_factory():
     """Get session factory (initialized at runtime)"""
-    global _SessionLocal
+    global _SessionLocal, SessionLocal
     if _SessionLocal is None:
-        from backend.config import get_settings
+        try:
+            from backend.config import get_settings
+        except ImportError:
+            from config import get_settings
         settings = get_settings()
         _, _SessionLocal = init_db(settings.database_url)
+        SessionLocal = _SessionLocal  # Export it
     return _SessionLocal
 
 

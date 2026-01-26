@@ -2,13 +2,24 @@
 import logging
 from datetime import datetime, timezone
 from uuid import UUID
-from backend.celery_app import celery_app
-from backend.database import SessionLocal
-from backend.models import Case, Chunk
-from backend.services.storage import download_pdf_from_blob
-from backend.services.chunking import chunk_pdf_from_blob
-from backend.services.embeddings import embed_chunks
-from backend.services.vector_store import upsert_vectors, create_collection
+
+# Handle both module import styles
+try:
+    from backend.celery_app import celery_app
+    from backend.database import get_session_factory
+    from backend.models import Case, Chunk
+    from backend.services.storage import download_pdf_from_blob
+    from backend.services.chunking import chunk_pdf_from_blob
+    from backend.services.embeddings import embed_chunks
+    from backend.services.vector_store import upsert_vectors, create_collection
+except ImportError:
+    from celery_app import celery_app
+    from database import get_session_factory
+    from models import Case, Chunk
+    from services.storage import download_pdf_from_blob
+    from services.chunking import chunk_pdf_from_blob
+    from services.embeddings import embed_chunks
+    from services.vector_store import upsert_vectors, create_collection
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +41,7 @@ def process_document_task(self, case_id: str):
     Returns:
         dict with status and result
     """
+    SessionLocal = get_session_factory()
     db = SessionLocal()
     try:
         logger.info(f"[Task {self.request.id}] Processing case {case_id}")

@@ -42,14 +42,14 @@ services:
 
   # Azure Blob Storage Emulator
   azurite:
-    image: mcr.microsoft.com/azure-storage/azurite:3.24.0
+    image: mcr.microsoft.com/azure-storage/azurite:latest
     container_name: lexintel_azurite
     ports:
       - "10000:10000"
       - "10001:10001"
     volumes:
       - azurite_data:/data
-    command: azurite-blob --blobHost 0.0.0.0 --blobPort 10000
+    command: azurite-blob --blobHost 0.0.0.0 --blobPort 10000 --skipApiVersionCheck
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:10000/"]
       interval: 10s
@@ -95,7 +95,7 @@ services:
       ENVIRONMENT: ${ENVIRONMENT:-development}
     depends_on:
       postgres:
-        condition: service_started
+        condition: service_healthy
       qdrant:
         condition: service_started
       azurite:
@@ -105,6 +105,7 @@ services:
     volumes:
       - ./backend:/app/backend:cached
       - /app/backend/__pycache__
+      - lexintel_storage:/tmp/lexintel_storage
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
@@ -120,21 +121,26 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: lexintel_celery
-    command: celery -A backend.celery_app worker -l info
+    command: celery -A celery_app worker -l info
+    env_file: .env
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://legal_user:dev_password_change_in_prod@postgres:5432/legal_rag}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
       QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
-      AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING}
+      AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING:-DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXOU+FIH3Iv5/5M=;BlobEndpoint=http://azurite:10000/devstoreaccount1;}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
+      DEBUG: ${DEBUG:-True}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
     depends_on:
       postgres:
-        condition: service_started
+        condition: service_healthy
       redis:
         condition: service_started
     volumes:
       - ./backend:/app/backend:cached
+      - lexintel_storage:/tmp/lexintel_storage
     networks:
       - lexintel
 
@@ -166,6 +172,8 @@ volumes:
   azurite_data:
     driver: local
   redis_data:
+    driver: local
+  lexintel_storage:
     driver: local
 
 networks:

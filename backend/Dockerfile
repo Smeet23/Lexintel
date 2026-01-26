@@ -1,7 +1,7 @@
 # Multi-stage build
 FROM python:3.11-slim as builder
 
-WORKDIR /app
+WORKDIR /tmp
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -34,8 +34,8 @@ COPY --from=builder /root/.local /root/.local
 ENV PATH=/root/.local/bin:$PATH
 ENV PYTHONUNBUFFERED=1
 
-# Copy application code
-COPY . .
+# Copy application code (keeping backend folder structure)
+COPY . /app
 
 # Health check
 HEALTHCHECK --interval=10s --timeout=5s --retries=3 \

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Header, File, UploadFile
+from fastapi import FastAPI, Depends, HTTPException, status, Header, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
@@ -8,12 +8,20 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-from .config import get_settings
-from .database import get_db
-from .models import User, Case
-from .schemas import UserCreate, UserResponse, TokenResponse
-from .auth import hash_password, verify_password, create_access_token, decode_token
-from .services.storage import upload_pdf_to_blob, validate_pdf
+try:
+    from .config import get_settings
+    from .database import get_db
+    from .models import User, Case
+    from .schemas import UserCreate, UserResponse, TokenResponse
+    from .auth import hash_password, verify_password, create_access_token, decode_token
+    from .services.storage import upload_pdf_to_blob, validate_pdf
+except ImportError:
+    from config import get_settings
+    from database import get_db
+    from models import User, Case
+    from schemas import UserCreate, UserResponse, TokenResponse
+    from auth import hash_password, verify_password, create_access_token, decode_token
+    from services.storage import upload_pdf_to_blob, validate_pdf
 
 settings = get_settings()
 
@@ -136,7 +144,7 @@ def get_profile(
 
 @app.post("/cases", response_model=dict)
 async def upload_case(
-    name: str,
+    name: str = Form(...),
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
@@ -196,8 +204,16 @@ async def upload_case(
         db.refresh(case)
 
         # Send document processing task to Celery queue
-        from .tasks import process_document_task
-        task = process_document_task.delay(str(case_id))
+        try:
+            from .celery_app import celery_app
+        except ImportError:
+            from celery_app import celery_app
+
+        task = celery_app.send_task(
+            'backend.tasks.process_document_task',
+            args=(str(case_id),),
+            queue='celery'
+        )
         logger.info(f"Queued document processing task {task.id} for case {case_id}")
 
         return {
@@ -214,7 +230,7 @@ async def upload_case(
         raise
     except Exception as e:
         db.rollback()
-        logger.error(f"Failed to upload case: {str(e)}")
+        logger.exception(f"Failed to upload case: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to upload case. Please try again."
