@@ -16,6 +16,7 @@ try:
     from backend.auth import hash_password, verify_password, create_access_token, decode_token
     from backend.services.storage import upload_pdf_to_blob, validate_pdf
     from backend.services.rag_engine import query_case
+    from backend.validators import validate_filename, validate_case_name, validate_question
 except ImportError:
     try:
         from config import get_settings
@@ -25,6 +26,7 @@ except ImportError:
         from auth import hash_password, verify_password, create_access_token, decode_token
         from services.storage import upload_pdf_to_blob, validate_pdf
         from services.rag_engine import query_case
+        from validators import validate_filename, validate_case_name, validate_question
     except ImportError:
         from .config import get_settings
         from .database import get_db
@@ -33,8 +35,27 @@ except ImportError:
         from .auth import hash_password, verify_password, create_access_token, decode_token
         from .services.storage import upload_pdf_to_blob, validate_pdf
         from .services.rag_engine import query_case
+        from .validators import validate_filename, validate_case_name, validate_question
 
 settings = get_settings()
+
+
+def get_cors_origins() -> list:
+    """Get allowed CORS origins from settings"""
+    origins = settings.get_allowed_origins_list()
+
+    # Validate no placeholder domains
+    placeholder_domains = ["yourdomain.com", "example.com", "localhost.com"]
+    for origin in origins:
+        for placeholder in placeholder_domains:
+            if placeholder in origin:
+                raise ValueError(
+                    f"Placeholder domain '{placeholder}' found in CORS configuration. "
+                    f"Please set ALLOWED_ORIGINS environment variable to valid domain(s)."
+                )
+
+    return origins
+
 
 app = FastAPI(
     title="Legal RAG API",
@@ -43,13 +64,33 @@ app = FastAPI(
 )
 
 # CORS middleware
+cors_origins = get_cors_origins()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"] if settings.debug else ["https://yourdomain.com"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["Content-Type", "Authorization"],
 )
+
+
+@app.on_event("startup")
+async def startup_validation():
+    """Validate configuration on application startup"""
+    # Validate SECRET_KEY is not default in production
+    if not settings.debug and settings.secret_key == "dev-secret-key-change-in-production":
+        logger.warning(
+            "WARNING: Using default SECRET_KEY in production. "
+            "This is a security risk. Please set SECRET_KEY environment variable."
+        )
+
+    # Validate CORS configuration again
+    try:
+        cors_origins = get_cors_origins()
+        logger.info(f"CORS origins configured: {cors_origins}")
+    except ValueError as e:
+        logger.error(f"CORS configuration error: {str(e)}")
+        raise
 
 @app.get("/health")
 def health_check():
@@ -97,6 +138,15 @@ async def get_current_user(
         )
 
     return UUID(user_id)
+
+
+def verify_case_ownership(case, user_id: UUID) -> None:
+    """Verify that a user owns a case"""
+    if case.user_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access this case"
+        )
 
 
 @app.post("/auth/register", response_model=UserResponse)
@@ -153,10 +203,29 @@ def get_profile(
 # CASE MANAGEMENT ENDPOINTS
 # ============================================
 
+@app.get("/cases", response_model=list)
+async def list_cases(
+    current_user_id: UUID = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """List all cases for the current user (protected endpoint)"""
+    cases = db.query(Case).filter(Case.user_id == current_user_id).all()
+    return [
+        {
+            "id": str(case.id),
+            "name": case.name,
+            "status": case.status,
+            "created_at": case.created_at.isoformat(),
+            "updated_at": case.updated_at.isoformat() if case.updated_at else None
+        }
+        for case in cases
+    ]
+
 @app.post("/cases", response_model=dict)
 async def upload_case(
     name: str = Form(...),
     file: UploadFile = File(...),
+    current_user_id: UUID = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Upload a case PDF document"""
@@ -167,19 +236,12 @@ async def upload_case(
             detail="Only PDF files allowed"
         )
 
-    # Validate filename
-    if not file.filename or not file.filename.lower().endswith('.pdf'):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid filename: must be a PDF"
-        )
+    # Validate filename using dedicated validator
+    if file.filename:
+        validate_filename(file.filename)
 
-    # Validate name parameter
-    if not name or len(name) > 255:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Case name must be between 1 and 255 characters"
-        )
+    # Validate case name using dedicated validator
+    validate_case_name(name)
 
     try:
         # Read file content early for validation
@@ -194,11 +256,9 @@ async def upload_case(
 
         # Create case record with status "processing"
         case_id = uuid.uuid4()
-        # Use a default demo user for testing (skip auth)
-        demo_user_id = uuid.UUID('00000000-0000-0000-0000-000000000001')
         case = Case(
             id=case_id,
-            user_id=demo_user_id,
+            user_id=current_user_id,
             name=name,
             blob_storage_path="",
             status="processing"
@@ -256,9 +316,13 @@ async def upload_case(
 async def ask_question(
     case_id: str,
     question: str = Body(..., embed=True),
+    current_user_id: UUID = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Ask a question about a case"""
+    # Validate question input
+    validate_question(question)
+
     try:
         from uuid import UUID
         case_uuid = UUID(case_id)
@@ -275,6 +339,9 @@ async def ask_question(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Case not found"
         )
+
+    # Verify user owns this case
+    verify_case_ownership(case, current_user_id)
 
     # Check if case is ready for querying
     if case.status == "processing":
@@ -318,6 +385,7 @@ async def ask_question(
 @app.get("/cases/{case_id}/status", response_model=dict)
 async def get_case_status(
     case_id: str,
+    current_user_id: UUID = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get the status of a case"""
@@ -336,6 +404,9 @@ async def get_case_status(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Case not found"
         )
+
+    # Verify user owns this case
+    verify_case_ownership(case, current_user_id)
 
     return {
         "id": str(case.id),

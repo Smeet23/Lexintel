@@ -199,13 +199,41 @@ pip install -r requirements.txt
 4. **Configure environment variables:**
 ```bash
 cp .env.example .env
-# Edit .env with your configuration:
-# - DATABASE_URL
-# - OPENAI_API_KEY
-# - AZURE_STORAGE_CONNECTION_STRING
-# - QDRANT_URL
-# - SECRET_KEY
 ```
+
+   **IMPORTANT: Environment Setup Instructions**
+
+   Edit `.env` and configure the following:
+
+   - **OPENAI_API_KEY** (REQUIRED)
+     - Get from: https://platform.openai.com/api-keys
+     - Must start with `sk-proj-`
+     - Never commit to version control
+
+   - **AZURE_STORAGE_CONNECTION_STRING** (REQUIRED)
+     - Production: Get from your Azure Storage account
+     - Development: Use Azurite connection string provided in docker-compose.yml
+
+   - **DATABASE_URL** (REQUIRED)
+     - Default for development: `postgresql://legal_user:dev_password_change_in_prod@postgres:5432/legal_rag`
+     - Change password in production
+
+   - **SECRET_KEY** (REQUIRED)
+     - Generate secure key: `python -c "import secrets; print(secrets.token_urlsafe(32))"`
+     - Must be changed from default in production
+
+   - **QDRANT_URL** (REQUIRED)
+     - Development: `http://qdrant:6333` (Docker) or `http://localhost:6333` (local)
+
+   - **DEBUG** (REQUIRED)
+     - Set to `False` in production
+     - Set to `True` in development
+
+   **Security Notes:**
+   - Never commit `.env` to version control (it's in `.gitignore`)
+   - Keep a copy of `.env.example` in sync when adding new variables
+   - Rotate secrets regularly
+   - Use different values for development and production
 
 5. **Initialize database:**
 ```bash

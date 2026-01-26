@@ -20,11 +20,13 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Insert demo user for testing
+    # Insert demo user for testing and development
+    # Password: demo123 (hashed with bcrypt)
+    # This user is used for local development only
     op.execute(
         sa.text("""
             INSERT INTO users (id, email, password_hash, is_deleted, created_at, updated_at)
-            VALUES ('00000000-0000-0000-0000-000000000001', 'demo@lexintel.test', 'hashed_demo_password', false, NOW(), NOW())
+            VALUES ('00000000-0000-0000-0000-000000000001', 'demo@lexintel.dev', '$2b$12$R9h/cIPz0gi.URNNX3kh2OPST9/PgBkqquzi.Ss7KIUgO2t0jWMUe', false, NOW(), NOW())
             ON CONFLICT DO NOTHING;
         """)
     )

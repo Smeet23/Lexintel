@@ -7,17 +7,39 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 from openai import AsyncOpenAI
 
-# Handle both module import styles
+# Exception handling
+try:
+    from openai import OpenAIError, RateLimitError, APIError
+except ImportError:
+    try:
+        from openai.error import OpenAIError, RateLimitError, APIError
+    except ImportError:
+        class OpenAIError(Exception):
+            pass
+        class RateLimitError(OpenAIError):
+            pass
+        class APIError(OpenAIError):
+            pass
+
 try:
     from backend.services.embeddings import embed_text
     from backend.services.vector_store import search_vectors
     from backend.models import Case, Query
     from backend.config import get_settings
+    from backend.exceptions import QueryProcessingException, EmbeddingException, VectorStoreException
 except ImportError:
-    from services.embeddings import embed_text
-    from services.vector_store import search_vectors
-    from models import Case, Query
-    from config import get_settings
+    try:
+        from services.embeddings import embed_text
+        from services.vector_store import search_vectors
+        from models import Case, Query
+        from config import get_settings
+        from exceptions import QueryProcessingException, EmbeddingException, VectorStoreException
+    except ImportError:
+        from .services.embeddings import embed_text
+        from .services.vector_store import search_vectors
+        from .models import Case, Query
+        from .config import get_settings
+        from .exceptions import QueryProcessingException, EmbeddingException, VectorStoreException
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -170,9 +192,14 @@ def retrieve_chunks(case_id: str, query_embedding: List[float], top_k: int = RET
     try:
         results = search_vectors(case_id, query_embedding, limit=top_k)
         return results
+    except VectorStoreException:
+        raise
     except Exception as e:
         logger.error(f"Failed to retrieve chunks: {str(e)}")
-        raise ValueError(f"Failed to retrieve chunks: {str(e)}") from e
+        raise VectorStoreException(
+            "Failed to retrieve chunks from vector store",
+            detail=str(e)
+        ) from e
 
 
 def extract_citations(answer: str, chunks: List[Dict]) -> List[Dict]:
@@ -271,9 +298,18 @@ async def generate_answer(
 
         return answer, tokens_used
 
+    except (OpenAIError, RateLimitError, APIError) as e:
+        logger.error(f"OpenAI API error generating answer: {str(e)}")
+        raise QueryProcessingException(
+            "Failed to generate answer with OpenAI",
+            detail=f"OpenAI error: {str(e)}"
+        ) from e
     except Exception as e:
-        logger.error(f"Failed to generate answer: {str(e)}")
-        raise ValueError(f"Failed to generate answer: {str(e)}") from e
+        logger.error(f"Unexpected error generating answer: {str(e)}")
+        raise QueryProcessingException(
+            "Unexpected error during answer generation",
+            detail=str(e)
+        ) from e
 
 
 async def query_case(
@@ -340,18 +376,30 @@ async def query_case(
         # 2. Embed query
         try:
             query_embedding = embed_query(query)
-        except Exception as e:
+        except (EmbeddingException, ValueError) as e:
             logger.error(f"Query embedding failed: {str(e)}")
             error_response["error"] = f"Failed to process query: {str(e)}"
             return error_response
+        except Exception as e:
+            logger.error(f"Unexpected error embedding query: {str(e)}")
+            raise QueryProcessingException(
+                "Unexpected error during query embedding",
+                detail=str(e)
+            ) from e
 
         # 3. Retrieve chunks
         try:
             retrieved_chunks = retrieve_chunks(case_id, query_embedding, top_k=RETRIEVAL_TOP_K)
-        except Exception as e:
+        except (VectorStoreException, ValueError) as e:
             logger.error(f"Chunk retrieval failed: {str(e)}")
             error_response["error"] = f"No chunks found for case"
             return error_response
+        except Exception as e:
+            logger.error(f"Unexpected error retrieving chunks: {str(e)}")
+            raise QueryProcessingException(
+                "Unexpected error during chunk retrieval",
+                detail=str(e)
+            ) from e
 
         # Check for empty retrieval
         if not retrieved_chunks:
@@ -396,18 +444,30 @@ async def query_case(
                     error_response["error"] = "Context too large for processing"
                     return error_response
 
-        except Exception as e:
-            logger.error(f"Context formatting failed: {str(e)}")
+        except ValueError as e:
+            logger.error(f"Context formatting validation failed: {str(e)}")
             error_response["error"] = "Failed to format context"
             return error_response
+        except Exception as e:
+            logger.error(f"Unexpected error formatting context: {str(e)}")
+            raise QueryProcessingException(
+                "Unexpected error during context formatting",
+                detail=str(e)
+            ) from e
 
         # 6. Generate answer
         try:
             answer, tokens_used = await generate_answer(query, formatted_context, temperature)
-        except Exception as e:
+        except QueryProcessingException as e:
             logger.error(f"Answer generation failed: {str(e)}")
             error_response["error"] = f"Failed to generate answer: API error"
             return error_response
+        except Exception as e:
+            logger.error(f"Unexpected error generating answer: {str(e)}")
+            raise QueryProcessingException(
+                "Unexpected error during answer generation",
+                detail=str(e)
+            ) from e
 
         # 7. Extract citations
         citations = extract_citations(answer, final_chunks)
@@ -446,7 +506,13 @@ async def query_case(
             "error": None
         }
 
+    except QueryProcessingException as e:
+        logger.error(f"Query processing error in query_case: {str(e)}")
+        error_response["error"] = f"Query processing failed: {str(e)}"
+        return error_response
     except Exception as e:
         logger.error(f"Unexpected error in query_case: {str(e)}")
-        error_response["error"] = f"Unexpected error: {str(e)}"
-        return error_response
+        raise QueryProcessingException(
+            "Unexpected error in query processing pipeline",
+            detail=str(e)
+        ) from e

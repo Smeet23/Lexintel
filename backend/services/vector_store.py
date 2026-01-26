@@ -12,6 +12,28 @@ try:
 except ImportError:
     from config import get_settings
 
+# Exception handling
+try:
+    from qdrant_client.http.exceptions import UnexpectedResponse, ResponseHandlingException
+except ImportError:
+    # Fallback for different Qdrant versions
+    try:
+        from qdrant_client.http import UnexpectedResponse, ResponseHandlingException
+    except ImportError:
+        # If specific exceptions not available, create dummy ones
+        class UnexpectedResponse(Exception):
+            pass
+        class ResponseHandlingException(Exception):
+            pass
+
+try:
+    from backend.exceptions import VectorStoreException
+except ImportError:
+    try:
+        from exceptions import VectorStoreException
+    except ImportError:
+        from .exceptions import VectorStoreException
+
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
@@ -88,7 +110,7 @@ def create_collection(case_id: str) -> bool:
         True if collection created successfully
 
     Raises:
-        Exception: If collection creation fails
+        VectorStoreException: If collection creation fails
     """
     try:
         client = get_qdrant_client()
@@ -108,9 +130,18 @@ def create_collection(case_id: str) -> bool:
         logger.info(f"Successfully created collection: {collection_name}")
         return True
 
+    except (UnexpectedResponse, ResponseHandlingException) as e:
+        logger.error(f"Qdrant API error creating collection for case {case_id}: {str(e)}")
+        raise VectorStoreException(
+            "Failed to create vector collection",
+            detail=f"Qdrant error: {str(e)}"
+        ) from e
     except Exception as e:
-        logger.error(f"Failed to create collection for case {case_id}: {str(e)}")
-        raise
+        logger.error(f"Unexpected error creating collection for case {case_id}: {str(e)}")
+        raise VectorStoreException(
+            "Unexpected error during collection creation",
+            detail=str(e)
+        ) from e
 
 
 def upsert_vectors(
@@ -188,9 +219,20 @@ def upsert_vectors(
         logger.info(f"Successfully upserted {len(points)} vectors")
         return len(points)
 
-    except Exception as e:
-        logger.error(f"Failed to upsert vectors for case {case_id}: {str(e)}")
+    except ValueError:
         raise
+    except (UnexpectedResponse, ResponseHandlingException) as e:
+        logger.error(f"Qdrant API error upserting vectors for case {case_id}: {str(e)}")
+        raise VectorStoreException(
+            "Failed to upsert vectors",
+            detail=f"Qdrant error: {str(e)}"
+        ) from e
+    except Exception as e:
+        logger.error(f"Unexpected error upserting vectors for case {case_id}: {str(e)}")
+        raise VectorStoreException(
+            "Unexpected error during vector upsert",
+            detail=str(e)
+        ) from e
 
 
 def search_vectors(
@@ -255,9 +297,26 @@ def search_vectors(
         logger.debug(f"Found {len(results)} similar vectors")
         return results
 
-    except Exception as e:
-        logger.error(f"Failed to search vectors in case {case_id}: {str(e)}")
+    except ValueError:
         raise
+    except (UnexpectedResponse, ResponseHandlingException) as e:
+        logger.error(f"Qdrant API error searching vectors in case {case_id}: {str(e)}")
+        raise VectorStoreException(
+            "Failed to search vectors",
+            detail=f"Qdrant error: {str(e)}"
+        ) from e
+    except requests.RequestException as e:
+        logger.error(f"HTTP request error searching vectors for case {case_id}: {str(e)}")
+        raise VectorStoreException(
+            "Failed to reach vector store service",
+            detail=f"HTTP error: {str(e)}"
+        ) from e
+    except Exception as e:
+        logger.error(f"Unexpected error searching vectors in case {case_id}: {str(e)}")
+        raise VectorStoreException(
+            "Unexpected error during vector search",
+            detail=str(e)
+        ) from e
 
 
 def delete_collection(case_id: str) -> bool:
@@ -271,7 +330,7 @@ def delete_collection(case_id: str) -> bool:
         True if collection deleted successfully
 
     Raises:
-        Exception: If deletion fails
+        VectorStoreException: If deletion fails
     """
     try:
         client = get_qdrant_client()
@@ -284,6 +343,15 @@ def delete_collection(case_id: str) -> bool:
         logger.info(f"Successfully deleted collection: {collection_name}")
         return True
 
+    except (UnexpectedResponse, ResponseHandlingException) as e:
+        logger.error(f"Qdrant API error deleting collection for case {case_id}: {str(e)}")
+        raise VectorStoreException(
+            "Failed to delete vector collection",
+            detail=f"Qdrant error: {str(e)}"
+        ) from e
     except Exception as e:
-        logger.error(f"Failed to delete collection for case {case_id}: {str(e)}")
-        raise
+        logger.error(f"Unexpected error deleting collection for case {case_id}: {str(e)}")
+        raise VectorStoreException(
+            "Unexpected error during collection deletion",
+            detail=str(e)
+        ) from e

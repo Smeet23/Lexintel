@@ -5,6 +5,30 @@ from typing import List
 from langchain_community.embeddings import OpenAIEmbeddings
 from backend.config import get_settings
 
+# Exception handling
+try:
+    from openai import OpenAIError, RateLimitError, APIError
+except ImportError:
+    # Fallback for older OpenAI versions
+    try:
+        from openai.error import OpenAIError, RateLimitError, APIError
+    except ImportError:
+        # If imports fail, create dummy exceptions
+        class OpenAIError(Exception):
+            pass
+        class RateLimitError(OpenAIError):
+            pass
+        class APIError(OpenAIError):
+            pass
+
+try:
+    from backend.exceptions import EmbeddingException
+except ImportError:
+    try:
+        from exceptions import EmbeddingException
+    except ImportError:
+        from .exceptions import EmbeddingException
+
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
@@ -47,7 +71,7 @@ def embed_text(text: str) -> List[float]:
 
     Raises:
         ValueError: If text is empty
-        Exception: If API call fails
+        EmbeddingException: If API call fails
     """
     if not text or not text.strip():
         raise ValueError("Text cannot be empty")
@@ -63,9 +87,20 @@ def embed_text(text: str) -> List[float]:
         logger.debug(f"Successfully embedded text, dimension: {len(embedding)}")
         return embedding
 
-    except Exception as e:
-        logger.error(f"Failed to embed text: {str(e)}")
+    except ValueError:
         raise
+    except (OpenAIError, RateLimitError, APIError) as e:
+        logger.error(f"OpenAI API error during text embedding: {str(e)}")
+        raise EmbeddingException(
+            "Failed to embed text with OpenAI",
+            detail=f"OpenAI error: {str(e)}"
+        ) from e
+    except Exception as e:
+        logger.error(f"Unexpected error during text embedding: {str(e)}")
+        raise EmbeddingException(
+            "Unexpected error during text embedding",
+            detail=str(e)
+        ) from e
 
 
 def embed_chunks(chunks: List[str]) -> List[List[float]]:
@@ -80,7 +115,7 @@ def embed_chunks(chunks: List[str]) -> List[List[float]]:
 
     Raises:
         ValueError: If chunks list is empty or contains empty strings
-        Exception: If API call fails
+        EmbeddingException: If API call fails
     """
     if not chunks:
         raise ValueError("Chunks list cannot be empty")
@@ -106,9 +141,20 @@ def embed_chunks(chunks: List[str]) -> List[List[float]]:
         logger.info(f"Successfully embedded {len(chunks)} chunks")
         return embeddings_list
 
-    except Exception as e:
-        logger.error(f"Failed to embed chunks: {str(e)}")
+    except ValueError:
         raise
+    except (OpenAIError, RateLimitError, APIError) as e:
+        logger.error(f"OpenAI API error during chunk embedding: {str(e)}")
+        raise EmbeddingException(
+            "Failed to embed chunks with OpenAI",
+            detail=f"OpenAI error: {str(e)}"
+        ) from e
+    except Exception as e:
+        logger.error(f"Unexpected error during chunk embedding: {str(e)}")
+        raise EmbeddingException(
+            "Unexpected error during chunk embedding",
+            detail=str(e)
+        ) from e
 
 
 def estimate_embedding_cost(text_length: int) -> float:
