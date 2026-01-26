@@ -27,3 +27,6 @@ Thumbs.db
 
 # Temp
 *.log
+
+# Git worktrees
+.worktrees/
