@@ -232,7 +232,8 @@ def search_vectors(
         for hit in search_results:
             result_dict = {
                 "score": hit.score,
-                **hit.payload  # Unpack metadata (chunk_id, page_num, content_preview, section_name)
+                **hit.payload,  # Unpack metadata (chunk_id, page_num, content_preview, section_name)
+                "content": hit.payload.get("content_preview", "")  # Map content_preview to content for RAG
             }
             results.append(result_dict)
 

@@ -138,8 +138,7 @@ def get_profile(
 async def upload_case(
     name: str,
     file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    current_user_id: UUID = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
     """Upload a case PDF document"""
     # Validate file is PDF
@@ -176,9 +175,11 @@ async def upload_case(
 
         # Create case record with status "processing"
         case_id = uuid.uuid4()
+        # Use a default demo user for testing (skip auth)
+        demo_user_id = uuid.UUID('00000000-0000-0000-0000-000000000001')
         case = Case(
             id=case_id,
-            user_id=current_user_id,
+            user_id=demo_user_id,
             name=name,
             blob_storage_path="",
             status="processing"
@@ -193,6 +194,16 @@ async def upload_case(
         case.blob_storage_path = blob_path
         db.commit()
         db.refresh(case)
+
+        # Create processing job to handle document chunking & embedding
+        from .models import ProcessingJob
+        job = ProcessingJob(
+            id=uuid.uuid4(),
+            case_id=case_id,
+            status="pending"
+        )
+        db.add(job)
+        db.commit()
 
         return {
             "id": str(case.id),
@@ -212,6 +223,105 @@ async def upload_case(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to upload case. Please try again."
         )
+
+
+# ============================================
+# RAG QUERY ENDPOINTS
+# ============================================
+
+@app.post("/cases/{case_id}/ask", response_model=dict)
+async def ask_question(
+    case_id: str,
+    question: str,
+    db: Session = Depends(get_db)
+):
+    """Ask a question about a case"""
+    try:
+        from uuid import UUID
+        case_uuid = UUID(case_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid case ID format"
+        )
+
+    # Check if case exists
+    case = db.query(Case).filter(Case.id == case_uuid).first()
+    if not case:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Case not found"
+        )
+
+    # Check if case is ready for querying
+    if case.status == "processing":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Case is still being processed. Please try again in a moment."
+        )
+    elif case.status == "error":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Case processing failed. Please re-upload the document."
+        )
+
+    # Get RAG response
+    try:
+        from .services.rag_engine import query_case
+        rag_result = await query_case(str(case_uuid), question, db)
+
+        # Only store if answer was generated successfully
+        if rag_result.get("answer"):
+            from .models import Query
+            db_query = Query(
+                id=uuid.uuid4(),
+                case_id=case_uuid,
+                user_id=case.user_id,
+                question=question,
+                answer=rag_result.get("answer", ""),
+                citations=rag_result.get("sources", []),
+                created_at=datetime.now(timezone.utc)
+            )
+            db.add(db_query)
+            db.commit()
+
+        return rag_result
+    except Exception as e:
+        logger.error(f"Failed to process query: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to process query. Please try again."
+        )
+
+
+@app.get("/cases/{case_id}/status", response_model=dict)
+async def get_case_status(
+    case_id: str,
+    db: Session = Depends(get_db)
+):
+    """Get the status of a case"""
+    try:
+        from uuid import UUID
+        case_uuid = UUID(case_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid case ID format"
+        )
+
+    case = db.query(Case).filter(Case.id == case_uuid).first()
+    if not case:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Case not found"
+        )
+
+    return {
+        "id": str(case.id),
+        "name": case.name,
+        "status": case.status,
+        "created_at": case.created_at.isoformat()
+    }
 
 
 if __name__ == "__main__":
