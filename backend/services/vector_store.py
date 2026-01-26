@@ -1,11 +1,16 @@
 """Qdrant vector store service for semantic search and similarity matching"""
 import logging
 import hashlib
+import requests
 from functools import lru_cache
 from typing import List, Dict
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
-from backend.config import get_settings
+
+try:
+    from backend.config import get_settings
+except ImportError:
+    from config import get_settings
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -215,25 +220,35 @@ def search_vectors(
         )
 
     try:
-        client = get_qdrant_client()
         collection_name = _get_collection_name(case_id)
 
         logger.debug(f"Searching vectors in collection: {collection_name}, limit: {limit}")
 
-        # Perform similarity search
-        search_results = client.search(
-            collection_name=collection_name,
-            query_vector=query_embedding,
-            limit=limit
-        )
+        # Use REST API directly for compatibility with Qdrant 1.7.0
+        # (query_points API is not available in older versions)
+        qdrant_url = settings.qdrant_url.rstrip('/')
+        search_url = f"{qdrant_url}/collections/{collection_name}/points/search"
+
+        payload = {
+            "vector": query_embedding,
+            "limit": limit,
+            "with_payload": True
+        }
+
+        response = requests.post(search_url, json=payload, timeout=30)
+        response.raise_for_status()
+
+        search_data = response.json()
+        if not search_data.get("result"):
+            return []
 
         # Convert results to dict format
         results = []
-        for hit in search_results:
+        for hit in search_data["result"]:
             result_dict = {
-                "score": hit.score,
-                **hit.payload,  # Unpack metadata (chunk_id, page_num, content_preview, section_name)
-                "content": hit.payload.get("content_preview", "")  # Map content_preview to content for RAG
+                "score": hit.get("score", 0),
+                **hit.get("payload", {}),  # Unpack metadata (chunk_id, page_num, content_preview, section_name)
+                "content": hit.get("payload", {}).get("content_preview", "")  # Map content_preview to content for RAG
             }
             results.append(result_dict)
 

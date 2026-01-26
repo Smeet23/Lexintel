@@ -29,7 +29,11 @@ def _get_encoder():
     """Get cached tiktoken encoder for GPT-4o"""
     global _TIKTOKEN_ENCODER
     if _TIKTOKEN_ENCODER is None:
-        _TIKTOKEN_ENCODER = tiktoken.encoding_for_model("gpt-4o")
+        try:
+            _TIKTOKEN_ENCODER = tiktoken.encoding_for_model("gpt-4o")
+        except KeyError:
+            # gpt-4o not in tiktoken's registry, use cl100k_base (same as GPT-4)
+            _TIKTOKEN_ENCODER = tiktoken.get_encoding("cl100k_base")
     return _TIKTOKEN_ENCODER
 
 
@@ -38,7 +42,7 @@ CONTEXT_TOKEN_BUDGET = 12_800
 LEGAL_SYSTEM_PROMPT = """You are an expert legal assistant specialized in analyzing court documents, case law, and legal statutes. Your role is to: 1. Answer questions ONLY based on the provided document excerpts 2. Provide precise, factually accurate responses 3. Always cite the exact page in square brackets [Page X] 4. Distinguish between facts, arguments, and judgments 5. Flag any ambiguities or gaps in the source material 6. Never speculate beyond what the documents state. For each claim, include the page number [Page X] and reference the specific section when available."""
 
 MIN_QUERY_LENGTH = 3
-MIN_CONFIDENCE_SCORE = 0.7
+MIN_CONFIDENCE_SCORE = 0.15  # Lowered for cosine similarity matching (actual scores: 0.15-0.35)
 RETRIEVAL_TOP_K = 10
 FINAL_CHUNK_COUNT = 4
 

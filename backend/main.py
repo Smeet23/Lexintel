@@ -9,19 +9,30 @@ import logging
 logger = logging.getLogger(__name__)
 
 try:
-    from .config import get_settings
-    from .database import get_db
-    from .models import User, Case
-    from .schemas import UserCreate, UserResponse, TokenResponse
-    from .auth import hash_password, verify_password, create_access_token, decode_token
-    from .services.storage import upload_pdf_to_blob, validate_pdf
+    from backend.config import get_settings
+    from backend.database import get_db
+    from backend.models import User, Case, Query
+    from backend.schemas import UserCreate, UserResponse, TokenResponse
+    from backend.auth import hash_password, verify_password, create_access_token, decode_token
+    from backend.services.storage import upload_pdf_to_blob, validate_pdf
+    from backend.services.rag_engine import query_case
 except ImportError:
-    from config import get_settings
-    from database import get_db
-    from models import User, Case
-    from schemas import UserCreate, UserResponse, TokenResponse
-    from auth import hash_password, verify_password, create_access_token, decode_token
-    from services.storage import upload_pdf_to_blob, validate_pdf
+    try:
+        from config import get_settings
+        from database import get_db
+        from models import User, Case, Query
+        from schemas import UserCreate, UserResponse, TokenResponse
+        from auth import hash_password, verify_password, create_access_token, decode_token
+        from services.storage import upload_pdf_to_blob, validate_pdf
+        from services.rag_engine import query_case
+    except ImportError:
+        from .config import get_settings
+        from .database import get_db
+        from .models import User, Case, Query
+        from .schemas import UserCreate, UserResponse, TokenResponse
+        from .auth import hash_password, verify_password, create_access_token, decode_token
+        from .services.storage import upload_pdf_to_blob, validate_pdf
+        from .services.rag_engine import query_case
 
 settings = get_settings()
 
@@ -279,15 +290,10 @@ async def ask_question(
 
     # Get RAG response
     try:
-        try:
-            from .services.rag_engine import query_case
-        except ImportError:
-            from services.rag_engine import query_case
         rag_result = await query_case(str(case_uuid), question, db)
 
         # Only store if answer was generated successfully
         if rag_result.get("answer"):
-            from .models import Query
             db_query = Query(
                 id=uuid.uuid4(),
                 case_id=case_uuid,
@@ -302,7 +308,7 @@ async def ask_question(
 
         return rag_result
     except Exception as e:
-        logger.error(f"Failed to process query: {str(e)}")
+        logger.error(f"Failed to process query: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to process query. Please try again."

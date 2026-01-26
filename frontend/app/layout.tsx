@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import { AuthProvider } from '@/lib/auth-context'
+import { QueryProvider } from '@/lib/query-provider'
 import { NavBar } from '@/components/navbar'
 
 export const metadata: Metadata = {
@@ -14,15 +15,17 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <AuthProvider>
-      <html lang="en">
-        <body className="bg-gray-50">
-          <NavBar />
-          <main className="max-w-7xl mx-auto px-4 py-8">
-            {children}
-          </main>
-        </body>
-      </html>
-    </AuthProvider>
+    <html lang="en">
+      <body className="bg-gray-50">
+        <QueryProvider>
+          <AuthProvider>
+            <NavBar />
+            <main className="max-w-7xl mx-auto px-4 py-8">
+              {children}
+            </main>
+          </AuthProvider>
+        </QueryProvider>
+      </body>
+    </html>
   )
 }
