@@ -6,10 +6,18 @@ from typing import List, Dict, Tuple, Optional
 from uuid import UUID
 from sqlalchemy.orm import Session
 from openai import AsyncOpenAI
-from backend.services.embeddings import embed_text
-from backend.services.vector_store import search_vectors
-from backend.models import Case, Query
-from backend.config import get_settings
+
+# Handle both module import styles
+try:
+    from backend.services.embeddings import embed_text
+    from backend.services.vector_store import search_vectors
+    from backend.models import Case, Query
+    from backend.config import get_settings
+except ImportError:
+    from services.embeddings import embed_text
+    from services.vector_store import search_vectors
+    from models import Case, Query
+    from config import get_settings
 
 logger = logging.getLogger(__name__)
 settings = get_settings()

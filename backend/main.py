@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Header, File, UploadFile, Form
+from fastapi import FastAPI, Depends, HTTPException, status, Header, File, UploadFile, Form, Body
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
@@ -244,7 +244,7 @@ async def upload_case(
 @app.post("/cases/{case_id}/ask", response_model=dict)
 async def ask_question(
     case_id: str,
-    question: str,
+    question: str = Body(..., embed=True),
     db: Session = Depends(get_db)
 ):
     """Ask a question about a case"""
@@ -279,7 +279,10 @@ async def ask_question(
 
     # Get RAG response
     try:
-        from .services.rag_engine import query_case
+        try:
+            from .services.rag_engine import query_case
+        except ImportError:
+            from services.rag_engine import query_case
         rag_result = await query_case(str(case_uuid), question, db)
 
         # Only store if answer was generated successfully
