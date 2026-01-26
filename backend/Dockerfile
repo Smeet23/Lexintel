@@ -27,15 +27,23 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Create non-root user for security
+RUN useradd -m -u 1000 appuser && \
+    mkdir -p /app && \
+    chown -R appuser:appuser /app
+
 # Copy Python dependencies from builder
-COPY --from=builder /root/.local /root/.local
+COPY --from=builder /root/.local /home/appuser/.local
 
 # Set PATH
-ENV PATH=/root/.local/bin:$PATH
+ENV PATH=/home/appuser/.local/bin:$PATH
 ENV PYTHONUNBUFFERED=1
 
 # Copy application code (keeping backend folder structure)
-COPY . /app
+COPY --chown=appuser:appuser . /app
+
+# Switch to non-root user
+USER appuser
 
 # Health check
 HEALTHCHECK --interval=10s --timeout=5s --retries=3 \

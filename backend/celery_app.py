@@ -23,6 +23,7 @@ celery_app.conf.update(
     task_soft_time_limit=25 * 60,  # 25 minutes soft limit
     worker_prefetch_multiplier=1,  # Process one task at a time
     worker_max_tasks_per_child=1000,  # Worker respawn after 1000 tasks
+    broker_connection_retry_on_startup=True,  # Retry broker connection on startup (Celery 6.0 compatibility)
 )
 
 # Import tasks to register them
