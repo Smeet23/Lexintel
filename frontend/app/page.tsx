@@ -1,8 +1,24 @@
 'use client'
 
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link'
+import { useAuth } from '@/lib/auth-context';
 
 export default function Home() {
+  const router = useRouter();
+  const { isAuthenticated } = useAuth();
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.push('/dashboard');
+    }
+  }, [isAuthenticated, router]);
+
+  if (isAuthenticated) {
+    return null;
+  }
+
   return (
     <div className="text-center py-12">
       <h2 className="text-4xl font-bold mb-4">Welcome to LexIntel</h2>
