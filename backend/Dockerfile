@@ -29,8 +29,8 @@ RUN apt-get update && apt-get install -y \
 
 # Create non-root user for security
 RUN useradd -m -u 1000 appuser && \
-    mkdir -p /app && \
-    chown -R appuser:appuser /app
+    mkdir -p /app /tmp/lexintel_storage && \
+    chown -R appuser:appuser /app /tmp/lexintel_storage
 
 # Copy Python dependencies from builder
 COPY --from=builder /root/.local /home/appuser/.local
