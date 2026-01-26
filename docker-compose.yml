@@ -95,13 +95,13 @@ services:
       ENVIRONMENT: ${ENVIRONMENT:-development}
     depends_on:
       postgres:
-        condition: service_healthy
+        condition: service_started
       qdrant:
-        condition: service_healthy
+        condition: service_started
       azurite:
-        condition: service_healthy
+        condition: service_started
       redis:
-        condition: service_healthy
+        condition: service_started
     volumes:
       - ./backend:/app/backend:cached
       - /app/backend/__pycache__
@@ -130,9 +130,9 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
     depends_on:
       postgres:
-        condition: service_healthy
+        condition: service_started
       redis:
-        condition: service_healthy
+        condition: service_started
     volumes:
       - ./backend:/app/backend:cached
     networks:
@@ -150,7 +150,7 @@ services:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     depends_on:
       backend:
-        condition: service_healthy
+        condition: service_started
     volumes:
       - ./frontend:/app:cached
       - /app/node_modules
