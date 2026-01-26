@@ -10,8 +10,8 @@ from langchain.schema import Document
 logger = logging.getLogger(__name__)
 
 # Chunking configuration
-CHUNK_SIZE = 800  # Characters per chunk
-CHUNK_OVERLAP = 150  # Characters to overlap between chunks
+CHUNK_SIZE = 1500  # Characters per chunk (~200-250 words, captures full paragraphs)
+CHUNK_OVERLAP = 300  # Characters to overlap between chunks (maintains context)
 SEPARATORS = ["\n\n", "\n", ". ", " ", ""]  # Ordered split preferences
 
 
