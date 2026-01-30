@@ -41,10 +41,11 @@ def validate_filename(filename: str) -> str:
         )
 
     # Check extension
-    if not filename.lower().endswith(".pdf"):
+    allowed_extensions = [".pdf", ".docx", ".txt"]
+    if not any(filename.lower().endswith(ext) for ext in allowed_extensions):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only PDF files are allowed"
+            detail=f"Only {', '.join(allowed_extensions)} files are allowed"
         )
 
     return filename
@@ -85,6 +86,31 @@ def validate_question(question: str) -> str:
         )
 
     return question.strip()
+
+
+def validate_file_type(content_type: str, filename: str) -> str:
+    """
+    Validate and return file type based on filename extension.
+
+    Args:
+        content_type: MIME type from request (not used for this implementation)
+        filename: Original filename from upload
+
+    Returns:
+        File type string: 'pdf', 'docx', or 'txt'
+
+    Raises:
+        ValueError: If file type is unsupported
+    """
+    filename_lower = filename.lower()
+    if filename_lower.endswith('.pdf'):
+        return 'pdf'
+    elif filename_lower.endswith('.docx'):
+        return 'docx'
+    elif filename_lower.endswith('.txt'):
+        return 'txt'
+    else:
+        raise ValueError(f"Unsupported file type for file: {filename}")
 
 
 def validate_case_name(name: str) -> str:

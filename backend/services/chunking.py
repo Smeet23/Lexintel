@@ -1,4 +1,4 @@
-"""PDF document chunking service"""
+"""Document chunking service for PDFs, DOCX, and TXT files"""
 import logging
 import tempfile
 import os
@@ -6,6 +6,14 @@ from typing import List, Dict
 import fitz  # PyMuPDF
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.schema import Document
+
+try:
+    from backend.services.text_extraction import extract_text
+except ImportError:
+    try:
+        from services.text_extraction import extract_text
+    except ImportError:
+        from .text_extraction import extract_text
 
 logger = logging.getLogger(__name__)
 
@@ -94,8 +102,69 @@ def chunk_pdf(pdf_path: str) -> List[Dict[str, str]]:
         raise
 
 
+def chunk_document_from_blob(blob_content: bytes, file_type: str = "pdf") -> List[Dict[str, str]]:
+    """
+    Chunk document (PDF, DOCX, or TXT) from blob storage content (bytes).
+
+    Args:
+        blob_content: Raw document bytes
+        file_type: Document type ('pdf', 'docx', or 'txt'). Default: 'pdf'
+
+    Returns:
+        List of chunk dicts with keys: content, page_num (or para/line info), section_name
+
+    Raises:
+        ValueError: If blob_content is empty or invalid
+        Exception: If chunking fails
+    """
+    if not blob_content:
+        raise ValueError("Blob content is empty")
+
+    try:
+        logger.info(f"Chunking {file_type.upper()} document from blob ({len(blob_content)} bytes)")
+
+        # Extract text using appropriate extractor
+        extracted_sections = extract_text(blob_content, file_type)
+
+        if not extracted_sections:
+            logger.warning(f"No content extracted from {file_type.upper()} document")
+            return []
+
+        # Initialize text splitter
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=CHUNK_SIZE,
+            chunk_overlap=CHUNK_OVERLAP,
+            separators=SEPARATORS
+        )
+
+        all_chunks = []
+        chunk_counter = 0
+
+        # Process each section (page/paragraph/line range)
+        for section in extracted_sections:
+            # Split section content into chunks
+            split_docs = splitter.split_text(section["content"])
+
+            for chunk_text in split_docs:
+                if chunk_text.strip():  # Skip empty chunks
+                    chunk_counter += 1
+                    all_chunks.append({
+                        "content": chunk_text,
+                        "page_num": section["location"],  # Now stores page/para/line range
+                        "section_name": f"Chunk {chunk_counter}"
+                    })
+
+        logger.info(f"Created {chunk_counter} chunks from {file_type.upper()}")
+        return all_chunks
+
+    except Exception as e:
+        logger.error(f"Error chunking {file_type.upper()}: {str(e)}")
+        raise
+
+
 def chunk_pdf_from_blob(blob_content: bytes) -> List[Dict[str, str]]:
     """
+    Deprecated: Use chunk_document_from_blob() instead.
     Chunk PDF from blob storage content (bytes).
 
     Args:

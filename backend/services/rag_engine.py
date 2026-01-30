@@ -24,20 +24,20 @@ except ImportError:
 try:
     from backend.services.embeddings import embed_text
     from backend.services.vector_store import search_vectors
-    from backend.models import Case, Query
+    from backend.models import Case, Query, Chunk
     from backend.config import get_settings
     from backend.exceptions import QueryProcessingException, EmbeddingException, VectorStoreException
 except ImportError:
     try:
         from services.embeddings import embed_text
         from services.vector_store import search_vectors
-        from models import Case, Query
+        from models import Case, Query, Chunk
         from config import get_settings
         from exceptions import QueryProcessingException, EmbeddingException, VectorStoreException
     except ImportError:
         from .services.embeddings import embed_text
         from .services.vector_store import search_vectors
-        from .models import Case, Query
+        from .models import Case, Query, Chunk
         from .config import get_settings
         from .exceptions import QueryProcessingException, EmbeddingException, VectorStoreException
 
@@ -61,10 +61,20 @@ def _get_encoder():
 
 # Configuration
 CONTEXT_TOKEN_BUDGET = 12_800
-LEGAL_SYSTEM_PROMPT = """You are an expert legal assistant specialized in analyzing court documents, case law, and legal statutes. Your role is to: 1. Answer questions ONLY based on the provided document excerpts 2. Provide precise, factually accurate responses 3. Always cite the exact page in square brackets [Page X] 4. Distinguish between facts, arguments, and judgments 5. Flag any ambiguities or gaps in the source material 6. Never speculate beyond what the documents state. For each claim, include the page number [Page X] and reference the specific section when available."""
+LEGAL_SYSTEM_PROMPT = """You are an expert legal assistant specialized in analyzing court documents, case law, and legal statutes. Your role is to:
+1. Answer questions ONLY based on the provided document excerpts
+2. Provide precise, factually accurate responses
+3. Always cite the exact location in square brackets:
+   - For PDFs: [Page X]
+   - For Word documents: [Paragraph X]
+   - For text files: [Lines X-Y]
+4. Distinguish between facts, arguments, and judgments
+5. Flag any ambiguities or gaps in the source material
+6. Never speculate beyond what the documents state
+For each claim, include the location reference and cite the specific section when available."""
 
 MIN_QUERY_LENGTH = 3
-MIN_CONFIDENCE_SCORE = 0.15  # Lowered for cosine similarity matching (actual scores: 0.15-0.35)
+MIN_CONFIDENCE_SCORE = 0.6  # Require 60% semantic similarity minimum (prevents weak matches)
 RETRIEVAL_TOP_K = 10
 FINAL_CHUNK_COUNT = 4
 
@@ -131,13 +141,21 @@ def format_legal_context(chunks: List[Dict], case_name: str) -> str:
     context_parts = [f"Case: {case_name}\n", "=" * 60, "\n"]
 
     for i, chunk in enumerate(sorted_chunks, 1):
-        page_num = chunk.get("page_num", "Unknown")
+        location = chunk.get("page_num", "Unknown")
         section = chunk.get("section_name", "")
         score = chunk.get("score", 0)
         content = chunk.get("content", "")
 
+        # Determine location label based on format
+        if location.startswith("para"):
+            location_label = f"Paragraph {location[5:]}"  # Extract number from "para X"
+        elif location.startswith("line"):
+            location_label = f"Lines {location[5:]}"  # Extract range from "line X-Y"
+        else:
+            location_label = f"Page {location}"  # Default to page
+
         # Format excerpt header with metadata
-        header = f"--- EXCERPT {i} (Page {page_num}"
+        header = f"--- EXCERPT {i} ({location_label}"
         if section:
             header += f", Section: {section}"
         header += f", Score: {score:.2f}) ---\n"
@@ -202,16 +220,24 @@ def retrieve_chunks(case_id: str, query_embedding: List[float], top_k: int = RET
         ) from e
 
 
-def extract_citations(answer: str, chunks: List[Dict]) -> List[Dict]:
+def extract_citations(answer: str, chunks: List[Dict]) -> Tuple[str, List[Dict], bool]:
     """
-    Extract citations from answer and match to retrieved chunks.
+    Extract citations from answer, match to retrieved chunks, and remove hallucinations.
+
+    Handles citations for multiple document formats:
+    - [Page X] for PDFs
+    - [Paragraph X] for Word documents
+    - [Lines X-Y] for text files
 
     Args:
-        answer: Generated answer with [Page X] citations
+        answer: Generated answer with location citations
         chunks: List of retrieved chunks
 
     Returns:
-        List of citation dicts with chunk_id, page_num, relevance_score
+        Tuple of (cleaned_answer, citations_list, has_hallucinations)
+        - cleaned_answer: Answer with hallucinated citations removed
+        - citations_list: List of valid citation dicts
+        - has_hallucinations: Bool indicating if any hallucinations were detected
 
     Raises:
         None - gracefully handles citation mismatches
@@ -219,37 +245,74 @@ def extract_citations(answer: str, chunks: List[Dict]) -> List[Dict]:
     import re
 
     citations = []
-    page_pattern = r'\[Page\s+(\d+)\]'
-    matches = re.finditer(page_pattern, answer)
 
-    # Create page number to chunk mapping
-    page_to_chunks = {}
+    # Define patterns for all citation types
+    citation_patterns = [
+        (r'\[Page\s+(\d+)\]', 'page'),
+        (r'\[Paragraph\s+(\d+)\]', 'paragraph'),
+        (r'\[Lines\s+(\d+-\d+)\]', 'line_range')
+    ]
+
+    # Create location to chunk mapping
+    location_to_chunks = {}
+    valid_locations = set()
     for chunk in chunks:
-        page_num = str(chunk.get("page_num", ""))
-        if page_num not in page_to_chunks:
-            page_to_chunks[page_num] = chunk
+        location = str(chunk.get("page_num", ""))
+        if location not in location_to_chunks:
+            location_to_chunks[location] = chunk
+            valid_locations.add(location)
 
     # Extract citations and match to chunks
-    unmatched_pages = []
-    for match in matches:
-        page_num = match.group(1)
-        if page_num in page_to_chunks:
-            chunk = page_to_chunks[page_num]
-            citation = {
-                "chunk_id": chunk.get("chunk_id", ""),
-                "page_num": page_num,
-                "relevance_score": chunk.get("score", 0)
-            }
-            if citation not in citations:  # Avoid duplicates
-                citations.append(citation)
-        else:
-            unmatched_pages.append(page_num)
+    unmatched_citations = []
+    valid_matches = []
 
-    # Log warning if any citations couldn't be matched (Issue 5)
-    if unmatched_pages:
-        logger.warning(f"Citation mismatch: answer references pages {unmatched_pages} not in retrieved chunks. Potential hallucination detected.")
+    for pattern, citation_type in citation_patterns:
+        matches = list(re.finditer(pattern, answer))
 
-    return citations
+        for match in matches:
+            if citation_type == 'page':
+                location = match.group(1)  # Page number
+            elif citation_type == 'paragraph':
+                location = f"para {match.group(1)}"  # Convert to "para X" format
+            elif citation_type == 'line_range':
+                location = f"line {match.group(1)}"  # Convert to "line X-Y" format
+            else:
+                continue
+
+            if location in location_to_chunks:
+                chunk = location_to_chunks[location]
+                citation = {
+                    "chunk_id": chunk.get("chunk_id", ""),
+                    "location": location,
+                    "citation_type": citation_type,
+                    "relevance_score": chunk.get("score", 0)
+                }
+                if citation not in citations:  # Avoid duplicates
+                    citations.append(citation)
+                valid_matches.append(match)
+            else:
+                unmatched_citations.append(match.group(0))
+
+    # Remove hallucinated citations from answer
+    cleaned_answer = answer
+    has_hallucinations = False
+
+    if unmatched_citations:
+        has_hallucinations = True
+        logger.warning(
+            f"Hallucination detected: answer references locations {unmatched_citations} "
+            f"not in retrieved chunks {list(valid_locations)}. "
+            f"Removing hallucinated citations from response."
+        )
+
+        # Remove all invalid citation patterns from answer
+        for citation_text in unmatched_citations:
+            cleaned_answer = cleaned_answer.replace(citation_text, "").strip()
+
+        # Clean up any extra spaces
+        cleaned_answer = re.sub(r'\s+', ' ', cleaned_answer).strip()
+
+    return cleaned_answer, citations, has_hallucinations
 
 
 async def generate_answer(
@@ -469,34 +532,57 @@ async def query_case(
                 detail=str(e)
             ) from e
 
-        # 7. Extract citations
-        citations = extract_citations(answer, final_chunks)
+        # 7. Extract citations and detect hallucinations
+        cleaned_answer, citations, has_hallucinations = extract_citations(answer, final_chunks)
 
-        # 8. Prepare sources list
+        # 8. Prepare sources list with FULL content from database
         sources = []
         for chunk in final_chunks:
+            chunk_id = chunk.get("chunk_id", "")
+
+            # Fetch full content from database (not truncated from vector store)
+            full_content = ""
+            try:
+                db_chunk = db.query(Chunk).filter(Chunk.id == chunk_id).first()
+                if db_chunk:
+                    full_content = db_chunk.content
+                else:
+                    # Fallback to content_preview if not found
+                    full_content = chunk.get("content", "")
+            except Exception as e:
+                logger.warning(f"Failed to fetch full chunk content for {chunk_id}: {str(e)}, using preview")
+                full_content = chunk.get("content", "")
+
             source = {
-                "chunk_id": chunk.get("chunk_id", ""),
+                "chunk_id": chunk_id,
                 "page_num": chunk.get("page_num", ""),
                 "relevance_score": chunk.get("score", 0),
-                "content_preview": chunk.get("content_preview", "")[:200] if chunk.get("content_preview") else ""
+                "content": full_content  # Now full content instead of 200-char preview
             }
             sources.append(source)
 
-        # Determine confidence level
+        # Determine confidence level (calibrated for typical cosine similarity scores)
         scores = [c.get("score", 0) for c in final_chunks]
         avg_score = sum(scores) / len(scores) if scores else 0
 
-        if avg_score >= 0.9:
-            confidence = "high"
-        elif avg_score >= 0.8:
-            confidence = "medium"
+        if avg_score >= 0.75:
+            confidence = "high"  # 75%+ semantic match = high confidence
+        elif avg_score >= 0.65:
+            confidence = "medium"  # 65-75% semantic match = medium confidence
         else:
-            confidence = "low"
+            confidence = "low"  # Below 65% = low confidence (but still above MIN_CONFIDENCE_SCORE)
 
-        # Prepare successful response
+        # Downgrade confidence if hallucinations were detected
+        if has_hallucinations:
+            if confidence == "high":
+                confidence = "medium"
+            elif confidence == "medium":
+                confidence = "low"
+            logger.warning(f"Confidence downgraded to '{confidence}' due to detected hallucinations")
+
+        # Prepare successful response (using cleaned_answer without hallucinated citations)
         return {
-            "answer": answer,
+            "answer": cleaned_answer,
             "sources": sources,
             "case_id": case_id,
             "query": query,

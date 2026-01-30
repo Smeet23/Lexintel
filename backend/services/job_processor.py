@@ -6,8 +6,8 @@ from typing import List, Dict, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from backend.models import ProcessingJob, Case, Chunk
-from backend.services.storage import download_pdf_from_blob
-from backend.services.chunking import chunk_pdf_from_blob
+from backend.services.storage import download_document_from_blob
+from backend.services.chunking import chunk_document_from_blob
 from backend.services.embeddings import embed_chunks
 from backend.services.vector_store import upsert_vectors, create_collection
 
@@ -75,7 +75,7 @@ def mark_job_failed(
 
 async def process_case(case_id: str, db: Session) -> Dict:
     """
-    Process a case: download PDF, chunk, embed, and store vectors.
+    Process a case: download document, chunk, embed, and store vectors.
 
     Args:
         case_id: UUID of the case to process
@@ -92,14 +92,17 @@ async def process_case(case_id: str, db: Session) -> Dict:
 
         logger.info(f"Processing case: {case_id}")
 
-        # Download PDF from blob storage
-        pdf_bytes = await download_pdf_from_blob(case.blob_storage_path)
-        logger.info(f"Downloaded PDF ({len(pdf_bytes)} bytes)")
+        # Get file type
+        file_type = case.file_type or "pdf"
 
-        # Chunk PDF
-        chunks_data = chunk_pdf_from_blob(pdf_bytes)
+        # Download document from blob storage
+        document_bytes = await download_document_from_blob(case.blob_storage_path)
+        logger.info(f"Downloaded {file_type.upper()} ({len(document_bytes)} bytes)")
+
+        # Chunk document
+        chunks_data = chunk_document_from_blob(document_bytes, file_type=file_type)
         if not chunks_data:
-            raise ValueError("No chunks created from PDF")
+            raise ValueError(f"No chunks created from {file_type.upper()}")
         logger.info(f"Created {len(chunks_data)} chunks")
 
         # Delete old chunks for this case (for reprocessing)

@@ -14,9 +14,9 @@ try:
     from backend.models import User, Case, Query
     from backend.schemas import UserCreate, UserResponse, TokenResponse
     from backend.auth import hash_password, verify_password, create_access_token, decode_token
-    from backend.services.storage import upload_pdf_to_blob, validate_pdf
+    from backend.services.storage import upload_document_to_blob, validate_file_format
     from backend.services.rag_engine import query_case
-    from backend.validators import validate_filename, validate_case_name, validate_question
+    from backend.validators import validate_filename, validate_case_name, validate_question, validate_file_type
 except ImportError:
     try:
         from config import get_settings
@@ -24,18 +24,18 @@ except ImportError:
         from models import User, Case, Query
         from schemas import UserCreate, UserResponse, TokenResponse
         from auth import hash_password, verify_password, create_access_token, decode_token
-        from services.storage import upload_pdf_to_blob, validate_pdf
+        from services.storage import upload_document_to_blob, validate_file_format
         from services.rag_engine import query_case
-        from validators import validate_filename, validate_case_name, validate_question
+        from validators import validate_filename, validate_case_name, validate_question, validate_file_type
     except ImportError:
         from .config import get_settings
         from .database import get_db
         from .models import User, Case, Query
         from .schemas import UserCreate, UserResponse, TokenResponse
         from .auth import hash_password, verify_password, create_access_token, decode_token
-        from .services.storage import upload_pdf_to_blob, validate_pdf
+        from .services.storage import upload_document_to_blob, validate_file_format
         from .services.rag_engine import query_case
-        from .validators import validate_filename, validate_case_name, validate_question
+        from .validators import validate_filename, validate_case_name, validate_question, validate_file_type
 
 settings = get_settings()
 
@@ -228,12 +228,17 @@ async def upload_case(
     current_user_id: UUID = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Upload a case PDF document"""
-    # Validate file is PDF
-    if file.content_type != "application/pdf":
+    """Upload a case document (PDF, DOCX, or TXT)"""
+    # Validate MIME type
+    allowed_types = [
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "text/plain"
+    ]
+    if file.content_type not in allowed_types:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only PDF files allowed"
+            detail="Only PDF, DOCX, and TXT files are allowed"
         )
 
     # Validate filename using dedicated validator
@@ -247,11 +252,20 @@ async def upload_case(
         # Read file content early for validation
         file_content = await file.read()
 
-        # Validate PDF magic bytes
-        if not validate_pdf(file_content):
+        # Detect and validate file type
+        try:
+            file_type = validate_file_type(file.content_type, file.filename)
+        except ValueError as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid filename: must be a PDF"
+                detail=str(e)
+            )
+
+        # Validate file format matches declared type
+        if not validate_file_format(file_content, file_type):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid {file_type.upper()} file format"
             )
 
         # Create case record with status "processing"
@@ -261,13 +275,14 @@ async def upload_case(
             user_id=current_user_id,
             name=name,
             blob_storage_path="",
+            file_type=file_type,
             status="processing"
         )
         db.add(case)
         db.commit()
 
         # Upload file to blob storage
-        blob_path = await upload_pdf_to_blob(file_content, str(case_id), file.filename)
+        blob_path = await upload_document_to_blob(file_content, str(case_id), file.filename)
 
         # Update case with blob path
         case.blob_storage_path = blob_path
@@ -291,6 +306,7 @@ async def upload_case(
             "id": str(case.id),
             "name": case.name,
             "status": case.status,
+            "file_type": case.file_type,
             "blob_storage_path": case.blob_storage_path,
             "task_id": task.id,
             "created_at": case.created_at.isoformat()

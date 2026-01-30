@@ -33,12 +33,38 @@ def get_settings():
                 azure_storage_connection_string = os.environ.get('AZURE_STORAGE_CONNECTION_STRING', '')
             return MockSettings()
 
-# PDF magic bytes for validation
+# Magic bytes for file format validation
 PDF_MAGIC_BYTES = b"%PDF"
+DOCX_MAGIC_BYTES = b"PK\x03\x04"  # ZIP signature (DOCX is a ZIP archive)
+
+
+def validate_file_format(file_content: bytes, file_type: str) -> bool:
+    """
+    Validate that file content matches the declared file type by checking magic bytes.
+
+    Args:
+        file_content: Raw file bytes
+        file_type: Declared file type ('pdf', 'docx', or 'txt')
+
+    Returns:
+        True if file content matches the declared type
+    """
+    if file_type == "pdf":
+        return file_content.startswith(PDF_MAGIC_BYTES)
+    elif file_type == "docx":
+        return file_content.startswith(DOCX_MAGIC_BYTES)
+    elif file_type == "txt":
+        try:
+            file_content.decode('utf-8')
+            return True
+        except UnicodeDecodeError:
+            return False
+    return False
 
 
 def validate_pdf(file_content: bytes) -> bool:
     """
+    Deprecated: Use validate_file_format() instead.
     Validate that file content is actually a PDF by checking magic bytes.
 
     Args:
@@ -58,15 +84,15 @@ def get_blob_client():
     )
 
 
-async def upload_pdf_to_blob(file_content: bytes, case_id: str, filename: str) -> str:
+async def upload_document_to_blob(file_content: bytes, case_id: str, filename: str) -> str:
     """
-    Upload PDF to Azure Blob Storage and return blob path.
+    Upload document (PDF, DOCX, or TXT) to Azure Blob Storage and return blob path.
 
     Note: This function uses fail-fast behavior. If Azure storage is not configured
     or unavailable, it raises BlobUploadException. There is no fallback to local storage.
 
     Args:
-        file_content: Raw PDF bytes
+        file_content: Raw document bytes
         case_id: UUID of the case
         filename: Original filename from upload
 
@@ -118,15 +144,19 @@ async def upload_pdf_to_blob(file_content: bytes, case_id: str, filename: str) -
         ) from e
 
 
-def download_pdf_from_blob(blob_path: str) -> bytes:
+# Backward compatibility alias
+upload_pdf_to_blob = upload_document_to_blob
+
+
+def download_document_from_blob(blob_path: str) -> bytes:
     """
-    Download PDF from Azure Blob Storage.
+    Download document (PDF, DOCX, or TXT) from Azure Blob Storage.
 
     Args:
         blob_path: Path to blob (e.g., "case-uuid/filename.pdf")
 
     Returns:
-        Raw PDF bytes
+        Raw document bytes
 
     Raises:
         BlobDownloadException: If download fails
@@ -188,3 +218,7 @@ def delete_blob(blob_path: str) -> bool:
             "Unexpected error during blob deletion",
             detail=str(e)
         ) from e
+
+
+# Backward compatibility alias
+download_pdf_from_blob = download_document_from_blob

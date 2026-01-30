@@ -8,16 +8,16 @@ try:
     from backend.celery_app import celery_app
     from backend.database import get_session_factory
     from backend.models import Case, Chunk
-    from backend.services.storage import download_pdf_from_blob
-    from backend.services.chunking import chunk_pdf_from_blob
+    from backend.services.storage import download_document_from_blob
+    from backend.services.chunking import chunk_document_from_blob
     from backend.services.embeddings import embed_chunks
     from backend.services.vector_store import upsert_vectors, create_collection
 except ImportError:
     from celery_app import celery_app
     from database import get_session_factory
     from models import Case, Chunk
-    from services.storage import download_pdf_from_blob
-    from services.chunking import chunk_pdf_from_blob
+    from services.storage import download_document_from_blob
+    from services.chunking import chunk_document_from_blob
     from services.embeddings import embed_chunks
     from services.vector_store import upsert_vectors, create_collection
 
@@ -56,13 +56,16 @@ def process_document_task(self, case_id: str):
         case.status = "processing"
         db.commit()
 
-        # 1. Download PDF from blob storage
-        logger.info(f"[Task {self.request.id}] Downloading PDF from {case.blob_storage_path}")
-        pdf_content = download_pdf_from_blob(case.blob_storage_path)
+        # Get file type from case
+        file_type = case.file_type or "pdf"
 
-        # 2. Chunk PDF
-        logger.info(f"[Task {self.request.id}] Chunking PDF")
-        chunks = chunk_pdf_from_blob(pdf_content)
+        # 1. Download document from blob storage
+        logger.info(f"[Task {self.request.id}] Downloading {file_type.upper()} from {case.blob_storage_path}")
+        document_content = download_document_from_blob(case.blob_storage_path)
+
+        # 2. Chunk document
+        logger.info(f"[Task {self.request.id}] Chunking {file_type.upper()}")
+        chunks = chunk_document_from_blob(document_content, file_type=file_type)
         logger.info(f"[Task {self.request.id}] Created {len(chunks)} chunks")
 
         if not chunks:
