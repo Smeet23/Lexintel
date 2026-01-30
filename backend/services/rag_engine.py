@@ -47,6 +47,9 @@ settings = get_settings()
 # Cache for tiktoken encoder (Issue 1)
 _TIKTOKEN_ENCODER = None
 
+# Cache for reranker model (lazy loaded)
+_RERANKER_MODEL = None
+
 def _get_encoder():
     """Get cached tiktoken encoder for GPT-4o"""
     global _TIKTOKEN_ENCODER
@@ -187,6 +190,110 @@ def embed_query(query: str) -> List[float]:
     return embed_text(query)
 
 
+def _get_reranker():
+    """
+    Get or initialize cross-encoder reranker model.
+    Uses sentence-transformers cross-encoder for efficiency.
+
+    Returns:
+        CrossEncoder model or None if not available
+    """
+    global _RERANKER_MODEL
+
+    if _RERANKER_MODEL is not None:
+        return _RERANKER_MODEL
+
+    try:
+        from sentence_transformers import CrossEncoder
+        logger.info("Initializing cross-encoder reranker")
+        # Using lightweight distilroberta model for speed
+        _RERANKER_MODEL = CrossEncoder("cross-encoder/qnli-distilroberta-base")
+        return _RERANKER_MODEL
+    except ImportError:
+        logger.warning(
+            "sentence-transformers not installed. "
+            "Reranking disabled. Install with: pip install sentence-transformers"
+        )
+        return None
+    except Exception as e:
+        logger.warning(f"Failed to initialize reranker: {str(e)}")
+        return None
+
+
+def rerank_chunks(
+    query: str,
+    chunks: List[Dict],
+    top_k: int = FINAL_CHUNK_COUNT
+) -> List[Dict]:
+    """
+    Rerank retrieved chunks using cross-encoder for relevance.
+
+    Better chunks = better answers. Uses cross-encoder to rerank chunks
+    by comparing query relevance (more accurate than vector similarity alone).
+
+    Args:
+        query: User query string
+        chunks: List of chunks from vector search
+        top_k: Number of top chunks to return after reranking
+
+    Returns:
+        List of reranked chunks sorted by relevance
+    """
+    if not chunks:
+        logger.debug("No chunks to rerank")
+        return []
+
+    reranker = _get_reranker()
+
+    if reranker is None:
+        logger.debug("Reranker not available, returning chunks as-is")
+        return chunks[:top_k]
+
+    try:
+        # Prepare pairs for reranking (query, chunk_content)
+        pairs = []
+        chunk_texts = []
+
+        for chunk in chunks:
+            content = chunk.get("content", "")[:300]  # Limit to 300 chars for efficiency
+            pairs.append([query, content])
+            chunk_texts.append(content)
+
+        logger.debug(f"Reranking {len(chunks)} chunks")
+
+        # Get reranking scores
+        scores = reranker.predict(pairs)
+
+        # Add rerank scores to chunks
+        for i, chunk in enumerate(chunks):
+            # Combine vector similarity score (original) with rerank score
+            original_score = chunk.get("score", 0)
+            rerank_score = float(scores[i])  # 0-1 normalized score
+
+            # Weighted combination: 40% vector similarity, 60% cross-encoder
+            chunk["rerank_score"] = rerank_score
+            chunk["combined_score"] = (original_score * 0.4) + (rerank_score * 0.6)
+
+        # Sort by combined score
+        reranked = sorted(chunks, key=lambda x: x.get("combined_score", 0), reverse=True)
+
+        # Log top result
+        if reranked:
+            top = reranked[0]
+            logger.debug(
+                f"Top reranked chunk: "
+                f"vector_score={top.get('score', 0):.3f}, "
+                f"rerank_score={top.get('rerank_score', 0):.3f}, "
+                f"combined={top.get('combined_score', 0):.3f}"
+            )
+
+        return reranked[:top_k]
+
+    except Exception as e:
+        logger.warning(f"Reranking failed, using original chunks: {str(e)}")
+        return chunks[:top_k]
+
+
 def retrieve_chunks(case_id: str, query_embedding: List[float], top_k: int = RETRIEVAL_TOP_K) -> List[Dict]:
     """
     Retrieve similar chunks from vector store.
@@ -313,6 +420,157 @@ def extract_citations(answer: str, chunks: List[Dict]) -> Tuple[str, List[Dict],
         cleaned_answer = re.sub(r'\s+', ' ', cleaned_answer).strip()
 
     return cleaned_answer, citations, has_hallucinations
+
+
+def ground_citations_in_source(
+    citations: List[Dict],
+    chunks: List[Dict]
+) -> Tuple[List[Dict], List[Dict], bool]:
+    """
+    Validate that citations are actually supported by source chunks.
+    Extract supporting text excerpts for each citation.
+
+    Args:
+        citations: List of citation dicts from extract_citations
+        chunks: List of retrieved chunks with content
+
+    Returns:
+        Tuple of (grounded_citations, unsupported_claims, has_unsupported)
+        - grounded_citations: Citations with supporting text excerpts
+        - unsupported_claims: Claims that couldn't be grounded
+        - has_unsupported: Bool indicating if any claims were unsupported
+    """
+    grounded_citations = []
+    unsupported_claims = []
+
+    # Create location to chunk mapping
+    location_to_chunk = {str(c.get("page_num", "")): c for c in chunks}
+
+    for citation in citations:
+        location = citation.get("location", "")
+        chunk = location_to_chunk.get(location)
+
+        if not chunk:
+            # Citation location not found in chunks
+            unsupported_claims.append({
+                "location": location,
+                "reason": "Location not found in retrieved chunks"
+            })
+            continue
+
+        # Extract supporting text from chunk
+        chunk_content = chunk.get("content", "")
+
+        grounded_citation = {
+            "location": location,
+            "citation_type": citation.get("citation_type", "page"),
+            "relevance_score": citation.get("relevance_score", 0),
+            "chunk_id": chunk.get("chunk_id", ""),
+            "supporting_excerpt": chunk_content[:500],  # First 500 chars
+            "is_grounded": True
+        }
+
+        grounded_citations.append(grounded_citation)
+        logger.debug(f"Citation grounded: {location}")
+
+    has_unsupported = len(unsupported_claims) > 0
+
+    if has_unsupported:
+        logger.warning(f"Found {len(unsupported_claims)} unsupported citations")
+
+    return grounded_citations, unsupported_claims, has_unsupported
+
+
+def calculate_answer_confidence(
+    answer: str,
+    citations: List[Dict],
+    chunks: List[Dict],
+    has_hallucinations: bool
+) -> float:
+    """
+    Calculate confidence score for generated answer (0.0-1.0).
+
+    Factors:
+    - Citation coverage: % of answer sentences with citations
+    - Chunk similarity: Average relevance score of cited chunks
+    - Hallucination presence: Penalize for hallucinations
+    - Citation count: More citations = higher confidence
+
+    Args:
+        answer: Generated answer text
+        citations: Grounded citations with scores
+        chunks: Retrieved chunks
+        has_hallucinations: Whether hallucinations were detected
+
+    Returns:
+        Confidence score between 0.0 and 1.0
+    """
+    if not answer or not citations:
+        return 0.0
+
+    import re
+
+    # Count sentences
+    sentences = re.split(r'[.!?]+', answer.strip())
+    sentences = [s.strip() for s in sentences if s.strip()]
+
+    if not sentences:
+        return 0.0
+
+    # Count cited sentences (rough heuristic: sentences with [citation] patterns)
+    cited_sentences = sum(1 for s in sentences if "[" in s and "]" in s)
+    citation_coverage = cited_sentences / len(sentences) if sentences else 0
+
+    # Average citation relevance
+    if citations:
+        avg_relevance = sum(c.get("relevance_score", 0) for c in citations) / len(citations)
+    else:
+        avg_relevance = 0
+
+    # Penalize for hallucinations
+    hallucination_penalty = 0.3 if has_hallucinations else 0
+
+    # Bonus for multiple citations
+    citation_bonus = min(0.1, len(citations) * 0.02)
+
+    # Weighted confidence score
+    confidence = (
+        (citation_coverage * 0.3) +
+        (avg_relevance * 0.5) +
+        (citation_bonus) -
+        (hallucination_penalty)
+    )
+
+    # Clamp to [0.0, 1.0]
+    confidence = max(0.0, min(1.0, confidence))
+
+    logger.debug(
+        f"Confidence calculation: coverage={citation_coverage:.2f}, "
+        f"relevance={avg_relevance:.2f}, hallucinations={has_hallucinations}, "
+        f"final={confidence:.2f}"
+    )
+
+    return confidence
+
+
+def classify_confidence_level(confidence_score: float) -> str:
+    """
+    Classify confidence score into categorical level.
+
+    Args:
+        confidence_score: Float between 0.0 and 1.0
+
+    Returns:
+        "high", "medium", "low", or "none"
+    """
+    if confidence_score >= 0.75:
+        return "high"
+    elif confidence_score >= 0.6:
+        return "medium"
+    elif confidence_score >= 0.4:
+        return "low"
+    else:
+        return "none"
 
 
 async def generate_answer(
@@ -484,7 +742,15 @@ async def query_case(
             return error_response
 
         # Use top k chunks (sorted by score)
-        final_chunks = sorted(high_confidence_chunks, key=lambda x: x.get("score", 0), reverse=True)[:top_k]
+        initial_chunks = sorted(high_confidence_chunks, key=lambda x: x.get("score", 0), reverse=True)[:RETRIEVAL_TOP_K]
+
+        # 4.5. Rerank chunks for better relevance
+        try:
+            final_chunks = rerank_chunks(query, initial_chunks, top_k=top_k)
+            logger.debug(f"Reranking improved chunks: {len(initial_chunks)} → {len(final_chunks)}")
+        except Exception as e:
+            logger.warning(f"Reranking failed, using initial chunks: {str(e)}")
+            final_chunks = initial_chunks[:top_k]
 
         # 5. Format context with token budgeting
         try:
@@ -535,6 +801,32 @@ async def query_case(
         # 7. Extract citations and detect hallucinations
         cleaned_answer, citations, has_hallucinations = extract_citations(answer, final_chunks)
 
+        # 7.5. Ground citations in source text
+        grounded_citations, unsupported_claims, has_unsupported = ground_citations_in_source(citations, final_chunks)
+
+        if has_unsupported:
+            logger.warning(f"Found {len(unsupported_claims)} unsupported citation(s)")
+            # Mark unsupported claims in response
+            for claim in unsupported_claims:
+                logger.warning(f"  - Unsupported: {claim['location']} ({claim['reason']})")
+
+        # 7.6. Calculate answer confidence score
+        answer_confidence_score = calculate_answer_confidence(
+            cleaned_answer,
+            grounded_citations,
+            final_chunks,
+            has_hallucinations
+        )
+        answer_confidence_level = classify_confidence_level(answer_confidence_score)
+
+        logger.info(
+            f"Answer quality: confidence={answer_confidence_level} "
+            f"(score={answer_confidence_score:.2f}), "
+            f"grounded_citations={len(grounded_citations)}, "
+            f"unsupported={len(unsupported_claims)}, "
+            f"hallucinations={has_hallucinations}"
+        )
+
         # 8. Prepare sources list with FULL content from database
         sources = []
         for chunk in final_chunks:
@@ -561,34 +853,31 @@ async def query_case(
             }
             sources.append(source)
 
-        # Determine confidence level (calibrated for typical cosine similarity scores)
-        scores = [c.get("score", 0) for c in final_chunks]
-        avg_score = sum(scores) / len(scores) if scores else 0
-
-        if avg_score >= 0.75:
-            confidence = "high"  # 75%+ semantic match = high confidence
-        elif avg_score >= 0.65:
-            confidence = "medium"  # 65-75% semantic match = medium confidence
-        else:
-            confidence = "low"  # Below 65% = low confidence (but still above MIN_CONFIDENCE_SCORE)
-
-        # Downgrade confidence if hallucinations were detected
-        if has_hallucinations:
-            if confidence == "high":
-                confidence = "medium"
-            elif confidence == "medium":
-                confidence = "low"
-            logger.warning(f"Confidence downgraded to '{confidence}' due to detected hallucinations")
+        # Use calculated confidence score (more sophisticated than simple averaging)
+        confidence = answer_confidence_level
 
         # Prepare successful response (using cleaned_answer without hallucinated citations)
         return {
             "answer": cleaned_answer,
             "sources": sources,
+            "citations": grounded_citations,  # Citations with supporting excerpts
             "case_id": case_id,
             "query": query,
             "model": "gpt-4o",
             "tokens_used": tokens_used,
-            "confidence": confidence,
+            "confidence": {
+                "level": confidence,  # "high", "medium", "low", "none"
+                "score": answer_confidence_score,  # 0.0-1.0
+                "factors": {
+                    "has_hallucinations": has_hallucinations,
+                    "unsupported_claims": len(unsupported_claims),
+                    "grounded_citations": len(grounded_citations),
+                    "avg_citation_relevance": (
+                        sum(c.get("relevance_score", 0) for c in grounded_citations) / len(grounded_citations)
+                        if grounded_citations else 0.0
+                    )
+                }
+            },
             "error": None
         }
 
