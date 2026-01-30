@@ -1,29 +1,22 @@
-"""Multi-format text extraction service for PDFs, DOCX, and TXT files using Docling"""
+"""Multi-format text extraction service for PDFs, DOCX, and TXT files
+
+Supports PyMuPDF for PDFs and python-docx for Word files.
+Note: Docling (https://github.com/DS4SD/docling) is recommended for production
+      with Python 3.10+, as it provides superior table/figure extraction.
+"""
 import logging
 import tempfile
 import os
 from typing import List, Dict
-from docling.document_converter import DocumentConverter
-from pathlib import Path
+import fitz  # PyMuPDF
+from docx import Document as DocxDocument
 
 logger = logging.getLogger(__name__)
-
-# Initialize Docling converter once (expensive operation)
-_CONVERTER = None
-
-
-def _get_converter() -> DocumentConverter:
-    """Get cached Docling converter instance"""
-    global _CONVERTER
-    if _CONVERTER is None:
-        logger.info("Initializing Docling DocumentConverter")
-        _CONVERTER = DocumentConverter()
-    return _CONVERTER
 
 
 def extract_pdf_text(file_bytes: bytes) -> List[Dict[str, str]]:
     """
-    Extract text from PDF file using Docling.
+    Extract text from PDF file using PyMuPDF (fitz).
 
     Args:
         file_bytes: Raw PDF bytes
@@ -40,52 +33,32 @@ def extract_pdf_text(file_bytes: bytes) -> List[Dict[str, str]]:
 
     temp_file = None
     try:
-        # Write to temporary file for Docling processing
+        # Write to temporary file for PyMuPDF processing
         with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
             tmp.write(file_bytes)
             temp_file = tmp.name
 
-        logger.info(f"Extracting text from PDF using Docling ({len(file_bytes)} bytes)")
+        logger.info(f"Extracting text from PDF ({len(file_bytes)} bytes)")
+        pdf_document = fitz.open(temp_file)
 
-        converter = _get_converter()
-        result = converter.convert_single(Path(temp_file))
-        doc = result.document
+        if pdf_document.page_count == 0:
+            raise ValueError("PDF contains no pages or failed to load")
 
-        if not doc:
-            raise ValueError("PDF failed to convert or contains no content")
+        logger.info(f"Loaded {pdf_document.page_count} pages from PDF")
 
         sections = []
-        page_number = 1
-        current_page_text = []
+        for page_idx in range(pdf_document.page_count):
+            page = pdf_document[page_idx]
+            page_text = page.get_text()
 
-        # Extract text from document tree, grouping by page
-        for node in doc.iter_pages():
-            if current_page_text:
-                page_content = "\n".join(current_page_text).strip()
-                if page_content:
-                    sections.append({
-                        "content": page_content,
-                        "location": str(page_number),
-                        "location_type": "page"
-                    })
-                current_page_text = []
-                page_number += 1
-
-            # Extract text from page
-            page_text = node.export_to_markdown()
             if page_text.strip():
-                current_page_text.append(page_text)
-
-        # Don't forget the last page
-        if current_page_text:
-            page_content = "\n".join(current_page_text).strip()
-            if page_content:
                 sections.append({
-                    "content": page_content,
-                    "location": str(page_number),
+                    "content": page_text,
+                    "location": str(page_idx + 1),  # 1-indexed page number
                     "location_type": "page"
                 })
 
+        pdf_document.close()
         logger.info(f"Extracted {len(sections)} pages from PDF")
         return sections
 
@@ -104,13 +77,13 @@ def extract_pdf_text(file_bytes: bytes) -> List[Dict[str, str]]:
 
 def extract_docx_text(file_bytes: bytes) -> List[Dict[str, str]]:
     """
-    Extract text from DOCX (Word) file using Docling.
+    Extract text from DOCX (Word) file using python-docx.
 
     Args:
         file_bytes: Raw DOCX bytes
 
     Returns:
-        List of dicts with keys: content, location (section number), location_type
+        List of dicts with keys: content, location (paragraph number), location_type
 
     Raises:
         ValueError: If DOCX is invalid or empty
@@ -121,36 +94,35 @@ def extract_docx_text(file_bytes: bytes) -> List[Dict[str, str]]:
 
     temp_file = None
     try:
-        # Write to temporary file for Docling processing
+        # Write to temporary file for python-docx processing
         with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
             tmp.write(file_bytes)
             temp_file = tmp.name
 
-        logger.info(f"Extracting text from DOCX using Docling ({len(file_bytes)} bytes)")
+        logger.info(f"Extracting text from DOCX ({len(file_bytes)} bytes)")
+        doc = DocxDocument(temp_file)
 
-        converter = _get_converter()
-        result = converter.convert_single(Path(temp_file))
-        doc = result.document
+        if not doc.paragraphs:
+            raise ValueError("DOCX contains no paragraphs or failed to load")
 
-        if not doc:
-            raise ValueError("DOCX failed to convert or contains no content")
+        logger.info(f"Loaded {len(doc.paragraphs)} paragraphs from DOCX")
 
         sections = []
-        section_counter = 0
+        para_counter = 0
 
-        # Extract structured content from document
-        for node in doc.iter_text_paragraphs():
-            para_text = node.export_to_markdown().strip()
+        for para in doc.paragraphs:
+            para_text = para.text.strip()
 
+            # Skip empty paragraphs but count them for location tracking
             if para_text:
-                section_counter += 1
+                para_counter += 1
                 sections.append({
                     "content": para_text,
-                    "location": f"para {section_counter}",
+                    "location": f"para {para_counter}",  # Paragraph number
                     "location_type": "paragraph"
                 })
 
-        logger.info(f"Extracted {len(sections)} sections from DOCX")
+        logger.info(f"Extracted {len(sections)} non-empty paragraphs from DOCX")
         return sections
 
     except Exception as e:
