@@ -481,6 +481,166 @@ def ground_citations_in_source(
     return grounded_citations, unsupported_claims, has_unsupported
 
 
+def _calculate_citation_coverage(answer: str, citations: List[Dict]) -> float:
+    """Calculate percentage of answer with citation support (0.0-1.0)"""
+    if not answer or not citations:
+        return 0.0
+
+    import re
+    sentences = re.split(r'[.!?]+', answer.strip())
+    sentences = [s.strip() for s in sentences if s.strip()]
+
+    if not sentences:
+        return 0.0
+
+    cited_sentences = 0
+    for sentence in sentences:
+        for citation in citations:
+            location = citation.get("location", "")
+            if location and location in sentence:
+                cited_sentences += 1
+                break
+
+    return min(1.0, cited_sentences / len(sentences))
+
+
+def _calculate_average_relevance(citations: List[Dict]) -> float:
+    """Calculate average relevance score of citations (0.0-1.0)"""
+    if not citations:
+        return 0.0
+
+    scores = [c.get("relevance_score", 0.0) for c in citations]
+    return sum(scores) / len(scores) if scores else 0.0
+
+
+def _format_relevance_level(score: float) -> str:
+    """Convert relevance score to descriptive level"""
+    if score >= 0.85:
+        return "excellent"
+    elif score >= 0.70:
+        return "good"
+    elif score >= 0.55:
+        return "moderate"
+    else:
+        return "weak"
+
+
+def _generate_confidence_summary(
+    overall_score: float,
+    citation_coverage: float,
+    avg_relevance: float,
+    citation_count: int,
+    has_hallucinations: bool
+) -> str:
+    """Generate human-readable summary of confidence factors"""
+    rating = "high" if overall_score >= 0.75 else "medium" if overall_score >= 0.60 else "low"
+
+    factors = []
+
+    if citation_coverage > 0.8:
+        factors.append("strong citation coverage")
+    elif citation_coverage > 0.5:
+        factors.append("partial citation coverage")
+    else:
+        factors.append("limited citation coverage")
+
+    if avg_relevance >= 0.85:
+        factors.append("highly relevant sources")
+    elif avg_relevance >= 0.70:
+        factors.append("moderately relevant sources")
+    else:
+        factors.append("weak source relevance")
+
+    if citation_count >= 3:
+        factors.append("multiple supporting citations")
+    elif citation_count > 0:
+        factors.append("single source citation")
+
+    if has_hallucinations:
+        factors.append("potential unsupported claims")
+
+    if rating == "high":
+        return f"High confidence answer with {', '.join(factors)}."
+    elif rating == "medium":
+        return f"Medium confidence answer with {', '.join(factors)}."
+    else:
+        return f"Low confidence answer due to {', '.join(factors)}."
+
+
+def explain_confidence_score(
+    answer: str,
+    citations: List[Dict],
+    has_hallucinations: bool,
+    confidence_score: float
+) -> Dict:
+    """
+    Generate structured explanation for confidence score with factor breakdown.
+
+    Args:
+        answer: Generated answer text
+        citations: Grounded citations with scores
+        has_hallucinations: Whether hallucinations were detected
+        confidence_score: Overall confidence score (0.0-1.0)
+
+    Returns:
+        Dict with overall_score, rating, factors, and summary
+    """
+    # Calculate individual factors
+    citation_coverage = _calculate_citation_coverage(answer, citations)
+    avg_relevance = _calculate_average_relevance(citations)
+    citation_count = len(citations)
+
+    # Hallucination risk (1.0 if no hallucinations, lower if hallucinations present)
+    hallucination_risk = 0.0 if has_hallucinations else 1.0
+
+    # Citation quantity factor (scales with number of citations)
+    citation_quantity_score = min(1.0, citation_count / 3.0)
+
+    # Determine rating
+    if confidence_score >= 0.75:
+        rating = "high"
+    elif confidence_score >= 0.60:
+        rating = "medium"
+    else:
+        rating = "low"
+
+    # Build factor explanations
+    factors = {
+        "citation_coverage": {
+            "score": citation_coverage,
+            "explanation": f"{int(citation_coverage * 100)}% of answer is supported by citations"
+        },
+        "source_relevance": {
+            "score": avg_relevance,
+            "explanation": f"Source relevance is {_format_relevance_level(avg_relevance)}"
+        },
+        "hallucination_risk": {
+            "score": hallucination_risk,
+            "explanation": "Potential unsupported claims detected" if has_hallucinations else "No unsupported claims detected"
+        },
+        "citation_quantity": {
+            "score": citation_quantity_score,
+            "explanation": f"{citation_count} supporting citations provided"
+        }
+    }
+
+    # Generate summary
+    summary = _generate_confidence_summary(
+        confidence_score,
+        citation_coverage,
+        avg_relevance,
+        citation_count,
+        has_hallucinations
+    )
+
+    return {
+        "overall_score": confidence_score,
+        "rating": rating,
+        "factors": factors,
+        "summary": summary
+    }
+
+
 def calculate_answer_confidence(
     answer: str,
     citations: List[Dict],
@@ -856,6 +1016,14 @@ async def query_case(
         # Use calculated confidence score (more sophisticated than simple averaging)
         confidence = answer_confidence_level
 
+        # Generate confidence explanation (NEW)
+        confidence_explanation = explain_confidence_score(
+            answer=cleaned_answer,
+            citations=grounded_citations,
+            has_hallucinations=has_hallucinations,
+            confidence_score=answer_confidence_score
+        )
+
         # Prepare successful response (using cleaned_answer without hallucinated citations)
         return {
             "answer": cleaned_answer,
@@ -878,6 +1046,7 @@ async def query_case(
                     )
                 }
             },
+            "confidence_explanation": confidence_explanation,
             "error": None
         }
 

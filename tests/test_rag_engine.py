@@ -466,3 +466,118 @@ class TestIntegration:
             assert "chunk_id" in source
             assert "page_num" in source
             assert "relevance_score" in source
+
+
+class TestConfidenceExplanation:
+    """Test confidence explanation feature"""
+
+    def test_explain_confidence_high_score(self):
+        """High confidence should show positive factors"""
+        from backend.services.rag_engine import explain_confidence_score
+
+        explanation = explain_confidence_score(
+            answer="Payment is due in 30 days [Page 5].",
+            citations=[
+                {
+                    "location": "Page 5",
+                    "relevance_score": 0.88,
+                    "is_grounded": True,
+                    "supporting_excerpt": "Payment due..."
+                }
+            ],
+            has_hallucinations=False,
+            confidence_score=0.82
+        )
+
+        assert explanation["overall_score"] == 0.82
+        assert explanation["rating"] == "high"
+        assert "factors" in explanation
+        assert "citation_coverage" in explanation["factors"]
+        assert "source_relevance" in explanation["factors"]
+        assert "hallucination_risk" in explanation["factors"]
+        assert "citation_quantity" in explanation["factors"]
+
+    def test_explain_confidence_medium_score(self):
+        """Medium confidence (0.65) shows mixed results"""
+        from backend.services.rag_engine import explain_confidence_score
+
+        explanation = explain_confidence_score(
+            answer="Payment terms [Page 3].",
+            citations=[
+                {
+                    "location": "Page 3",
+                    "relevance_score": 0.75,
+                    "is_grounded": True,
+                    "supporting_excerpt": "..."
+                }
+            ],
+            has_hallucinations=False,
+            confidence_score=0.65
+        )
+
+        assert explanation["rating"] == "medium"
+        assert explanation["overall_score"] == 0.65
+
+    def test_explain_confidence_low_with_hallucinations(self):
+        """Low confidence with hallucinations should show in factors"""
+        from backend.services.rag_engine import explain_confidence_score
+
+        explanation = explain_confidence_score(
+            answer="Some claim without citation.",
+            citations=[],
+            has_hallucinations=True,
+            confidence_score=0.42
+        )
+
+        assert explanation["rating"] == "low"
+        assert explanation["factors"]["hallucination_risk"]["score"] < 1.0
+
+    def test_explain_confidence_multiple_citations(self):
+        """Multiple citations contribute to higher citation quantity factor"""
+        from backend.services.rag_engine import explain_confidence_score
+
+        explanation = explain_confidence_score(
+            answer="A [Page 1]. B [Page 3]. C [Page 5].",
+            citations=[
+                {"location": f"Page {p}", "relevance_score": 0.85, "is_grounded": True, "supporting_excerpt": "..."}
+                for p in [1, 3, 5]
+            ],
+            has_hallucinations=False,
+            confidence_score=0.85
+        )
+
+        # Citation quantity should reflect 3 citations
+        quantity_explanation = explanation["factors"]["citation_quantity"]["explanation"]
+        assert "3" in quantity_explanation
+
+    def test_explain_confidence_factor_scores_normalized(self):
+        """All factor scores should be 0.0-1.0"""
+        from backend.services.rag_engine import explain_confidence_score
+
+        explanation = explain_confidence_score(
+            answer="Test [Page 1].",
+            citations=[{"location": "Page 1", "relevance_score": 0.8, "is_grounded": True, "supporting_excerpt": "..."}],
+            has_hallucinations=False,
+            confidence_score=0.78
+        )
+
+        for factor_name, factor_data in explanation["factors"].items():
+            score = factor_data["score"]
+            assert isinstance(score, (int, float)), f"{factor_name} score not numeric"
+            assert 0.0 <= score <= 1.0, f"{factor_name} score {score} out of bounds"
+
+    def test_explain_confidence_has_summary_text(self):
+        """Summary should be human-readable non-empty string"""
+        from backend.services.rag_engine import explain_confidence_score
+
+        explanation = explain_confidence_score(
+            answer="Payment due [Page 5].",
+            citations=[{"location": "Page 5", "relevance_score": 0.87, "is_grounded": True, "supporting_excerpt": "..."}],
+            has_hallucinations=False,
+            confidence_score=0.80
+        )
+
+        assert "summary" in explanation
+        summary = explanation["summary"]
+        assert isinstance(summary, str)
+        assert len(summary) > 10
