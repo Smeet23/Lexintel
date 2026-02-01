@@ -24,6 +24,7 @@ except ImportError:
 try:
     from backend.services.embeddings import embed_text
     from backend.services.vector_store import search_vectors
+    from backend.services.document_summary import generate_document_summary
     from backend.models import Case, Query, Chunk
     from backend.config import get_settings
     from backend.exceptions import QueryProcessingException, EmbeddingException, VectorStoreException
@@ -31,12 +32,14 @@ except ImportError:
     try:
         from services.embeddings import embed_text
         from services.vector_store import search_vectors
+        from services.document_summary import generate_document_summary
         from models import Case, Query, Chunk
         from config import get_settings
         from exceptions import QueryProcessingException, EmbeddingException, VectorStoreException
     except ImportError:
         from .services.embeddings import embed_text
         from .services.vector_store import search_vectors
+        from .services.document_summary import generate_document_summary
         from .models import Case, Query, Chunk
         from .config import get_settings
         from .exceptions import QueryProcessingException, EmbeddingException, VectorStoreException
@@ -1024,6 +1027,9 @@ async def query_case(
             confidence_score=answer_confidence_score
         )
 
+        # Generate document summary (NEW)
+        doc_summary = generate_document_summary(case)
+
         # Prepare successful response (using cleaned_answer without hallucinated citations)
         return {
             "answer": cleaned_answer,
@@ -1047,6 +1053,7 @@ async def query_case(
                 }
             },
             "confidence_explanation": confidence_explanation,
+            "source_document": doc_summary,  # NEW FIELD
             "error": None
         }
 
