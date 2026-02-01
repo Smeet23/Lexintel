@@ -49,7 +49,7 @@ LexIntel is a legal document Retrieval-Augmented Generation (RAG) system built w
 |-----------|---------|---------|---------|
 | **PyMuPDF** | 1.24.0 | PDF Processing | PDF text extraction and manipulation |
 | **Python-docx** | 1.1.0 | DOCX Processing | Microsoft Word document parsing |
-| **Docling** | (integrated) | Multi-format Support | Universal document parser for various formats |
+| **Docling** | Not included | Multi-format Support | Recommended for production (Python 3.10+); currently uses PyMuPDF + python-docx |
 
 ### Cloud Storage
 
@@ -71,7 +71,7 @@ LexIntel is a legal document Retrieval-Augmented Generation (RAG) system built w
 | Technology | Version | Purpose | Details |
 |-----------|---------|---------|---------|
 | **Python-jose** | 3.3.0 | JWT Handling | JWT creation and verification |
-| **Passlib** | 1.7.4 | Password Hashing | Password hashing utilities |
+| **Passlib** | 1.7.4 | Password Hashing | Password hashing utilities (Note: Consider upgrading to latest version) |
 | **Bcrypt** | 4.1.1 | Cryptographic Hash | Strong password hashing algorithm |
 | **Email-validator** | 2.1.0 | Email Validation | RFC 5321/5322 compliant email validation |
 
@@ -200,8 +200,9 @@ Volumes: redis_data
 
 **Purpose:** Celery message broker and result backend, query caching
 **Storage:** Persistent volume (redis_data)
-**Broker URL:** redis://redis:6379/0
-**Result Backend:** redis://redis:6379/1
+**Database Configuration:**
+- **Database 0 (redis://redis:6379/0):** Celery task queue broker - stores pending task messages
+- **Database 1 (redis://redis:6379/1):** Celery result backend - stores completed task results and status
 
 #### Azurite (Azure Storage Emulator)
 ```yaml
@@ -213,6 +214,9 @@ Command: azurite-blob --blobHost 0.0.0.0 --blobPort 10000
 
 **Purpose:** Local development alternative to Azure Blob Storage
 **Storage:** Persistent volume (azurite_data)
+**Port Details:**
+- **Port 10000:** Blob storage service (used by application)
+- **Port 10001:** Queue storage service
 
 #### FastAPI Backend
 ```yaml
@@ -308,10 +312,12 @@ AZURE_STORAGE_CONNECTION_STRING=...
 
 #### Message Broker Configuration
 ```
-CELERY_BROKER_URL=redis://redis:6379/0
-CELERY_RESULT_BACKEND=redis://redis:6379/1
-REDIS_URL=redis://localhost:6379/0
+CELERY_BROKER_URL=redis://redis:6379/0           # Database 0: task queue
+CELERY_RESULT_BACKEND=redis://redis:6379/1       # Database 1: task results
+REDIS_URL=redis://localhost:6379/0                # Cache URL (typically uses Database 0)
 ```
+
+**Note:** Two-database setup isolates task messages (DB 0) from task results (DB 1) to prevent conflicts
 
 #### Security Configuration
 ```
@@ -322,10 +328,15 @@ ACCESS_TOKEN_EXPIRE_MINUTES=1440
 
 #### CORS Configuration
 ```
-ALLOWED_ORIGINS=http://localhost:3000
+ALLOWED_ORIGINS=http://localhost:3000,https://yourdomain.com
 ```
 
-Comma-separated list of allowed frontend origins for CORS
+**Format:** Comma-separated list (no spaces) of allowed frontend origins for CORS
+
+**Examples:**
+- Single origin: `http://localhost:3000`
+- Multiple origins: `http://localhost:3000,https://app.example.com,https://staging.example.com`
+- Production: `https://yourdomain.com` (no localhost)
 
 #### Application Environment
 ```
@@ -338,6 +349,16 @@ ENVIRONMENT=development | production
 CACHE_ENABLED=True
 CACHE_TTL_SECONDS=86400
 ```
+
+#### Frontend Environment Variables
+```
+NEXT_PUBLIC_API_URL=http://localhost:8000 (development) | https://api.yourdomain.com (production)
+```
+
+**Note:** Frontend environment variables must be prefixed with `NEXT_PUBLIC_` to be accessible in the browser. This is the API endpoint for backend communication.
+
+**Development:** http://localhost:8000
+**Production:** https://yourdomain.com/api or dedicated API domain
 
 ### Settings Class (Backend)
 
@@ -469,11 +490,18 @@ GET    /redoc                          - ReDoc API documentation
 
 **Current:** Node 18-alpine (in Dockerfile)
 
+**Node.js 18 Rationale:**
+- Long-term support (LTS) until April 2025
+- Stable and widely tested in production systems
+- Better performance than Node 16, maintains compatibility
+- Node 20 LTS available; upgrade path after Next.js 14 stabilizes further
+- Alpine variant minimizes container size (~150MB vs ~350MB with full image)
+
 ### Database Compatibility
 
 | Component | Minimum Version | Recommended | Maximum |
 |-----------|-----------------|-------------|---------|
-| **PostgreSQL** | 12 | 14 | 16 |
+| **PostgreSQL** | 14 | 14 | 16 |
 | **Qdrant** | 1.0 | 1.7.0 | 2.0+ |
 | **Redis** | 6.0 | 7.0 | 7.2+ |
 
@@ -517,7 +545,7 @@ GET    /redoc                          - ReDoc API documentation
 
 | Metric | Value | Conditions | Notes |
 |--------|-------|-----------|-------|
-| **Concurrent Users** | 50+ | Development | Limited by resources |
+| **Concurrent Users** | 50+ | Development (4-core machine, 8GB RAM) | Limited by resources |
 | **Requests/sec** | 100+ | Simple queries | Depends on endpoint |
 | **Documents/case** | 100+ | Unlimited in design | Storage limited |
 | **Queries/day** | Unlimited | Rate limited by OpenAI quota | Batch processing supported |
@@ -529,7 +557,7 @@ GET    /redoc                          - ReDoc API documentation
 | Component | Storage Per Unit | Growth Rate | Notes |
 |-----------|------------------|-------------|-------|
 | **PostgreSQL** | ~50KB per case | Linear with cases | Indexed metadata |
-| **Qdrant Vectors** | ~12KB per document | Linear with docs | 1536 dims × 8 bytes (float32) |
+| **Qdrant Vectors** | ~24KB per document | Linear with docs | 3072 dims × 8 bytes (float32) |
 | **Blob Storage** | 100% of file size | Linear with docs | PDF, DOCX, TXT support |
 | **Redis Cache** | Variable | TTL-based eviction | 24hr default TTL |
 | **Vector Index** | 2-3x of vectors | Index overhead | Depends on similarity metric |
