@@ -8,8 +8,10 @@ import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 
 interface DocumentUploaderProps {
-  caseId: string
+  caseId?: string
   onUploadComplete?: (document: UploadedDocument) => void
+  onFileSelect?: (file: File) => void
+  localOnly?: boolean  // If true, just select file locally without uploading
 }
 
 interface UploadedDocument {
@@ -25,7 +27,7 @@ const ALLOWED_TYPES = [
   'text/plain',
 ]
 
-export default function DocumentUploader({ caseId, onUploadComplete }: DocumentUploaderProps) {
+export default function DocumentUploader({ caseId, onUploadComplete, onFileSelect, localOnly = false }: DocumentUploaderProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -76,6 +78,14 @@ export default function DocumentUploader({ caseId, onUploadComplete }: DocumentU
       const validationError = validateFile(file)
       if (validationError) {
         setError(validationError)
+        return
+      }
+
+      // If localOnly mode, just pass file to parent without uploading
+      if (localOnly) {
+        onFileSelect?.(file)
+        setSuccess('File selected')
+        setTimeout(() => setSuccess(null), 2000)
         return
       }
 

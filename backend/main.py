@@ -1,10 +1,14 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Header, File, UploadFile, Form, Body
+from fastapi import FastAPI, Depends, HTTPException, status, Header, File, UploadFile, Form, Body, Query as QueryParam
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 from uuid import UUID
 import uuid
+import json
 import logging
+import asyncio
+import redis.asyncio as aioredis
+from sse_starlette.sse import EventSourceResponse
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +21,7 @@ try:
     from backend.services.storage import upload_document_to_blob, validate_file_format
     from backend.services.rag_engine import query_case
     from backend.validators import validate_filename, validate_case_name, validate_question, validate_file_type
+    from backend.services.progress import publish_uploaded
 except ImportError:
     try:
         from config import get_settings
@@ -27,6 +32,7 @@ except ImportError:
         from services.storage import upload_document_to_blob, validate_file_format
         from services.rag_engine import query_case
         from validators import validate_filename, validate_case_name, validate_question, validate_file_type
+        from services.progress import publish_uploaded
     except ImportError:
         from .config import get_settings
         from .database import get_db
@@ -36,6 +42,7 @@ except ImportError:
         from .services.storage import upload_document_to_blob, validate_file_format
         from .services.rag_engine import query_case
         from .validators import validate_filename, validate_case_name, validate_question, validate_file_type
+        from .services.progress import publish_uploaded
 
 settings = get_settings()
 
@@ -289,6 +296,9 @@ async def upload_case(
         db.commit()
         db.refresh(case)
 
+        # Publish "uploaded" progress event
+        publish_uploaded(str(case_id), file.filename or "document")
+
         # Send document processing task to Celery queue
         try:
             from .celery_app import celery_app
@@ -430,6 +440,118 @@ async def get_case_status(
         "status": case.status,
         "created_at": case.created_at.isoformat()
     }
+
+
+# ============================================
+# SSE PROGRESS STREAMING ENDPOINT
+# ============================================
+
+@app.get("/cases/{case_id}/progress")
+async def case_progress_stream(
+    case_id: str,
+    token: str = QueryParam(None),
+    authorization: str = Header(None),
+    db: Session = Depends(get_db)
+):
+    """
+    SSE endpoint for real-time document processing progress updates.
+
+    Subscribes to Redis pub/sub channel and streams progress events to the client.
+    Accepts authentication via either Authorization header or token query param
+    (for EventSource which doesn't support custom headers).
+    """
+    # Handle auth from query param (for EventSource) or header
+    auth_token = None
+    if authorization:
+        try:
+            scheme, auth_token = authorization.split(" ")
+            if scheme.lower() != "bearer":
+                auth_token = None
+        except (ValueError, IndexError):
+            pass
+
+    if not auth_token and token:
+        auth_token = token
+
+    if not auth_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing authentication token"
+        )
+
+    # Verify token
+    user_id = decode_token(auth_token)
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token"
+        )
+
+    # Validate case ID
+    try:
+        case_uuid = UUID(case_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid case ID format"
+        )
+
+    # Check case exists and user owns it
+    case = db.query(Case).filter(Case.id == case_uuid).first()
+    if not case:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Case not found"
+        )
+
+    if case.user_id != UUID(user_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access this case"
+        )
+
+    async def event_generator():
+        """Generate SSE events from Redis pub/sub."""
+        redis_client = await aioredis.from_url(
+            settings.celery_broker_url,
+            decode_responses=True
+        )
+        pubsub = redis_client.pubsub()
+        channel = f"lexintel:case:{case_id}:progress"
+
+        try:
+            await pubsub.subscribe(channel)
+            logger.info(f"SSE client subscribed to {channel}")
+
+            # Send initial connection event
+            yield {
+                "event": "connected",
+                "data": json.dumps({"case_id": case_id, "status": "connected"})
+            }
+
+            # Listen for messages
+            async for message in pubsub.listen():
+                if message["type"] == "message":
+                    data = message["data"]
+                    yield {"event": "progress", "data": data}
+
+                    # Check if processing is complete
+                    try:
+                        parsed = json.loads(data)
+                        if parsed.get("stage") in ("ready", "error"):
+                            logger.info(f"SSE stream ending for {channel}: {parsed.get('stage')}")
+                            break
+                    except json.JSONDecodeError:
+                        pass
+
+        except asyncio.CancelledError:
+            logger.info(f"SSE client disconnected from {channel}")
+        finally:
+            await pubsub.unsubscribe(channel)
+            await pubsub.close()
+            await redis_client.close()
+
+    return EventSourceResponse(event_generator())
 
 
 if __name__ == "__main__":

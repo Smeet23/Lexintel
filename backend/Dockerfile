@@ -49,5 +49,8 @@ USER appuser
 HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Run migrations and start app
-CMD ["sh", "-c", "python -m alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000"]
+# Set PYTHONPATH for module imports
+ENV PYTHONPATH=/app
+
+# Run migrations and start app (run alembic from /app since alembic.ini uses backend/alembic path)
+CMD ["sh", "-c", "cd /app && python -m alembic -c backend/alembic.ini upgrade head && uvicorn backend.main:app --host 0.0.0.0 --port 8000"]

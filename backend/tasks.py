@@ -2,29 +2,38 @@
 import logging
 from datetime import datetime, timezone
 from uuid import UUID
+from celery import shared_task
 
 # Handle both module import styles
 try:
-    from backend.celery_app import celery_app
     from backend.database import get_session_factory
     from backend.models import Case, Chunk
     from backend.services.storage import download_document_from_blob
     from backend.services.chunking import chunk_document_from_blob
     from backend.services.embeddings import embed_chunks
     from backend.services.vector_store import upsert_vectors, create_collection
+    from backend.services.progress import (
+        publish_downloading, publish_chunking, publish_embedding,
+        publish_indexing, publish_storing, publish_ready,
+        publish_error, publish_retrying
+    )
 except ImportError:
-    from celery_app import celery_app
     from database import get_session_factory
     from models import Case, Chunk
     from services.storage import download_document_from_blob
     from services.chunking import chunk_document_from_blob
     from services.embeddings import embed_chunks
     from services.vector_store import upsert_vectors, create_collection
+    from services.progress import (
+        publish_downloading, publish_chunking, publish_embedding,
+        publish_indexing, publish_storing, publish_ready,
+        publish_error, publish_retrying
+    )
 
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(
+@shared_task(
     bind=True,
     max_retries=3,
     default_retry_delay=5,
@@ -61,11 +70,14 @@ def process_document_task(self, case_id: str):
 
         # 1. Download document from blob storage
         logger.info(f"[Task {self.request.id}] Downloading {file_type.upper()} from {case.blob_storage_path}")
+        publish_downloading(case_id)
         document_content = download_document_from_blob(case.blob_storage_path)
 
         # 2. Chunk document
         logger.info(f"[Task {self.request.id}] Chunking {file_type.upper()}")
+        publish_chunking(case_id, progress=0)
         chunks = chunk_document_from_blob(document_content, file_type=file_type)
+        publish_chunking(case_id, progress=100, current=len(chunks), total=len(chunks))
         logger.info(f"[Task {self.request.id}] Created {len(chunks)} chunks")
 
         if not chunks:
@@ -74,13 +86,28 @@ def process_document_task(self, case_id: str):
         # 3. Extract content for embeddings
         chunk_contents = [chunk["content"] for chunk in chunks]
 
-        # 4. Generate embeddings
+        # 4. Generate embeddings (with progress updates)
         logger.info(f"[Task {self.request.id}] Generating embeddings for {len(chunks)} chunks")
-        embeddings = embed_chunks(chunk_contents)
+        publish_embedding(case_id, progress=0, current=0, total=len(chunks))
+
+        # Process embeddings in batches for progress reporting
+        embeddings = []
+        batch_size = 20
+        for i in range(0, len(chunk_contents), batch_size):
+            batch = chunk_contents[i:i + batch_size]
+            batch_embeddings = embed_chunks(batch)
+            embeddings.extend(batch_embeddings)
+
+            # Update progress
+            processed = min(i + batch_size, len(chunk_contents))
+            progress = int((processed / len(chunk_contents)) * 100)
+            publish_embedding(case_id, progress=progress, current=processed, total=len(chunks))
 
         # 5. Create Qdrant collection
         logger.info(f"[Task {self.request.id}] Creating vector collection")
+        publish_indexing(case_id, progress=0, detail="Creating collection...")
         create_collection(case_id)
+        publish_indexing(case_id, progress=30, detail="Collection created")
 
         # 6. Add IDs to chunks
         chunks_with_ids = []
@@ -90,14 +117,17 @@ def process_document_task(self, case_id: str):
 
         # 7. Store vectors in Qdrant
         logger.info(f"[Task {self.request.id}] Upserting vectors to Qdrant")
+        publish_indexing(case_id, progress=50, detail="Upserting vectors...")
         upsert_vectors(
             case_id=case_id,
             chunks=chunks_with_ids,
             embeddings=embeddings
         )
+        publish_indexing(case_id, progress=100, detail=f"{len(chunks)} vectors indexed")
 
         # 8. Store chunk metadata in PostgreSQL
         logger.info(f"[Task {self.request.id}] Storing chunks in database")
+        publish_storing(case_id)
         for idx, chunk in enumerate(chunks):
             db_chunk = Chunk(
                 case_id=UUID(case_id),
@@ -113,6 +143,9 @@ def process_document_task(self, case_id: str):
         case.updated_at = datetime.now(timezone.utc)
         db.commit()
 
+        # Publish ready event
+        publish_ready(case_id, len(chunks))
+
         logger.info(f"[Task {self.request.id}] Successfully processed case {case_id}")
         return {
             "status": "success",
@@ -123,7 +156,17 @@ def process_document_task(self, case_id: str):
     except Exception as exc:
         logger.error(f"[Task {self.request.id}] Error processing case {case_id}: {str(exc)}", exc_info=True)
 
-        # Update case status to error
+        retry_count = self.request.retries
+        max_retries = self.max_retries
+
+        # Check if we should retry
+        if retry_count < max_retries:
+            # Publish retrying event
+            publish_retrying(case_id, retry_count + 1, max_retries, str(exc))
+            logger.info(f"[Task {self.request.id}] Retrying case {case_id} (attempt {retry_count + 1}/{max_retries})")
+            raise self.retry(exc=exc)
+
+        # Max retries exceeded - update case status to error
         try:
             case = db.query(Case).filter(Case.id == UUID(case_id)).first()
             if case:
@@ -132,17 +175,16 @@ def process_document_task(self, case_id: str):
         except Exception as e:
             logger.error(f"Failed to update case status: {str(e)}")
 
-        # Retry with exponential backoff
-        try:
-            raise self.retry(exc=exc)
-        except self.MaxRetriesExceededError:
-            logger.error(f"[Task {self.request.id}] Max retries exceeded for case {case_id}")
-            return {
-                "status": "failed",
-                "case_id": case_id,
-                "error": str(exc),
-                "retries_exhausted": True
-            }
+        # Publish error event
+        publish_error(case_id, str(exc), retry_count)
+
+        logger.error(f"[Task {self.request.id}] Max retries exceeded for case {case_id}")
+        return {
+            "status": "failed",
+            "case_id": case_id,
+            "error": str(exc),
+            "retries_exhausted": True
+        }
 
     finally:
         db.close()

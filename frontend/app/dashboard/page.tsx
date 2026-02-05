@@ -1,29 +1,37 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import { useMutation } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { AlertCircle, CheckCircle, Lock } from 'lucide-react'
 import DocumentUploader from '@/components/document-uploader'
+import ProcessingModal from '@/components/processing-modal'
+import CasesList from '@/components/cases-list'
 import { formatFileSize } from '@/lib/document-utils'
 import apiClient from '@/lib/api'
 
 const MIN_CASE_NAME_LENGTH = 2
 const MAX_CASE_NAME_LENGTH = 255
 
-interface ValidationError {
-  field: string
-  message: string
+interface ProcessingModalState {
+  isOpen: boolean
+  caseId: string | null
+  fileName: string
 }
 
 export default function Dashboard() {
-  const router = useRouter()
+  const queryClient = useQueryClient()
   const [caseName, setCaseName] = useState('')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [processingModal, setProcessingModal] = useState<ProcessingModalState>({
+    isOpen: false,
+    caseId: null,
+    fileName: '',
+  })
 
   const uploadMutation = useMutation({
     mutationFn: async (formData: FormData) => {
@@ -35,7 +43,20 @@ export default function Dashboard() {
       return response.data
     },
     onSuccess: (data) => {
-      router.push(`/cases/${data.id}`)
+      // Open processing modal instead of redirecting
+      setProcessingModal({
+        isOpen: true,
+        caseId: data.id,
+        fileName: selectedFile?.name || 'Document',
+      })
+
+      // Reset form
+      setCaseName('')
+      setSelectedFile(null)
+      setErrors({})
+
+      // Invalidate cases query to refresh the list
+      queryClient.invalidateQueries({ queryKey: ['cases'] })
     },
     onError: (err: any) => {
       setErrors({
@@ -105,10 +126,23 @@ export default function Dashboard() {
     }
 
     const formData = new FormData()
-    formData.append('case_name', caseName)
+    formData.append('name', caseName)
     formData.append('file', selectedFile!)
 
     uploadMutation.mutate(formData)
+  }
+
+  const handleProcessingComplete = () => {
+    // Refresh the cases list when processing completes
+    queryClient.invalidateQueries({ queryKey: ['cases'] })
+  }
+
+  const handleViewProgress = (caseId: string, fileName: string) => {
+    setProcessingModal({
+      isOpen: true,
+      caseId,
+      fileName,
+    })
   }
 
   const isFormValid =
@@ -119,9 +153,9 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 py-12 px-4">
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-4xl mx-auto space-y-8">
         {/* Header */}
-        <div className="mb-12 text-center">
+        <div className="text-center">
           <div className="inline-flex items-center justify-center w-14 h-14 bg-blue-100 rounded-full mb-4">
             <Lock className="w-7 h-7 text-blue-600" />
           </div>
@@ -129,7 +163,7 @@ export default function Dashboard() {
           <p className="text-xl text-gray-600">Legal Document Analysis Platform</p>
         </div>
 
-        {/* Main Card */}
+        {/* Main Upload Card */}
         <div className="bg-white rounded-2xl shadow-lg p-8 md:p-10">
           <form onSubmit={handleSubmit} className="space-y-8">
             {/* Title */}
@@ -187,7 +221,7 @@ export default function Dashboard() {
             {/* Document Upload */}
             <div className="space-y-3">
               <label className="block text-sm font-semibold text-gray-900">Upload Document</label>
-              <DocumentUploader caseId="temp" onUploadComplete={handleFileSelect} />
+              <DocumentUploader localOnly onFileSelect={handleFileSelect} />
               {errors.file && (
                 <div className="text-sm text-red-600 flex items-center gap-2 font-medium">
                   <AlertCircle className="w-4 h-4" />
@@ -239,7 +273,7 @@ export default function Dashboard() {
               {uploadMutation.isPending ? (
                 <div className="flex items-center justify-center gap-2">
                   <span className="inline-block w-5 h-5 border-3 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>Processing...</span>
+                  <span>Uploading...</span>
                 </div>
               ) : (
                 <span>Upload & Analyze Document</span>
@@ -257,13 +291,28 @@ export default function Dashboard() {
           </form>
         </div>
 
+        {/* Cases List */}
+        <CasesList onViewProgress={handleViewProgress} />
+
         {/* Footer */}
-        <div className="text-center mt-8 text-sm text-gray-600">
+        <div className="text-center text-sm text-gray-600">
           <p>
-            Need help? Visit our <a href="#" className="text-blue-600 hover:underline font-medium">documentation</a>
+            Need help? Visit our{' '}
+            <a href="#" className="text-blue-600 hover:underline font-medium">
+              documentation
+            </a>
           </p>
         </div>
       </div>
+
+      {/* Processing Modal */}
+      <ProcessingModal
+        isOpen={processingModal.isOpen}
+        onClose={() => setProcessingModal((prev) => ({ ...prev, isOpen: false }))}
+        caseId={processingModal.caseId}
+        fileName={processingModal.fileName}
+        onComplete={handleProcessingComplete}
+      />
     </div>
   )
 }

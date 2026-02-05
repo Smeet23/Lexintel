@@ -31,14 +31,15 @@ apiClient.interceptors.response.use(
     return response;
   },
   (error) => {
-    if (error.response?.status === 401) {
-      // Clear token from localStorage
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('access_token');
-        // Redirect to login page
-        window.location.href = '/login';
-      }
-    }
+    // TODO: Re-enable after testing - disabled to allow auto-login to complete
+    // if (error.response?.status === 401) {
+    //   // Clear token from localStorage
+    //   if (typeof window !== 'undefined') {
+    //     localStorage.removeItem('access_token');
+    //     // Redirect to login page
+    //     window.location.href = '/auth/login';
+    //   }
+    // }
     return Promise.reject(error);
   }
 );

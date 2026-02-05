@@ -1,6 +1,11 @@
 """Celery application for async task processing"""
 from celery import Celery
-from backend.config import get_settings
+
+# Handle both import styles for config
+try:
+    from backend.config import get_settings
+except ImportError:
+    from config import get_settings
 
 settings = get_settings()
 
@@ -8,7 +13,9 @@ settings = get_settings()
 celery_app = Celery(
     "lexintel",
     broker=settings.celery_broker_url,
-    backend=settings.celery_result_backend
+    backend=settings.celery_result_backend,
+    # Auto-discover tasks in these modules
+    include=["backend.tasks"]
 )
 
 # Configure Celery
@@ -25,8 +32,5 @@ celery_app.conf.update(
     worker_max_tasks_per_child=1000,  # Worker respawn after 1000 tasks
     broker_connection_retry_on_startup=True,  # Retry broker connection on startup (Celery 6.0 compatibility)
 )
-
-# Import tasks to register them
-from backend.tasks import process_document_task  # noqa: F401, E402
 
 __all__ = ["celery_app"]

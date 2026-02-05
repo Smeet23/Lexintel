@@ -82,6 +82,7 @@ services:
     ports:
       - "8000:8000"
     environment:
+      PYTHONPATH: /app
       DATABASE_URL: ${DATABASE_URL:-postgresql://legal_user:dev_password_change_in_prod@postgres:5432/legal_rag}
       QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
@@ -119,9 +120,10 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: lexintel_celery
-    command: celery -A celery_app worker -l info
+    command: celery -A backend.celery_app worker -l info
     env_file: .env
     environment:
+      PYTHONPATH: /app
       DATABASE_URL: ${DATABASE_URL:-postgresql://legal_user:dev_password_change_in_prod@postgres:5432/legal_rag}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
@@ -151,7 +153,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://backend:8000}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     depends_on:
       backend:
         condition: service_started
