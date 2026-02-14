@@ -11,12 +11,11 @@ from tempfile import SpooledTemporaryFile
 os.environ.setdefault('DATABASE_URL', 'sqlite:////tmp/test_lexintel_upload.db')
 os.environ.setdefault('OPENAI_API_KEY', 'sk-test')
 os.environ.setdefault('AZURE_STORAGE_CONNECTION_STRING', 'UseDevelopmentStorage=true')
-os.environ.setdefault('SECRET_KEY', 'test-secret-key-for-testing-long-enough')
 os.environ.setdefault('DEBUG', 'True')
 
-from backend.main import app, get_current_user
+from backend.main import app
 from backend.database import get_db
-from backend.models import Base, User, Case
+from backend.models import Base, Case
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -80,42 +79,21 @@ def test_db_session():
     Base.metadata.drop_all(bind=engine)
 
 
-@pytest.fixture
-def test_user(test_db_session):
-    """Create test user"""
-    # Use a mock hash to avoid bcrypt length limits in testing
-    mock_hash = "$2b$12$mock.hash.value.for.testing"
-    user = User(
-        id=uuid4(),
-        email="testuser@example.com",
-        password_hash=mock_hash,
-        created_at=datetime.now(timezone.utc)
-    )
-    test_db_session.add(user)
-    test_db_session.commit()
-    return user
-
-
 class TestUploadEndpoint:
     """Test case upload functionality"""
 
-    def test_upload_pdf_success(self, test_db_session, test_user):
+    def test_upload_pdf_success(self, test_db_session):
         """Test successful PDF upload"""
         pdf_content = create_test_pdf()
-        user_id = test_user.id
 
         # Mock dependencies
         def override_get_db():
             yield test_db_session
 
-        def override_get_current_user():
-            return user_id
-
         app.dependency_overrides[get_db] = override_get_db
-        app.dependency_overrides[get_current_user] = override_get_current_user
 
         # Mock blob storage upload at the main module level
-        with patch('backend.main.upload_pdf_to_blob') as mock_upload:
+        with patch('backend.main.upload_document_to_blob') as mock_upload:
             mock_upload.return_value = "uuid/test.pdf"
 
             import asyncio
@@ -127,8 +105,7 @@ class TestUploadEndpoint:
             result = asyncio.run(upload_case(
                 name="Test Case",
                 file=file,
-                db=test_db_session,
-                current_user_id=user_id
+                db=test_db_session
             ))
 
             assert "id" in result
@@ -138,86 +115,40 @@ class TestUploadEndpoint:
 
         app.dependency_overrides.clear()
 
-    def test_upload_non_pdf_rejected(self, test_db_session, test_user):
-        """Test that non-PDF files are rejected"""
-        user_id = test_user.id
+    def test_upload_non_pdf_rejected(self, test_db_session):
+        """Test that unsupported files are rejected"""
 
         def override_get_db():
             yield test_db_session
 
-        def override_get_current_user():
-            return user_id
-
         app.dependency_overrides[get_db] = override_get_db
-        app.dependency_overrides[get_current_user] = override_get_current_user
 
         from backend.main import upload_case
         from fastapi.exceptions import HTTPException
         import asyncio
 
-        file = create_upload_file("test.txt", b"not a pdf", "text/plain")
+        file = create_upload_file("test.exe", b"not a document", "application/octet-stream")
 
-        # Should raise HTTPException for non-PDF
+        # Should raise HTTPException for unsupported type
         with pytest.raises(HTTPException) as exc_info:
             asyncio.run(upload_case(
                 name="Test Case",
                 file=file,
-                db=test_db_session,
-                current_user_id=user_id
+                db=test_db_session
             ))
 
         assert exc_info.value.status_code == 400
-        assert "PDF" in exc_info.value.detail
 
         app.dependency_overrides.clear()
 
-    def test_upload_invalid_filename(self, test_db_session, test_user):
-        """Test upload with non-PDF filename"""
-        pdf_content = create_test_pdf()
-        user_id = test_user.id
-
-        def override_get_db():
-            yield test_db_session
-
-        def override_get_current_user():
-            return user_id
-
-        app.dependency_overrides[get_db] = override_get_db
-        app.dependency_overrides[get_current_user] = override_get_current_user
-
-        from backend.main import upload_case
-        from fastapi.exceptions import HTTPException
-        import asyncio
-
-        file = create_upload_file("test.txt", pdf_content, "application/pdf")
-
-        # Should raise HTTPException for invalid filename
-        with pytest.raises(HTTPException) as exc_info:
-            asyncio.run(upload_case(
-                name="Test Case",
-                file=file,
-                db=test_db_session,
-                current_user_id=user_id
-            ))
-
-        assert exc_info.value.status_code == 400
-        assert "filename" in exc_info.value.detail.lower()
-
-        app.dependency_overrides.clear()
-
-    def test_upload_invalid_name(self, test_db_session, test_user):
+    def test_upload_invalid_name(self, test_db_session):
         """Test upload with invalid case name"""
         pdf_content = create_test_pdf()
-        user_id = test_user.id
 
         def override_get_db():
             yield test_db_session
 
-        def override_get_current_user():
-            return user_id
-
         app.dependency_overrides[get_db] = override_get_db
-        app.dependency_overrides[get_current_user] = override_get_current_user
 
         from backend.main import upload_case
         from fastapi.exceptions import HTTPException
@@ -230,29 +161,23 @@ class TestUploadEndpoint:
             asyncio.run(upload_case(
                 name="",
                 file=file,
-                db=test_db_session,
-                current_user_id=user_id
+                db=test_db_session
             ))
 
         assert exc_info.value.status_code == 400
 
         app.dependency_overrides.clear()
 
-    def test_case_record_created(self, test_db_session, test_user):
+    def test_case_record_created(self, test_db_session):
         """Test that case record is created in database"""
         pdf_content = create_test_pdf()
-        user_id = test_user.id
 
         def override_get_db():
             yield test_db_session
 
-        def override_get_current_user():
-            return user_id
-
         app.dependency_overrides[get_db] = override_get_db
-        app.dependency_overrides[get_current_user] = override_get_current_user
 
-        with patch('backend.main.upload_pdf_to_blob') as mock_upload:
+        with patch('backend.main.upload_document_to_blob') as mock_upload:
             mock_upload.return_value = "test-uuid/test.pdf"
 
             import asyncio
@@ -263,8 +188,7 @@ class TestUploadEndpoint:
             result = asyncio.run(upload_case(
                 name="Database Test Case",
                 file=file,
-                db=test_db_session,
-                current_user_id=user_id
+                db=test_db_session
             ))
 
             # Verify case exists in database
@@ -273,26 +197,20 @@ class TestUploadEndpoint:
             case = test_db_session.query(Case).filter(Case.id == case_id).first()
             assert case is not None
             assert case.name == "Database Test Case"
-            assert case.user_id == user_id
             assert case.status == "processing"
 
         app.dependency_overrides.clear()
 
-    def test_upload_storage_error_handling(self, test_db_session, test_user):
+    def test_upload_storage_error_handling(self, test_db_session):
         """Test that storage errors are properly handled"""
         pdf_content = create_test_pdf()
-        user_id = test_user.id
 
         def override_get_db():
             yield test_db_session
 
-        def override_get_current_user():
-            return user_id
-
         app.dependency_overrides[get_db] = override_get_db
-        app.dependency_overrides[get_current_user] = override_get_current_user
 
-        with patch('backend.main.upload_pdf_to_blob') as mock_upload:
+        with patch('backend.main.upload_document_to_blob') as mock_upload:
             # Simulate storage error
             mock_upload.side_effect = Exception("Storage connection failed")
 
@@ -306,8 +224,7 @@ class TestUploadEndpoint:
                 asyncio.run(upload_case(
                     name="Test Case",
                     file=file,
-                    db=test_db_session,
-                    current_user_id=user_id
+                    db=test_db_session
                 ))
 
             assert exc_info.value.status_code == 500

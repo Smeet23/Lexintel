@@ -24,28 +24,10 @@ class FileType(str, enum.Enum):
     TXT = "txt"
 
 
-class User(Base):
-    __tablename__ = "users"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    email = Column(String(255), unique=True, nullable=False, index=True)
-    password_hash = Column(String(255), nullable=False)
-    is_deleted = Column(Boolean, default=False, nullable=False, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-
-    # Relationships
-    cases = relationship("Case", back_populates="user")
-
-    def __repr__(self):
-        return f"<User(id={self.id}, email={self.email})>"
-
-
 class Case(Base):
     __tablename__ = "cases"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     name = Column(String(255), nullable=False)
     blob_storage_path = Column(String(500), nullable=False)
     file_type = Column(String(10), nullable=False, default="pdf")
@@ -55,13 +37,8 @@ class Case(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     # Relationships
-    user = relationship("User", back_populates="cases")
     chunks = relationship("Chunk", back_populates="case")
     queries = relationship("Query", back_populates="case")
-
-    __table_args__ = (
-        Index('idx_user_id_status', 'user_id', 'status'),
-    )
 
     def __repr__(self):
         return f"<Case(id={self.id}, name={self.name}, status={self.status})>"
@@ -95,7 +72,6 @@ class Query(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     case_id = Column(UUID(as_uuid=True), ForeignKey("cases.id"), nullable=False, index=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     question = Column(Text, nullable=False)
     answer = Column(Text, nullable=False)
     citations = Column(JSON, nullable=True, default=list)  # List of citation dicts

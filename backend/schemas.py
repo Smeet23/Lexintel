@@ -1,43 +1,8 @@
 """Pydantic v2 schemas for request/response validation"""
-from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_validator
+from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
 from typing import Optional
 from uuid import UUID
-
-
-# ============================================
-# USER SCHEMAS
-# ============================================
-
-class UserCreate(BaseModel):
-    """User registration request"""
-    email: EmailStr
-    password: str = Field(..., min_length=8, max_length=128)
-
-    @field_validator('password')
-    @classmethod
-    def password_strength(cls, v):
-        """Validate password strength"""
-        if not any(c.isupper() for c in v):
-            raise ValueError('Password must contain uppercase letter')
-        if not any(c.isdigit() for c in v):
-            raise ValueError('Password must contain digit')
-        return v
-
-
-class UserResponse(BaseModel):
-    """User response (output)"""
-    id: UUID
-    email: str
-    created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class TokenResponse(BaseModel):
-    """Token response for login"""
-    access_token: str
-    token_type: str = "bearer"
 
 
 # ============================================

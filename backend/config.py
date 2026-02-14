@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from pydantic import ConfigDict, field_validator
+from pydantic import ConfigDict
 from functools import lru_cache
 from typing import List
 
@@ -21,11 +21,6 @@ class Settings(BaseSettings):
     # Azure Blob Storage
     azure_storage_connection_string: str
 
-    # JWT
-    secret_key: str
-    algorithm: str = "HS256"
-    access_token_expire_minutes: int = 1440
-
     # CORS Configuration
     allowed_origins: str = "http://localhost:3000"
 
@@ -42,14 +37,6 @@ class Settings(BaseSettings):
         """Parse comma-separated allowed origins"""
         origins = [origin.strip() for origin in self.allowed_origins.split(",")]
         return origins
-
-    @field_validator('allowed_origins')
-    @classmethod
-    def validate_cors_origins(cls, v: str, info) -> str:
-        """Validate that CORS origins don't contain placeholders in production"""
-        # This validator is called after field assignment
-        # We'll validate in startup instead for better error messages
-        return v
 
 @lru_cache()
 def get_settings():

@@ -8,8 +8,6 @@ def test_settings_load():
     os.environ['DATABASE_URL'] = 'postgresql://test:test@localhost/test'
     os.environ['OPENAI_API_KEY'] = 'sk-test'
     os.environ['AZURE_STORAGE_CONNECTION_STRING'] = 'UseDevelopmentStorage=true'
-    os.environ['SECRET_KEY'] = 'test-secret'
-
     from backend.config import get_settings
     settings = get_settings()
 

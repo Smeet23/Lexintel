@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Header, File, UploadFile, Form, Body, Query as QueryParam
+from fastapi import FastAPI, HTTPException, status, File, UploadFile, Form, Body, Query as QueryParam, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
@@ -15,9 +15,7 @@ logger = logging.getLogger(__name__)
 try:
     from backend.config import get_settings
     from backend.database import get_db
-    from backend.models import User, Case, Query
-    from backend.schemas import UserCreate, UserResponse, TokenResponse
-    from backend.auth import hash_password, verify_password, create_access_token, decode_token
+    from backend.models import Case, Query
     from backend.services.storage import upload_document_to_blob, validate_file_format
     from backend.services.rag_engine import query_case
     from backend.validators import validate_filename, validate_case_name, validate_question, validate_file_type
@@ -26,9 +24,7 @@ except ImportError:
     try:
         from config import get_settings
         from database import get_db
-        from models import User, Case, Query
-        from schemas import UserCreate, UserResponse, TokenResponse
-        from auth import hash_password, verify_password, create_access_token, decode_token
+        from models import Case, Query
         from services.storage import upload_document_to_blob, validate_file_format
         from services.rag_engine import query_case
         from validators import validate_filename, validate_case_name, validate_question, validate_file_type
@@ -36,9 +32,7 @@ except ImportError:
     except ImportError:
         from .config import get_settings
         from .database import get_db
-        from .models import User, Case, Query
-        from .schemas import UserCreate, UserResponse, TokenResponse
-        from .auth import hash_password, verify_password, create_access_token, decode_token
+        from .models import Case, Query
         from .services.storage import upload_document_to_blob, validate_file_format
         from .services.rag_engine import query_case
         from .validators import validate_filename, validate_case_name, validate_question, validate_file_type
@@ -50,17 +44,6 @@ settings = get_settings()
 def get_cors_origins() -> list:
     """Get allowed CORS origins from settings"""
     origins = settings.get_allowed_origins_list()
-
-    # Validate no placeholder domains
-    placeholder_domains = ["yourdomain.com", "example.com", "localhost.com"]
-    for origin in origins:
-        for placeholder in placeholder_domains:
-            if placeholder in origin:
-                raise ValueError(
-                    f"Placeholder domain '{placeholder}' found in CORS configuration. "
-                    f"Please set ALLOWED_ORIGINS environment variable to valid domain(s)."
-                )
-
     return origins
 
 
@@ -77,133 +60,13 @@ app.add_middleware(
     allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
-    allow_headers=["Content-Type", "Authorization"],
+    allow_headers=["*"],
 )
 
-
-@app.on_event("startup")
-async def startup_validation():
-    """Validate configuration on application startup"""
-    # Validate SECRET_KEY is not default in production
-    if not settings.debug and settings.secret_key == "dev-secret-key-change-in-production":
-        logger.warning(
-            "WARNING: Using default SECRET_KEY in production. "
-            "This is a security risk. Please set SECRET_KEY environment variable."
-        )
-
-    # Validate CORS configuration again
-    try:
-        cors_origins = get_cors_origins()
-        logger.info(f"CORS origins configured: {cors_origins}")
-    except ValueError as e:
-        logger.error(f"CORS configuration error: {str(e)}")
-        raise
 
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
-
-
-# ============================================
-# AUTHENTICATION ENDPOINTS
-# ============================================
-
-async def get_current_user(
-    authorization: str = Header(None),
-    db: Session = Depends(get_db)
-) -> UUID:
-    """Extract and validate JWT token from Authorization header"""
-    if not authorization:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing authorization header"
-        )
-
-    try:
-        scheme, token = authorization.split(" ")
-        if scheme.lower() != "bearer":
-            raise ValueError()
-    except (ValueError, IndexError):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authorization header format"
-        )
-
-    user_id = decode_token(token)
-    if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token"
-        )
-
-    # Verify user exists and not deleted
-    user = db.query(User).filter(User.id == user_id, User.is_deleted == False).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found"
-        )
-
-    return UUID(user_id)
-
-
-def verify_case_ownership(case, user_id: UUID) -> None:
-    """Verify that a user owns a case"""
-    if case.user_id != user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not have permission to access this case"
-        )
-
-
-@app.post("/auth/register", response_model=UserResponse)
-def register(user_data: UserCreate, db: Session = Depends(get_db)):
-    """Register new user"""
-    # Check if user already exists
-    existing = db.query(User).filter(User.email == user_data.email).first()
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
-
-    # Create new user
-    new_user = User(
-        id=uuid.uuid4(),
-        email=user_data.email,
-        password_hash=hash_password(user_data.password),
-        created_at=datetime.now(timezone.utc)
-    )
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    return new_user
-
-
-@app.post("/auth/login", response_model=TokenResponse)
-def login(user_data: UserCreate, db: Session = Depends(get_db)):
-    """Authenticate user and return JWT token"""
-    user = db.query(User).filter(User.email == user_data.email).first()
-    if not user or not verify_password(user_data.password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password"
-        )
-
-    access_token = create_access_token(data={"sub": str(user.id)})
-    return {"access_token": access_token, "token_type": "bearer"}
-
-
-@app.get("/user/profile", response_model=UserResponse)
-def get_profile(
-    current_user_id: UUID = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Get current user's profile (protected endpoint)"""
-    user = db.query(User).filter(User.id == current_user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    return user
 
 
 # ============================================
@@ -212,16 +75,16 @@ def get_profile(
 
 @app.get("/cases", response_model=list)
 async def list_cases(
-    current_user_id: UUID = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """List all cases for the current user (protected endpoint)"""
-    cases = db.query(Case).filter(Case.user_id == current_user_id).all()
+    """List all cases"""
+    cases = db.query(Case).filter(Case.is_deleted == False).all()
     return [
         {
             "id": str(case.id),
             "name": case.name,
             "status": case.status,
+            "file_type": case.file_type,
             "created_at": case.created_at.isoformat(),
             "updated_at": case.updated_at.isoformat() if case.updated_at else None
         }
@@ -232,7 +95,6 @@ async def list_cases(
 async def upload_case(
     name: str = Form(...),
     file: UploadFile = File(...),
-    current_user_id: UUID = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Upload a case document (PDF, DOCX, or TXT)"""
@@ -279,7 +141,6 @@ async def upload_case(
         case_id = uuid.uuid4()
         case = Case(
             id=case_id,
-            user_id=current_user_id,
             name=name,
             blob_storage_path="",
             file_type=file_type,
@@ -342,7 +203,6 @@ async def upload_case(
 async def ask_question(
     case_id: str,
     question: str = Body(..., embed=True),
-    current_user_id: UUID = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Ask a question about a case"""
@@ -350,7 +210,6 @@ async def ask_question(
     validate_question(question)
 
     try:
-        from uuid import UUID
         case_uuid = UUID(case_id)
     except ValueError:
         raise HTTPException(
@@ -365,9 +224,6 @@ async def ask_question(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Case not found"
         )
-
-    # Verify user owns this case
-    verify_case_ownership(case, current_user_id)
 
     # Check if case is ready for querying
     if case.status == "processing":
@@ -390,7 +246,6 @@ async def ask_question(
             db_query = Query(
                 id=uuid.uuid4(),
                 case_id=case_uuid,
-                user_id=case.user_id,
                 question=question,
                 answer=rag_result.get("answer", ""),
                 citations=rag_result.get("sources", []),
@@ -411,12 +266,10 @@ async def ask_question(
 @app.get("/cases/{case_id}/status", response_model=dict)
 async def get_case_status(
     case_id: str,
-    current_user_id: UUID = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get the status of a case"""
     try:
-        from uuid import UUID
         case_uuid = UUID(case_id)
     except ValueError:
         raise HTTPException(
@@ -430,9 +283,6 @@ async def get_case_status(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Case not found"
         )
-
-    # Verify user owns this case
-    verify_case_ownership(case, current_user_id)
 
     return {
         "id": str(case.id),
@@ -449,44 +299,13 @@ async def get_case_status(
 @app.get("/cases/{case_id}/progress")
 async def case_progress_stream(
     case_id: str,
-    token: str = QueryParam(None),
-    authorization: str = Header(None),
     db: Session = Depends(get_db)
 ):
     """
     SSE endpoint for real-time document processing progress updates.
 
     Subscribes to Redis pub/sub channel and streams progress events to the client.
-    Accepts authentication via either Authorization header or token query param
-    (for EventSource which doesn't support custom headers).
     """
-    # Handle auth from query param (for EventSource) or header
-    auth_token = None
-    if authorization:
-        try:
-            scheme, auth_token = authorization.split(" ")
-            if scheme.lower() != "bearer":
-                auth_token = None
-        except (ValueError, IndexError):
-            pass
-
-    if not auth_token and token:
-        auth_token = token
-
-    if not auth_token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing authentication token"
-        )
-
-    # Verify token
-    user_id = decode_token(auth_token)
-    if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token"
-        )
-
     # Validate case ID
     try:
         case_uuid = UUID(case_id)
@@ -496,18 +315,12 @@ async def case_progress_stream(
             detail="Invalid case ID format"
         )
 
-    # Check case exists and user owns it
+    # Check case exists
     case = db.query(Case).filter(Case.id == case_uuid).first()
     if not case:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Case not found"
-        )
-
-    if case.user_id != UUID(user_id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not have permission to access this case"
         )
 
     async def event_generator():

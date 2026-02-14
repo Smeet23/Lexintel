@@ -13,12 +13,6 @@ sqlalchemy==2.0.23
 psycopg2-binary==2.9.9
 alembic==1.13.0
 
-# Authentication & Security
-python-jose[cryptography]==3.3.0
-passlib==1.7.4
-bcrypt==4.1.1
-email-validator==2.1.0
-
 # RAG Pipeline
 langchain==0.1.20
 langchain-community==0.0.38

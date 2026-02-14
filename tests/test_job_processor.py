@@ -4,7 +4,7 @@ from uuid import uuid4, UUID
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock
 from sqlalchemy.orm import Session
-from backend.models import User, Case, ProcessingJob, CaseStatus, Chunk
+from backend.models import Case, ProcessingJob, CaseStatus, Chunk
 from backend.services.job_processor import (
     get_pending_jobs,
     calculate_retry_delay,
@@ -60,13 +60,7 @@ class TestProcessingJob:
 
     def test_processing_job_creation(self, db: Session):
         """ProcessingJob can be created and stored in database"""
-        # Create a user and case first
-        user = User(email="lawyer@example.com", password_hash="hash")
-        db.add(user)
-        db.commit()
-
         case = Case(
-            user_id=user.id,
             name="Smith v. Jones",
             blob_storage_path="cases/abc123.pdf",
             status="processing"
@@ -95,13 +89,7 @@ class TestProcessingJob:
 
     def test_processing_job_status_transition(self, db: Session):
         """ProcessingJob status can transition between states"""
-        # Create a user and case
-        user = User(email="lawyer@example.com", password_hash="hash")
-        db.add(user)
-        db.commit()
-
         case = Case(
-            user_id=user.id,
             name="Smith v. Jones",
             blob_storage_path="cases/abc123.pdf",
             status="processing"
@@ -144,14 +132,9 @@ class TestJobHelper:
 
     def test_get_pending_jobs(self, db: Session):
         """get_pending_jobs returns pending jobs in FIFO order"""
-        # Create user and cases
-        user = User(email="lawyer@example.com", password_hash="hash")
-        db.add(user)
-        db.commit()
-
-        case1 = Case(user_id=user.id, name="Case 1", blob_storage_path="p1.pdf", status="processing")
-        case2 = Case(user_id=user.id, name="Case 2", blob_storage_path="p2.pdf", status="processing")
-        case3 = Case(user_id=user.id, name="Case 3", blob_storage_path="p3.pdf", status="processing")
+        case1 = Case(name="Case 1", blob_storage_path="p1.pdf", status="processing")
+        case2 = Case(name="Case 2", blob_storage_path="p2.pdf", status="processing")
+        case3 = Case(name="Case 3", blob_storage_path="p3.pdf", status="processing")
         db.add_all([case1, case2, case3])
         db.commit()
 
@@ -183,13 +166,7 @@ class TestCaseProcessing:
         self, db: Session, mock_storage, mock_chunking, mock_embeddings, mock_vector_store
     ):
         """process_case successfully processes a case"""
-        # Create user and case
-        user = User(email="lawyer@example.com", password_hash="hash")
-        db.add(user)
-        db.commit()
-
         case = Case(
-            user_id=user.id,
             name="Smith v. Jones",
             blob_storage_path="cases/abc123.pdf",
             status="processing"
@@ -225,13 +202,7 @@ class TestCaseProcessing:
         self, db: Session, mock_storage, mock_chunking, mock_embeddings, mock_vector_store
     ):
         """Chunks are properly stored in database with metadata"""
-        # Create user and case
-        user = User(email="lawyer@example.com", password_hash="hash")
-        db.add(user)
-        db.commit()
-
         case = Case(
-            user_id=user.id,
             name="Case with metadata",
             blob_storage_path="cases/test.pdf",
             status="processing"
@@ -264,13 +235,7 @@ class TestCaseProcessing:
         self, db: Session, mock_storage, mock_chunking, mock_embeddings, mock_vector_store
     ):
         """Vectors are properly stored in vector store"""
-        # Create user and case
-        user = User(email="lawyer@example.com", password_hash="hash")
-        db.add(user)
-        db.commit()
-
         case = Case(
-            user_id=user.id,
             name="Case for vectors",
             blob_storage_path="cases/test.pdf",
             status="processing"
@@ -302,13 +267,7 @@ class TestErrorHandling:
         # Mock chunking to raise error
         mock_chunking.side_effect = ValueError("Invalid PDF")
 
-        # Create user and case
-        user = User(email="lawyer@example.com", password_hash="hash")
-        db.add(user)
-        db.commit()
-
         case = Case(
-            user_id=user.id,
             name="Case with error",
             blob_storage_path="cases/bad.pdf",
             status="processing"
@@ -335,13 +294,7 @@ class TestErrorHandling:
         # Mock embeddings to raise error
         mock_embeddings.side_effect = Exception("Embedding API error")
 
-        # Create user and case
-        user = User(email="lawyer@example.com", password_hash="hash")
-        db.add(user)
-        db.commit()
-
         case = Case(
-            user_id=user.id,
             name="Case with embedding error",
             blob_storage_path="cases/test.pdf",
             status="processing"
@@ -368,13 +321,7 @@ class TestErrorHandling:
         # Mock vector store upsert to raise error
         mock_vector_store["upsert"].side_effect = Exception("Vector store error")
 
-        # Create user and case
-        user = User(email="lawyer@example.com", password_hash="hash")
-        db.add(user)
-        db.commit()
-
         case = Case(
-            user_id=user.id,
             name="Case with vector store error",
             blob_storage_path="cases/test.pdf",
             status="processing"
@@ -399,13 +346,7 @@ class TestRetryLogic:
 
     def test_retry_scheduling(self, db: Session):
         """Retry is scheduled with correct next_retry_at timestamp"""
-        # Create user and case
-        user = User(email="lawyer@example.com", password_hash="hash")
-        db.add(user)
-        db.commit()
-
         case = Case(
-            user_id=user.id,
             name="Case for retry",
             blob_storage_path="cases/test.pdf",
             status="processing"
@@ -436,13 +377,7 @@ class TestRetryLogic:
 
     def test_max_attempts_exceeded(self, db: Session):
         """Job marked as failed when max attempts exceeded"""
-        # Create user and case
-        user = User(email="lawyer@example.com", password_hash="hash")
-        db.add(user)
-        db.commit()
-
         case = Case(
-            user_id=user.id,
             name="Case with max attempts",
             blob_storage_path="cases/test.pdf",
             status="processing"
@@ -479,13 +414,8 @@ class TestJobWorker:
         self, db: Session, mock_storage, mock_chunking, mock_embeddings, mock_vector_store
     ):
         """Job worker processes a batch of pending jobs"""
-        # Create user and cases
-        user = User(email="lawyer@example.com", password_hash="hash")
-        db.add(user)
-        db.commit()
-
-        case1 = Case(user_id=user.id, name="Case 1", blob_storage_path="p1.pdf", status="processing")
-        case2 = Case(user_id=user.id, name="Case 2", blob_storage_path="p2.pdf", status="processing")
+        case1 = Case(name="Case 1", blob_storage_path="p1.pdf", status="processing")
+        case2 = Case(name="Case 2", blob_storage_path="p2.pdf", status="processing")
         db.add_all([case1, case2])
         db.commit()
 
@@ -511,12 +441,7 @@ class TestJobWorker:
         """Job worker sleeps between batches"""
         import time
 
-        # Create user and case
-        user = User(email="lawyer@example.com", password_hash="hash")
-        db.add(user)
-        db.commit()
-
-        case = Case(user_id=user.id, name="Case", blob_storage_path="p.pdf", status="processing")
+        case = Case(name="Case", blob_storage_path="p.pdf", status="processing")
         db.add(case)
         db.commit()
 
