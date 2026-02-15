@@ -35,13 +35,7 @@ export default function LoginPage() {
         <div className="absolute -bottom-40 -left-40 w-[500px] h-[500px] rounded-full bg-white/[0.03] blur-[100px]" />
         <div className="absolute top-20 right-10 w-[300px] h-[300px] rounded-full bg-white/[0.02] blur-[80px]" />
         {/* Subtle grid */}
-        <div
-          className="absolute inset-0 opacity-[0.02]"
-          style={{
-            backgroundImage: `linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)`,
-            backgroundSize: "60px 60px",
-          }}
-        />
+        <div className="absolute inset-0 opacity-[0.02] grid-pattern-dark" />
 
         <motion.div
           initial={{ opacity: 0, y: 10 }}

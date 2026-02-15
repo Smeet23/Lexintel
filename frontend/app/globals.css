@@ -188,4 +188,18 @@
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
+
+  .grid-pattern-light {
+    background-image:
+      linear-gradient(#111 1px, transparent 1px),
+      linear-gradient(90deg, #111 1px, transparent 1px);
+    background-size: 60px 60px;
+  }
+
+  .grid-pattern-dark {
+    background-image:
+      linear-gradient(#fff 1px, transparent 1px),
+      linear-gradient(90deg, #fff 1px, transparent 1px);
+    background-size: 60px 60px;
+  }
 }

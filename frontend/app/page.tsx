@@ -170,13 +170,7 @@ function HeroSection() {
         <div className="absolute top-[-20%] right-[-10%] w-[700px] h-[700px] rounded-full bg-gradient-to-br from-surface via-surface-hover to-transparent blur-[100px] opacity-80" />
         <div className="absolute bottom-[-10%] left-[-5%] w-[500px] h-[500px] rounded-full bg-surface blur-[120px] opacity-50" />
         {/* Subtle grid pattern */}
-        <div
-          className="absolute inset-0 opacity-[0.03]"
-          style={{
-            backgroundImage: `linear-gradient(#111 1px, transparent 1px), linear-gradient(90deg, #111 1px, transparent 1px)`,
-            backgroundSize: "60px 60px",
-          }}
-        />
+        <div className="absolute inset-0 opacity-[0.03] grid-pattern-light" />
       </div>
 
       <motion.div style={{ y, opacity }} className="max-w-[1200px] mx-auto relative">
