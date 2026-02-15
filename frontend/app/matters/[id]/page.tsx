@@ -116,12 +116,12 @@ export default function MatterWorkspacePage() {
       render: (item: typeof mockDocuments[0]) => (
         <div className="flex items-center gap-3">
           <div className={cn(
-            "flex h-9 w-9 items-center justify-center rounded-lg",
-            item.fileType === "pdf" ? "bg-red-50" : item.fileType === "docx" ? "bg-blue-50" : "bg-slate-50"
+            "flex h-9 w-9 items-center justify-center rounded-sm",
+            item.fileType === "pdf" ? "bg-red-50" : item.fileType === "docx" ? "bg-blue-50" : "bg-surface"
           )}>
             <FileText className={cn(
               "h-4 w-4",
-              item.fileType === "pdf" ? "text-red-500" : item.fileType === "docx" ? "text-blue-500" : "text-slate-500"
+              item.fileType === "pdf" ? "text-red-700" : item.fileType === "docx" ? "text-blue-700" : "text-muted"
             )} />
           </div>
           <div>
@@ -206,10 +206,10 @@ export default function MatterWorkspacePage() {
   return (
     <AppLayout title={matterData.title}>
       {/* Breadcrumb + Header */}
-      <div className="mb-6">
+      <div className="mb-8">
         <button
           onClick={() => router.push("/matters")}
-          className="flex items-center gap-1 text-sm text-muted hover:text-foreground transition-colors mb-3 cursor-pointer"
+          className="flex items-center gap-1 text-sm text-muted hover:text-foreground transition-colors mb-4 cursor-pointer"
         >
           <ArrowLeft className="h-4 w-4" /> Back to Matters
         </button>
@@ -217,10 +217,10 @@ export default function MatterWorkspacePage() {
         <div className="flex items-start justify-between">
           <div>
             <div className="flex items-center gap-3">
-              <h2 className="text-2xl font-semibold text-foreground">{matterData.title}</h2>
+              <h2 className="text-2xl font-display font-semibold text-foreground">{matterData.title}</h2>
               <Badge variant="active">Active</Badge>
             </div>
-            <p className="text-sm text-muted mt-1">
+            <p className="text-sm text-muted mt-1.5">
               {matterData.jurisdiction} &middot; {matterData.documentsCount} documents &middot; Created {matterData.createdAt}
             </p>
           </div>
@@ -238,7 +238,7 @@ export default function MatterWorkspacePage() {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="ask-ai" className="space-y-4">
+      <Tabs defaultValue="ask-ai" className="space-y-6">
         <TabsList>
           <TabsTrigger value="ask-ai">
             <MessageSquare className="h-4 w-4 mr-2" />
@@ -265,7 +265,7 @@ export default function MatterWorkspacePage() {
         {/* Ask AI Tab */}
         <TabsContent value="ask-ai">
           <div className="flex gap-6 h-[calc(100vh-280px)]">
-            <div className="flex-1 bg-white rounded-xl border border-border shadow-sm overflow-hidden">
+            <div className="flex-1 bg-white rounded-sm border border-border shadow-sm overflow-hidden">
               <ChatPanel
                 messages={messages}
                 onSend={handleSendMessage}
@@ -273,7 +273,7 @@ export default function MatterWorkspacePage() {
                 onSelectCitation={setSelectedCitations}
               />
             </div>
-            <div className="w-80 bg-white rounded-xl border border-border shadow-sm p-5 overflow-y-auto">
+            <div className="w-80 bg-white rounded-sm border border-border shadow-sm p-5 overflow-y-auto">
               <CitationPanel citations={selectedCitations} />
             </div>
           </div>
@@ -283,7 +283,7 @@ export default function MatterWorkspacePage() {
         <TabsContent value="documents">
           <div className="space-y-4">
             {/* Upload zone */}
-            <div className="border-2 border-dashed border-border rounded-xl p-8 text-center hover:border-accent/50 transition-colors bg-white">
+            <div className="border-2 border-dashed border-border rounded-sm p-8 text-center hover:border-foreground/20 transition-colors bg-white">
               <Upload className="h-8 w-8 text-muted mx-auto mb-3" />
               <p className="text-sm font-medium text-foreground">
                 Drag & drop files here, or click to browse
@@ -297,9 +297,9 @@ export default function MatterWorkspacePage() {
             </div>
 
             {/* Documents list */}
-            <div className="bg-white rounded-xl border border-border shadow-sm">
+            <div className="bg-white rounded-sm border border-border shadow-sm">
               <div className="p-4 border-b border-border flex items-center justify-between">
-                <h3 className="font-semibold text-foreground">Documents ({mockDocuments.length})</h3>
+                <h3 className="font-display font-semibold text-foreground">Documents ({mockDocuments.length})</h3>
                 <div className="flex items-center gap-2">
                   <Input placeholder="Search documents..." className="w-48 h-8 text-sm" />
                 </div>
@@ -313,26 +313,26 @@ export default function MatterWorkspacePage() {
         <TabsContent value="contract-review">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-4">
-              <div className="bg-white rounded-xl border border-border shadow-sm p-6">
-                <h3 className="text-lg font-semibold text-foreground mb-4">Risk Analysis</h3>
+              <div className="bg-white rounded-sm border border-border shadow-sm p-6">
+                <h3 className="text-lg font-display font-semibold text-foreground mb-4">Risk Analysis</h3>
                 <div className="space-y-3">
                   {contractRisks.map((risk, idx) => (
                     <div
                       key={idx}
                       className={cn(
-                        "rounded-lg border p-4 transition-colors hover:shadow-sm cursor-pointer",
-                        risk.risk === "high" ? "border-red-200 bg-red-50/50" :
-                        risk.risk === "medium" ? "border-amber-200 bg-amber-50/50" :
-                        "border-emerald-200 bg-emerald-50/50"
+                        "rounded-sm border p-4 transition-colors hover:shadow-sm cursor-pointer",
+                        risk.risk === "high" ? "border-red-200 bg-red-50/60" :
+                        risk.risk === "medium" ? "border-amber-200 bg-amber-50/60" :
+                        "border-emerald-200 bg-emerald-50/60"
                       )}
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex items-start gap-3">
                           <AlertTriangle className={cn(
                             "h-5 w-5 mt-0.5 shrink-0",
-                            risk.risk === "high" ? "text-red-500" :
-                            risk.risk === "medium" ? "text-amber-500" :
-                            "text-emerald-500"
+                            risk.risk === "high" ? "text-red-600" :
+                            risk.risk === "medium" ? "text-amber-600" :
+                            "text-emerald-600"
                           )} />
                           <div>
                             <p className="font-medium text-foreground text-sm">{risk.clause}</p>
@@ -350,8 +350,8 @@ export default function MatterWorkspacePage() {
             </div>
 
             <div className="space-y-4">
-              <div className="bg-white rounded-xl border border-border shadow-sm p-6">
-                <h4 className="font-semibold text-foreground mb-4">Summary</h4>
+              <div className="bg-white rounded-sm border border-border shadow-sm p-6">
+                <h4 className="font-display font-semibold text-foreground mb-4">Summary</h4>
                 <div className="space-y-3">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted">Total Clauses Analyzed</span>
@@ -359,32 +359,32 @@ export default function MatterWorkspacePage() {
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted">High Risk</span>
-                    <span className="font-medium text-red-600">2</span>
+                    <span className="font-medium text-red-700">2</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted">Medium Risk</span>
-                    <span className="font-medium text-amber-600">2</span>
+                    <span className="font-medium text-amber-700">2</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted">Low Risk</span>
-                    <span className="font-medium text-emerald-600">1</span>
+                    <span className="font-medium text-emerald-700">1</span>
                   </div>
                   <div className="border-t border-border pt-3">
                     <div className="flex justify-between text-sm mb-2">
                       <span className="text-muted">Overall Score</span>
-                      <span className="font-bold text-amber-600">62/100</span>
+                      <span className="font-bold text-amber-700">62/100</span>
                     </div>
                     <Progress value={62} />
                   </div>
                 </div>
               </div>
 
-              <div className="bg-white rounded-xl border border-border shadow-sm p-6">
-                <h4 className="font-semibold text-foreground mb-3">Missing Clauses</h4>
+              <div className="bg-white rounded-sm border border-border shadow-sm p-6">
+                <h4 className="font-display font-semibold text-foreground mb-3">Missing Clauses</h4>
                 <ul className="space-y-2 text-sm">
                   {["Force Majeure", "Non-Compete", "Audit Rights"].map((clause) => (
                     <li key={clause} className="flex items-center gap-2 text-muted">
-                      <div className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                      <div className="h-1.5 w-1.5 rounded-full bg-foreground" />
                       {clause}
                     </li>
                   ))}
@@ -397,15 +397,15 @@ export default function MatterWorkspacePage() {
         {/* Draft Assistant Tab */}
         <TabsContent value="draft-assistant">
           <div className="max-w-3xl">
-            <div className="bg-white rounded-xl border border-border shadow-sm p-6">
-              <h3 className="text-lg font-semibold text-foreground mb-2">Draft Assistant</h3>
+            <div className="bg-white rounded-sm border border-border shadow-sm p-6">
+              <h3 className="text-lg font-display font-semibold text-foreground mb-2">Draft Assistant</h3>
               <p className="text-sm text-muted mb-6">
                 Generate legal documents with inline source references from your matter documents.
               </p>
 
-              <div className="space-y-4">
+              <div className="space-y-5">
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1.5">Document Type</label>
+                  <label className="block text-sm font-medium text-foreground mb-2">Document Type</label>
                   <Select value={draftType} onValueChange={setDraftType}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select document type" />
@@ -421,10 +421,10 @@ export default function MatterWorkspacePage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1.5">Instructions</label>
+                  <label className="block text-sm font-medium text-foreground mb-2">Instructions</label>
                   <textarea
                     placeholder="Describe what you need drafted. Be specific about the audience, key points to cover, and any constraints..."
-                    className="flex min-h-[120px] w-full rounded-md border border-input bg-white px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent resize-none"
+                    className="flex min-h-[120px] w-full rounded-sm border border-input bg-white px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-foreground/10 focus:border-foreground/20 resize-none"
                   />
                 </div>
 
@@ -439,9 +439,9 @@ export default function MatterWorkspacePage() {
 
         {/* Audit Log Tab */}
         <TabsContent value="audit-log">
-          <div className="bg-white rounded-xl border border-border shadow-sm">
+          <div className="bg-white rounded-sm border border-border shadow-sm">
             <div className="p-4 border-b border-border flex items-center justify-between">
-              <h3 className="font-semibold text-foreground">Activity Log</h3>
+              <h3 className="font-display font-semibold text-foreground">Activity Log</h3>
               <Button variant="outline" size="sm">
                 <Download className="h-4 w-4" />
                 Export Log

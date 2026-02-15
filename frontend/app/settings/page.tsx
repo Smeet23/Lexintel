@@ -29,17 +29,17 @@ interface SettingSection {
 
 function SettingCard({ icon, title, description, children }: SettingSection) {
   return (
-    <div className="bg-white rounded-xl border border-border shadow-sm p-6">
-      <div className="flex items-start gap-3 mb-5">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent/10 shrink-0">
+    <div className="bg-white rounded-sm border border-border shadow-sm p-8">
+      <div className="flex items-start gap-4 mb-6">
+        <div className="flex h-9 w-9 items-center justify-center rounded-sm bg-surface shrink-0">
           {icon}
         </div>
         <div>
-          <h3 className="font-semibold text-foreground">{title}</h3>
+          <h3 className="font-display font-semibold text-foreground">{title}</h3>
           <p className="text-sm text-muted mt-0.5">{description}</p>
         </div>
       </div>
-      <div className="space-y-4">{children}</div>
+      <div className="space-y-5">{children}</div>
     </div>
   )
 }
@@ -54,7 +54,7 @@ function SettingRow({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex items-center justify-between py-2">
+    <div className="flex items-center justify-between py-3">
       <div>
         <p className="text-sm font-medium text-foreground">{label}</p>
         {description && <p className="text-xs text-muted mt-0.5">{description}</p>}
@@ -86,10 +86,10 @@ export default function SettingsPage() {
         }
       />
 
-      <div className="max-w-3xl space-y-6">
+      <div className="max-w-3xl space-y-8">
         {/* Jurisdiction */}
         <SettingCard
-          icon={<Globe className="h-4 w-4 text-accent" />}
+          icon={<Globe className="h-4 w-4 text-foreground" />}
           title="Jurisdiction Default"
           description="Set the default jurisdiction for new matters and searches"
         >
@@ -111,7 +111,7 @@ export default function SettingsPage() {
 
         {/* AI Model */}
         <SettingCard
-          icon={<Brain className="h-4 w-4 text-accent" />}
+          icon={<Brain className="h-4 w-4 text-foreground" />}
           title="AI Model"
           description="Choose the AI model for document analysis and queries"
         >
@@ -145,7 +145,7 @@ export default function SettingsPage() {
 
         {/* Data Retention */}
         <SettingCard
-          icon={<Database className="h-4 w-4 text-accent" />}
+          icon={<Database className="h-4 w-4 text-foreground" />}
           title="Data Retention"
           description="Control how long your data is stored"
         >
@@ -161,8 +161,8 @@ export default function SettingsPage() {
             </SelectContent>
           </Select>
 
-          <div className="rounded-lg bg-amber-50 border border-amber-200 p-3">
-            <p className="text-xs text-amber-800">
+          <div className="rounded-sm bg-amber-50 border border-amber-200 p-3">
+            <p className="text-[12px] text-amber-700">
               <strong>Note:</strong> Changing retention settings will not retroactively delete existing data. Contact support for data deletion requests.
             </p>
           </div>
@@ -170,7 +170,7 @@ export default function SettingsPage() {
 
         {/* Security */}
         <SettingCard
-          icon={<Shield className="h-4 w-4 text-accent" />}
+          icon={<Shield className="h-4 w-4 text-foreground" />}
           title="Security"
           description="Manage authentication and security preferences"
         >
@@ -203,7 +203,7 @@ export default function SettingsPage() {
 
         {/* API Keys */}
         <SettingCard
-          icon={<Key className="h-4 w-4 text-accent" />}
+          icon={<Key className="h-4 w-4 text-foreground" />}
           title="API Integration"
           description="Manage API keys for enterprise integrations"
         >
@@ -222,7 +222,7 @@ export default function SettingsPage() {
 
         {/* Notifications */}
         <SettingCard
-          icon={<Bell className="h-4 w-4 text-accent" />}
+          icon={<Bell className="h-4 w-4 text-foreground" />}
           title="Notifications"
           description="Configure email and in-app notification preferences"
         >
@@ -245,7 +245,7 @@ export default function SettingsPage() {
 
         {/* Appearance */}
         <SettingCard
-          icon={<Palette className="h-4 w-4 text-accent" />}
+          icon={<Palette className="h-4 w-4 text-foreground" />}
           title="Appearance"
           description="Customize the look and feel of your workspace"
         >

@@ -14,7 +14,7 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
   const [collapsed, setCollapsed] = useState(false)
 
   return (
-    <div className="min-h-screen bg-surface">
+    <div className="min-h-screen bg-background">
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} />
       <div
         className={cn(
@@ -23,7 +23,7 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
         )}
       >
         <Topbar title={title} />
-        <main className="p-6">{children}</main>
+        <main className="p-8">{children}</main>
       </div>
     </div>
   )

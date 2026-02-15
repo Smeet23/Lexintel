@@ -93,7 +93,7 @@ export default function BillingPage() {
       header: "",
       className: "w-12",
       render: () => (
-        <Button variant="ghost" size="sm" className="h-8 text-xs text-accent">
+        <Button variant="ghost" size="sm" className="h-8 text-xs text-foreground">
           <Download className="h-3 w-3 mr-1" />
           PDF
         </Button>
@@ -124,9 +124,9 @@ export default function BillingPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
         {/* Token Usage Bar */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-border shadow-sm p-6">
-          <h3 className="text-lg font-semibold text-foreground mb-4">Token Usage</h3>
-          <div className="space-y-4">
+        <div className="lg:col-span-2 bg-white rounded-sm border border-border shadow-sm p-8">
+          <h3 className="font-display text-lg font-semibold text-foreground mb-5">Token Usage</h3>
+          <div className="space-y-5">
             <div>
               <div className="flex justify-between text-sm mb-2">
                 <span className="text-muted">Monthly usage</span>
@@ -137,7 +137,7 @@ export default function BillingPage() {
             </div>
 
             {/* Per-matter breakdown */}
-            <div className="border-t border-border pt-4">
+            <div className="border-t border-border pt-5">
               <h4 className="text-sm font-medium text-foreground mb-3">Usage by Matter</h4>
               <div className="space-y-3">
                 {usageByMatter.map((item) => (
@@ -149,7 +149,7 @@ export default function BillingPage() {
                       </div>
                       <div className="h-1.5 rounded-full bg-surface overflow-hidden">
                         <div
-                          className="h-full rounded-full bg-accent transition-all"
+                          className="h-full rounded-full bg-foreground transition-all"
                           style={{ width: `${(item.tokens / tokenUsed) * 100}%` }}
                         />
                       </div>
@@ -163,14 +163,14 @@ export default function BillingPage() {
         </div>
 
         {/* Plan Details */}
-        <div className="bg-white rounded-xl border border-border shadow-sm p-6">
-          <h3 className="text-lg font-semibold text-foreground mb-4">Plan Details</h3>
-          <div className="space-y-4">
-            <div className="rounded-lg bg-accent/5 border border-accent/20 p-4">
-              <p className="text-sm font-semibold text-accent">Professional Plan</p>
+        <div className="bg-white rounded-sm border border-border shadow-sm p-8">
+          <h3 className="font-display text-lg font-semibold text-foreground mb-5">Plan Details</h3>
+          <div className="space-y-5">
+            <div className="rounded-sm bg-surface border border-border p-4">
+              <p className="text-sm font-semibold text-foreground">Professional Plan</p>
               <p className="text-2xl font-bold text-foreground mt-1">$299<span className="text-sm font-normal text-muted">/month</span></p>
             </div>
-            <ul className="space-y-2.5">
+            <ul className="space-y-3">
               {[
                 "100,000 tokens / month",
                 "Unlimited matters",
@@ -180,7 +180,7 @@ export default function BillingPage() {
                 "Priority support",
               ].map((feature) => (
                 <li key={feature} className="flex items-center gap-2 text-sm text-foreground">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
                   {feature}
                 </li>
               ))}
@@ -196,10 +196,10 @@ export default function BillingPage() {
       </div>
 
       {/* Invoices */}
-      <div className="bg-white rounded-xl border border-border shadow-sm">
-        <div className="p-4 border-b border-border flex items-center justify-between">
-          <h3 className="font-semibold text-foreground">Invoices</h3>
-          <Button variant="ghost" size="sm" className="text-accent">
+      <div className="bg-white rounded-sm border border-border shadow-sm">
+        <div className="p-5 border-b border-border flex items-center justify-between">
+          <h3 className="font-display font-semibold text-foreground">Invoices</h3>
+          <Button variant="ghost" size="sm" className="text-foreground">
             <Download className="h-4 w-4 mr-1" />
             Download All
           </Button>

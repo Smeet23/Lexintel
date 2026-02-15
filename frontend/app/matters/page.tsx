@@ -77,13 +77,13 @@ export default function MattersPage() {
       key: "title",
       header: "Matter",
       render: (item: Matter) => (
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent/10">
-            <Briefcase className="h-4 w-4 text-accent" />
+        <div className="flex items-center gap-4">
+          <div className="flex h-10 w-10 items-center justify-center rounded-sm bg-surface">
+            <Briefcase className="h-4 w-4 text-foreground" />
           </div>
           <div>
-            <p className="font-medium text-foreground">{item.title}</p>
-            <p className="text-xs text-muted">{item.documentsCount} docs &middot; {item.queriesCount} queries</p>
+            <p className="font-medium text-foreground text-base">{item.title}</p>
+            <p className="text-sm text-muted mt-0.5">{item.documentsCount} docs &middot; {item.queriesCount} queries</p>
           </div>
         </div>
       ),
@@ -91,7 +91,7 @@ export default function MattersPage() {
     {
       key: "jurisdiction",
       header: "Jurisdiction",
-      render: (item: Matter) => <span className="text-foreground">{item.jurisdiction}</span>,
+      render: (item: Matter) => <span className="text-foreground text-sm">{item.jurisdiction}</span>,
     },
     {
       key: "status",
@@ -106,14 +106,14 @@ export default function MattersPage() {
       key: "tokenUsage",
       header: "Tokens",
       render: (item: Matter) => (
-        <span className="text-muted font-mono text-xs">{item.tokenUsage.toLocaleString()}</span>
+        <span className="text-muted font-mono text-sm">{item.tokenUsage.toLocaleString()}</span>
       ),
     },
     {
       key: "lastActivity",
       header: "Last Activity",
       render: (item: Matter) => (
-        <span className="text-muted">{formatRelativeTime(item.lastActivity)}</span>
+        <span className="text-muted text-sm">{formatRelativeTime(item.lastActivity)}</span>
       ),
     },
     {
@@ -142,7 +142,7 @@ export default function MattersPage() {
       />
 
       {/* Filters */}
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex items-center gap-4 mb-8">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
           <Input
@@ -167,7 +167,7 @@ export default function MattersPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-border shadow-sm">
+      <div className="bg-white rounded-sm border border-border shadow-sm">
         <DataTable
           columns={columns}
           data={filtered}
@@ -175,7 +175,7 @@ export default function MattersPage() {
           emptyMessage="No matters found"
         />
         {filtered.length > 0 && (
-          <div className="border-t border-border px-4 py-3 text-xs text-muted">
+          <div className="border-t border-border px-5 py-4 text-sm text-muted">
             Showing {filtered.length} of {mockMatters.length} matters
           </div>
         )}
@@ -190,9 +190,9 @@ export default function MattersPage() {
               Set up a new legal matter to begin uploading documents and querying.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 mt-4">
+          <div className="space-y-5 mt-4">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">Matter Title</label>
+              <label className="block text-sm font-medium text-foreground mb-2">Matter Title</label>
               <Input
                 placeholder="e.g., Acme Corp Acquisition Review"
                 value={newTitle}
@@ -200,7 +200,7 @@ export default function MattersPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">Jurisdiction</label>
+              <label className="block text-sm font-medium text-foreground mb-2">Jurisdiction</label>
               <Select value={newJurisdiction} onValueChange={setNewJurisdiction}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select jurisdiction" />

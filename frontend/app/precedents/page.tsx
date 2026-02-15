@@ -49,8 +49,8 @@ export default function PrecedentsPage() {
       header: "Precedent",
       render: (item: Precedent) => (
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent/10">
-            <BookOpen className="h-4 w-4 text-accent" />
+          <div className="flex h-9 w-9 items-center justify-center rounded-sm bg-surface">
+            <BookOpen className="h-4 w-4 text-foreground" />
           </div>
           <div>
             <p className="font-medium text-foreground text-sm">{item.title}</p>
@@ -77,7 +77,7 @@ export default function PrecedentsPage() {
       render: (item: Precedent) => (
         <div className="flex flex-wrap gap-1">
           {item.tags.slice(0, 3).map((tag) => (
-            <span key={tag} className="inline-flex items-center rounded-md bg-surface px-2 py-0.5 text-xs text-muted">
+            <span key={tag} className="inline-flex items-center rounded-sm bg-surface px-2 py-0.5 text-xs text-muted">
               {tag}
             </span>
           ))}
@@ -112,7 +112,7 @@ export default function PrecedentsPage() {
       />
 
       {/* Filters */}
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex items-center gap-3 mb-8">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
           <Input
@@ -137,7 +137,7 @@ export default function PrecedentsPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-border shadow-sm">
+      <div className="bg-white rounded-sm border border-border shadow-sm">
         <DataTable
           columns={columns}
           data={filtered}

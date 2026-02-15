@@ -35,11 +35,11 @@ const recentMatters = [
 ]
 
 const recentActivity = [
-  { action: "Query answered", matter: "Acme vs Global Corp", user: "John Smith", time: "10 min ago" },
-  { action: "Document uploaded", matter: "Smith Estate Planning", user: "Sarah Chen", time: "1 hour ago" },
-  { action: "Contract reviewed", matter: "TechStart IP Review", user: "John Smith", time: "3 hours ago" },
-  { action: "New matter created", matter: "Metro Construction", user: "Lisa Park", time: "5 hours ago" },
-  { action: "Draft exported", matter: "Phoenix Merger", user: "Mike Torres", time: "Yesterday" },
+  { action: "Query answered", matter: "Acme vs Global Corp", user: "J. Smith", time: "10 min ago", icon: MessageSquare },
+  { action: "Document uploaded", matter: "Smith Estate Planning", user: "S. Chen", time: "1 hour ago", icon: FileText },
+  { action: "Contract reviewed", matter: "TechStart IP Review", user: "J. Smith", time: "3 hours ago", icon: AlertCircle },
+  { action: "New matter created", matter: "Metro Construction", user: "L. Park", time: "5 hours ago", icon: Briefcase },
+  { action: "Draft exported", matter: "Phoenix Merger", user: "M. Torres", time: "Yesterday", icon: FileText },
 ]
 
 const statusMap: Record<string, "active" | "review" | "closed"> = {
@@ -57,17 +57,21 @@ export default function DashboardPage() {
       header: "Matter",
       render: (item: typeof recentMatters[0]) => (
         <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
-            <Briefcase className="h-4 w-4 text-accent" />
+          <div className="flex h-8 w-8 items-center justify-center rounded-sm bg-surface">
+            <Briefcase className="h-3.5 w-3.5 text-muted" />
           </div>
           <div>
-            <p className="font-medium text-foreground">{item.title}</p>
-            <p className="text-xs text-muted">{item.documentsCount} documents</p>
+            <p className="text-[13px] font-medium text-foreground">{item.title}</p>
+            <p className="text-[11px] text-muted">{item.documentsCount} documents</p>
           </div>
         </div>
       ),
     },
-    { key: "jurisdiction", header: "Jurisdiction" },
+    {
+      key: "jurisdiction",
+      header: "Jurisdiction",
+      render: (item: typeof recentMatters[0]) => <span className="text-[13px] text-muted">{item.jurisdiction}</span>,
+    },
     {
       key: "status",
       header: "Status",
@@ -81,7 +85,7 @@ export default function DashboardPage() {
       key: "lastActivity",
       header: "Last Activity",
       render: (item: typeof recentMatters[0]) => (
-        <span className="text-muted">{formatRelativeTime(item.lastActivity)}</span>
+        <span className="text-[13px] text-muted">{formatRelativeTime(item.lastActivity)}</span>
       ),
     },
   ]
@@ -93,14 +97,14 @@ export default function DashboardPage() {
         description="Overview of your legal workspace"
         actions={
           <Button onClick={() => router.push("/matters")}>
-            <Briefcase className="h-4 w-4" />
+            <Briefcase className="h-3.5 w-3.5" />
             New Matter
           </Button>
         }
       />
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      {/* Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-10">
         {stats.map((stat) => (
           <StatsCard key={stat.title} {...stat} />
         ))}
@@ -108,53 +112,45 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Recent Matters */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-border shadow-sm">
-          <div className="flex items-center justify-between p-6 pb-0">
-            <h3 className="text-lg font-semibold text-foreground">Recent Matters</h3>
+        <div className="lg:col-span-2 bg-white rounded-sm border border-border">
+          <div className="flex items-center justify-between px-6 py-5 border-b border-border">
+            <h3 className="font-display text-[16px] text-foreground">Recent Matters</h3>
             <Button
               variant="ghost"
               size="sm"
-              className="text-accent"
+              className="text-muted hover:text-foreground"
               onClick={() => router.push("/matters")}
             >
-              View All <ArrowRight className="h-4 w-4 ml-1" />
+              View All <ArrowRight className="h-3.5 w-3.5 ml-1" />
             </Button>
           </div>
-          <div className="p-6">
-            <DataTable
-              columns={matterColumns}
-              data={recentMatters}
-              onRowClick={(item) => router.push(`/matters/${item.id}`)}
-            />
-          </div>
+          <DataTable
+            columns={matterColumns}
+            data={recentMatters}
+            onRowClick={(item) => router.push(`/matters/${item.id}`)}
+          />
         </div>
 
-        {/* Recent Activity */}
-        <div className="bg-white rounded-xl border border-border shadow-sm">
-          <div className="p-6 pb-4">
-            <h3 className="text-lg font-semibold text-foreground">Recent Activity</h3>
+        {/* Activity Feed */}
+        <div className="bg-white rounded-sm border border-border">
+          <div className="px-6 py-5 border-b border-border">
+            <h3 className="font-display text-[16px] text-foreground">Activity</h3>
           </div>
-          <div className="px-6 pb-6 space-y-4">
+          <div className="px-6 py-5 space-y-5">
             {recentActivity.map((activity, idx) => (
-              <div key={idx} className="flex items-start gap-3">
-                <div className="mt-0.5">
-                  <div className="h-8 w-8 rounded-full bg-surface flex items-center justify-center">
-                    {activity.action.includes("Query") && <MessageSquare className="h-4 w-4 text-accent" />}
-                    {activity.action.includes("Document") && <FileText className="h-4 w-4 text-emerald-600" />}
-                    {activity.action.includes("Contract") && <AlertCircle className="h-4 w-4 text-amber-600" />}
-                    {activity.action.includes("matter") && <Briefcase className="h-4 w-4 text-violet-600" />}
-                    {activity.action.includes("Draft") && <FileText className="h-4 w-4 text-blue-600" />}
-                  </div>
+              <div key={idx} className="flex items-start gap-3.5">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-surface mt-0.5">
+                  <activity.icon className="h-3.5 w-3.5 text-muted" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-foreground">
+                  <p className="text-[13px] text-foreground leading-relaxed">
                     <span className="font-medium">{activity.action}</span>
                   </p>
-                  <p className="text-xs text-muted truncate">
+                  <p className="text-[11px] text-muted truncate mt-0.5">
                     {activity.matter} &middot; {activity.user}
                   </p>
                 </div>
-                <span className="text-xs text-muted whitespace-nowrap flex items-center gap-1">
+                <span className="text-[11px] text-muted-foreground whitespace-nowrap flex items-center gap-1.5 mt-0.5">
                   <Clock className="h-3 w-3" />
                   {activity.time}
                 </span>
