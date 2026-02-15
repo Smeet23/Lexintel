@@ -20,14 +20,12 @@ export default function StatsCard({ title, value, icon: Icon, trend, className }
         <div>
           <p className="text-[12px] font-medium uppercase tracking-[0.06em] text-muted">{title}</p>
           <p className="font-display text-[28px] text-foreground mt-2 tracking-tight">{value}</p>
-          {trend && (
-            <p className={cn(
-              "text-[11px] font-medium mt-2",
-              trend.positive ? "text-emerald-600" : "text-red-600"
-            )}>
-              {trend.positive ? "+" : ""}{trend.value} from last month
-            </p>
-          )}
+          <p className={cn(
+            "text-[11px] font-medium mt-2",
+            trend ? (trend.positive ? "text-emerald-600" : "text-red-600") : "text-transparent select-none"
+          )}>
+            {trend ? `${trend.positive ? "+" : ""}${trend.value} from last month` : "\u00A0"}
+          </p>
         </div>
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-surface group-hover:bg-surface-hover transition-colors">
           <Icon className="h-[18px] w-[18px] text-muted" />
