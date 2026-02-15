@@ -124,7 +124,7 @@ export default function BillingPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
         {/* Token Usage Bar */}
-        <div className="lg:col-span-2 bg-white rounded-sm border border-border shadow-sm p-8">
+        <div className="lg:col-span-2 bg-white rounded-xl border border-border shadow-elevated p-8">
           <h3 className="font-display text-lg font-semibold text-foreground mb-5">Token Usage</h3>
           <div className="space-y-5">
             <div>
@@ -163,10 +163,10 @@ export default function BillingPage() {
         </div>
 
         {/* Plan Details */}
-        <div className="bg-white rounded-sm border border-border shadow-sm p-8">
+        <div className="bg-white rounded-xl border border-border shadow-elevated p-8">
           <h3 className="font-display text-lg font-semibold text-foreground mb-5">Plan Details</h3>
           <div className="space-y-5">
-            <div className="rounded-sm bg-surface border border-border p-4">
+            <div className="rounded-xl bg-surface border border-border p-4">
               <p className="text-sm font-semibold text-foreground">Professional Plan</p>
               <p className="text-2xl font-bold text-foreground mt-1">$299<span className="text-sm font-normal text-muted">/month</span></p>
             </div>
@@ -196,7 +196,7 @@ export default function BillingPage() {
       </div>
 
       {/* Invoices */}
-      <div className="bg-white rounded-sm border border-border shadow-sm">
+      <div className="bg-white rounded-xl border border-border shadow-elevated">
         <div className="p-5 border-b border-border flex items-center justify-between">
           <h3 className="font-display font-semibold text-foreground">Invoices</h3>
           <Button variant="ghost" size="sm" className="text-foreground">

@@ -15,7 +15,7 @@ export default function CitationPanel({ citations, className }: CitationPanelPro
   if (citations.length === 0) {
     return (
       <div className={cn("flex flex-col items-center justify-center py-12 text-center", className)}>
-        <div className="h-9 w-9 rounded-sm bg-surface flex items-center justify-center mb-3">
+        <div className="h-10 w-10 rounded-xl bg-surface flex items-center justify-center mb-3">
           <BookOpen className="h-4 w-4 text-muted" />
         </div>
         <p className="font-display text-[15px] text-foreground">No citations yet</p>
@@ -40,10 +40,10 @@ export default function CitationPanel({ citations, className }: CitationPanelPro
         {citations.map((citation, idx) => (
           <div
             key={idx}
-            className="rounded-sm border border-border bg-white p-3 hover:border-border-strong transition-all cursor-pointer group"
+            className="rounded-xl border border-border bg-white p-3 hover:shadow-elevated hover:border-border-strong transition-all duration-200 cursor-pointer group"
           >
             <div className="flex items-start gap-2.5">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm bg-surface text-muted">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-surface text-muted group-hover:bg-surface-hover transition-colors">
                 <FileText className="h-3.5 w-3.5" />
               </div>
               <div className="flex-1 min-w-0">
@@ -62,12 +62,12 @@ export default function CitationPanel({ citations, className }: CitationPanelPro
                 )}
               </div>
               <span className={cn(
-                "shrink-0 font-mono text-[11px] font-medium px-1.5 py-0.5 rounded-sm",
+                "shrink-0 font-mono text-[11px] font-medium px-1.5 py-0.5 rounded-md border",
                 citation.relevanceScore >= 0.8
-                  ? "bg-emerald-50 text-emerald-700"
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200/60"
                   : citation.relevanceScore >= 0.6
-                    ? "bg-amber-50 text-amber-700"
-                    : "bg-surface text-muted"
+                    ? "bg-amber-50 text-amber-700 border-amber-200/60"
+                    : "bg-surface text-muted border-border"
               )}>
                 {Math.round(citation.relevanceScore * 100)}%
               </span>
@@ -76,7 +76,7 @@ export default function CitationPanel({ citations, className }: CitationPanelPro
         ))}
       </div>
 
-      <div className="rounded-sm bg-surface p-3">
+      <div className="rounded-xl bg-surface/60 border border-border p-3">
         <p className="text-[11px] text-muted">
           <span className="font-medium text-foreground">{citations.length} sources</span> &middot;
           Avg. relevance: {Math.round((citations.reduce((a, c) => a + c.relevanceScore, 0) / citations.length) * 100)}%

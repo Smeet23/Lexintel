@@ -2,6 +2,7 @@
 
 import React from "react"
 import { useRouter } from "next/navigation"
+import { motion } from "framer-motion"
 import {
   Briefcase,
   Zap,
@@ -36,13 +37,22 @@ function mapStatus(status: string): "active" | "review" | "closed" {
   return "closed"
 }
 
+const stagger = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.06 } },
+}
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 12 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] as const } },
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const { data: matters, isLoading, error } = useMatters()
 
   const recentMatters = (matters || []).slice(0, 5)
 
-  // Compute stats from real data
   const activeCount = (matters || []).filter(m => m.status === "ready").length
   const processingCount = (matters || []).filter(m => m.status === "processing").length
   const totalMatters = (matters || []).length
@@ -60,8 +70,8 @@ export default function DashboardPage() {
       header: "Matter",
       render: (item: MatterResponse) => (
         <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-sm bg-surface">
-            <Briefcase className="h-3.5 w-3.5 text-muted" />
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface">
+            <Briefcase className="h-4 w-4 text-muted" />
           </div>
           <div>
             <p className="text-[13px] font-medium text-foreground">{item.name}</p>
@@ -102,15 +112,27 @@ export default function DashboardPage() {
       />
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-10">
+      <motion.div
+        variants={stagger}
+        initial="hidden"
+        animate="show"
+        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-10"
+      >
         {stats.map((stat) => (
-          <StatsCard key={stat.title} {...stat} />
+          <motion.div key={stat.title} variants={fadeUp}>
+            <StatsCard {...stat} />
+          </motion.div>
         ))}
-      </div>
+      </motion.div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Recent Matters */}
-        <div className="lg:col-span-2 bg-white rounded-sm border border-border">
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
+          className="lg:col-span-2 bg-white rounded-xl border border-border shadow-elevated"
+        >
           <div className="flex items-center justify-between px-6 py-5 border-b border-border">
             <h3 className="font-display text-[16px] text-foreground">Recent Matters</h3>
             <Button
@@ -133,7 +155,9 @@ export default function DashboardPage() {
             </div>
           ) : recentMatters.length === 0 ? (
             <div className="px-6 py-12 text-center">
-              <Briefcase className="h-8 w-8 text-muted mx-auto mb-3" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-surface mx-auto mb-3">
+                <Briefcase className="h-5 w-5 text-muted" />
+              </div>
               <p className="text-sm font-medium text-foreground">No matters yet</p>
               <p className="text-xs text-muted mt-1">Create your first matter to get started</p>
             </div>
@@ -144,17 +168,22 @@ export default function DashboardPage() {
               onRowClick={(item) => router.push(`/matters/${item.id}`)}
             />
           )}
-        </div>
+        </motion.div>
 
         {/* Activity Feed */}
-        <div className="bg-white rounded-sm border border-border">
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
+          className="bg-white rounded-xl border border-border shadow-elevated"
+        >
           <div className="px-6 py-5 border-b border-border">
             <h3 className="font-display text-[16px] text-foreground">Activity</h3>
           </div>
           <div className="px-6 py-5 space-y-5">
             {recentActivity.map((activity, idx) => (
-              <div key={idx} className="flex items-start gap-3.5">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-surface mt-0.5">
+              <div key={idx} className="flex items-start gap-3.5 group">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface group-hover:bg-surface-hover transition-colors mt-0.5">
                   <activity.icon className="h-3.5 w-3.5 text-muted" />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -172,7 +201,7 @@ export default function DashboardPage() {
               </div>
             ))}
           </div>
-        </div>
+        </motion.div>
       </div>
     </AppLayout>
   )

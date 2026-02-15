@@ -29,9 +29,9 @@ interface SettingSection {
 
 function SettingCard({ icon, title, description, children }: SettingSection) {
   return (
-    <div className="bg-white rounded-sm border border-border shadow-sm p-8">
+    <div className="bg-white rounded-xl border border-border shadow-elevated p-8">
       <div className="flex items-start gap-4 mb-6">
-        <div className="flex h-9 w-9 items-center justify-center rounded-sm bg-surface shrink-0">
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-surface shrink-0">
           {icon}
         </div>
         <div>
@@ -161,7 +161,7 @@ export default function SettingsPage() {
             </SelectContent>
           </Select>
 
-          <div className="rounded-sm bg-amber-50 border border-amber-200 p-3">
+          <div className="rounded-lg bg-amber-50 border border-amber-200/60 p-3">
             <p className="text-[12px] text-amber-700">
               <strong>Note:</strong> Changing retention settings will not retroactively delete existing data. Contact support for data deletion requests.
             </p>

@@ -2,9 +2,12 @@
 
 import React, { useState } from "react"
 import { useRouter } from "next/navigation"
+import { motion } from "framer-motion"
 import { Scale, Eye, EyeOff, ArrowRight, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+
+const ease = [0.16, 1, 0.3, 1] as const
 
 export default function LoginPage() {
   const router = useRouter()
@@ -28,23 +31,41 @@ export default function LoginPage() {
     <div className="min-h-screen flex bg-primary">
       {/* Left — Brand storytelling */}
       <div className="hidden lg:flex lg:w-[55%] flex-col justify-between p-14 relative overflow-hidden">
-        {/* Subtle gradient orbs — monochrome white glow */}
-        <div className="absolute -bottom-40 -left-40 w-[500px] h-[500px] rounded-full bg-white/[0.03] blur-3xl" />
-        <div className="absolute top-20 right-10 w-[300px] h-[300px] rounded-full bg-white/[0.02] blur-3xl" />
+        {/* Ambient gradient orbs */}
+        <div className="absolute -bottom-40 -left-40 w-[500px] h-[500px] rounded-full bg-white/[0.03] blur-[100px]" />
+        <div className="absolute top-20 right-10 w-[300px] h-[300px] rounded-full bg-white/[0.02] blur-[80px]" />
+        {/* Subtle grid */}
+        <div
+          className="absolute inset-0 opacity-[0.02]"
+          style={{
+            backgroundImage: `linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)`,
+            backgroundSize: "60px 60px",
+          }}
+        />
 
-        <div className="flex items-center gap-3 relative z-10">
-          <div className="flex h-9 w-9 items-center justify-center rounded-md bg-foreground">
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease }}
+          className="flex items-center gap-3 relative z-10"
+        >
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 backdrop-blur-sm border border-white/10">
             <Scale className="h-4 w-4 text-primary-foreground" />
           </div>
           <span className="font-display text-[17px] font-semibold text-primary-foreground tracking-tight">
             LexIntel
           </span>
-        </div>
+        </motion.div>
 
-        <div className="max-w-lg relative z-10">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, delay: 0.15, ease }}
+          className="max-w-lg relative z-10"
+        >
           <h1 className="font-display text-[3.2rem] font-bold text-primary-foreground leading-[1.08] tracking-tight">
             Legal intelligence,<br />
-            <span className="text-foreground">verified.</span>
+            <span className="text-white/30">verified.</span>
           </h1>
           <p className="mt-5 text-[17px] text-white/40 leading-relaxed max-w-md">
             Every answer backed by source documents, page numbers,
@@ -52,21 +73,32 @@ export default function LoginPage() {
           </p>
 
           {/* Proof points */}
-          <div className="mt-10 grid grid-cols-3 gap-px bg-white/[0.06] rounded-lg overflow-hidden">
+          <div className="mt-10 grid grid-cols-3 gap-px bg-white/[0.06] rounded-xl overflow-hidden">
             {[
               { label: "Documents analyzed", value: "2.4M+" },
               { label: "Accuracy rate", value: "99.2%" },
               { label: "Firms onboarded", value: "340+" },
-            ].map((stat) => (
-              <div key={stat.label} className="bg-primary p-5">
+            ].map((stat, i) => (
+              <motion.div
+                key={stat.label}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.4 + i * 0.1, ease }}
+                className="bg-white/[0.03] p-5"
+              >
                 <p className="font-display text-xl font-semibold text-primary-foreground tracking-tight">{stat.value}</p>
                 <p className="text-[11px] text-white/30 mt-1 uppercase tracking-[0.06em]">{stat.label}</p>
-              </div>
+              </motion.div>
             ))}
           </div>
-        </div>
+        </motion.div>
 
-        <div className="flex items-center gap-8 text-[11px] text-white/20 uppercase tracking-[0.08em] relative z-10">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.5, delay: 0.6, ease }}
+          className="flex items-center gap-8 text-[11px] text-white/20 uppercase tracking-[0.08em] relative z-10"
+        >
           <span>SOC 2 Type II</span>
           <span className="h-3 w-px bg-white/10" />
           <span>GDPR</span>
@@ -74,15 +106,20 @@ export default function LoginPage() {
           <span>ISO 27001</span>
           <span className="h-3 w-px bg-white/10" />
           <span>No AI Training</span>
-        </div>
+        </motion.div>
       </div>
 
       {/* Right — Login form */}
       <div className="flex-1 flex items-center justify-center p-8 bg-white lg:rounded-l-[2rem]">
-        <div className="w-full max-w-[380px]">
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.1, ease }}
+          className="w-full max-w-[380px]"
+        >
           {/* Mobile logo */}
           <div className="flex items-center gap-3 mb-10 lg:hidden">
-            <div className="flex h-9 w-9 items-center justify-center rounded-md bg-foreground">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-foreground">
               <Scale className="h-4 w-4 text-primary-foreground" />
             </div>
             <span className="font-display text-[17px] font-semibold text-foreground">LexIntel</span>
@@ -93,7 +130,7 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="mt-8 space-y-5">
             {error && (
-              <div className="rounded-md bg-[#FDF0ED] border border-[#E8C4BA] text-[#B04028] text-[13px] px-4 py-3">
+              <div className="rounded-lg bg-red-50 border border-red-200/60 text-red-700 text-[13px] px-4 py-3">
                 {error}
               </div>
             )}
@@ -108,7 +145,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="h-11 text-[14px] focus-visible:ring-foreground/10 focus-visible:border-foreground/30"
+                className="h-11 text-[14px] rounded-lg focus-visible:ring-foreground/10 focus-visible:border-foreground/30"
               />
             </div>
 
@@ -123,7 +160,7 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  className="h-11 pr-10 text-[14px] focus-visible:ring-foreground/10 focus-visible:border-foreground/30"
+                  className="h-11 pr-10 text-[14px] rounded-lg focus-visible:ring-foreground/10 focus-visible:border-foreground/30"
                 />
                 <button
                   type="button"
@@ -145,7 +182,7 @@ export default function LoginPage() {
               </a>
             </div>
 
-            <Button type="submit" size="lg" className="w-full" disabled={isLoading}>
+            <Button type="submit" size="lg" className="w-full rounded-lg" disabled={isLoading}>
               {isLoading ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -166,7 +203,7 @@ export default function LoginPage() {
               Request access
             </a>
           </p>
-        </div>
+        </motion.div>
       </div>
     </div>
   )

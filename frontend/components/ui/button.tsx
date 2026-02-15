@@ -4,15 +4,15 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap text-[13px] font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20 focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-40 cursor-pointer",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap text-[13px] font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20 focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-40 cursor-pointer active:scale-[0.98]",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary-light rounded-sm",
-        destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded-sm",
-        outline: "border border-border bg-white hover:bg-surface text-foreground rounded-sm",
-        secondary: "bg-surface hover:bg-surface-hover text-foreground rounded-sm",
-        ghost: "hover:bg-surface text-foreground rounded-sm",
+        default: "bg-primary text-primary-foreground hover:bg-primary-light rounded-lg shadow-sm hover:shadow-md",
+        destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded-lg",
+        outline: "border border-border bg-white hover:bg-surface hover:border-border-strong text-foreground rounded-lg",
+        secondary: "bg-surface hover:bg-surface-hover text-foreground rounded-lg",
+        ghost: "hover:bg-surface text-foreground rounded-lg",
         link: "text-foreground underline-offset-4 hover:underline",
       },
       size: {
