@@ -25,7 +25,7 @@ try:
     from backend.services.embeddings import embed_text
     from backend.services.vector_store import search_vectors
     from backend.services.document_summary import generate_document_summary
-    from backend.models import Case, Query, Chunk
+    from backend.models import Matter, Query, Chunk
     from backend.config import get_settings
     from backend.exceptions import QueryProcessingException, EmbeddingException, VectorStoreException
 except ImportError:
@@ -33,14 +33,14 @@ except ImportError:
         from services.embeddings import embed_text
         from services.vector_store import search_vectors
         from services.document_summary import generate_document_summary
-        from models import Case, Query, Chunk
+        from models import Matter, Query, Chunk
         from config import get_settings
         from exceptions import QueryProcessingException, EmbeddingException, VectorStoreException
     except ImportError:
         from .services.embeddings import embed_text
         from .services.vector_store import search_vectors
         from .services.document_summary import generate_document_summary
-        from .models import Case, Query, Chunk
+        from .models import Matter, Query, Chunk
         from .config import get_settings
         from .exceptions import QueryProcessingException, EmbeddingException, VectorStoreException
 
@@ -124,13 +124,13 @@ def validate_token_budget(token_count: int, budget: int) -> bool:
     return token_count <= budget
 
 
-def format_legal_context(chunks: List[Dict], case_name: str) -> str:
+def format_legal_context(chunks: List[Dict], matter_name: str) -> str:
     """
     Format retrieved chunks into structured legal context with metadata.
 
     Args:
         chunks: List of chunk dicts with content, page_num, section_name, score
-        case_name: Name of the case
+        matter_name: Name of the matter
 
     Returns:
         Formatted context string with metadata
@@ -144,7 +144,7 @@ def format_legal_context(chunks: List[Dict], case_name: str) -> str:
     # Sort by score (highest first)
     sorted_chunks = sorted(chunks, key=lambda x: x.get("score", 0), reverse=True)
 
-    context_parts = [f"Case: {case_name}\n", "=" * 60, "\n"]
+    context_parts = [f"Matter: {matter_name}\n", "=" * 60, "\n"]
 
     for i, chunk in enumerate(sorted_chunks, 1):
         location = chunk.get("page_num", "Unknown")
@@ -297,12 +297,12 @@ def rerank_chunks(
         return chunks[:top_k]
 
 
-def retrieve_chunks(case_id: str, query_embedding: List[float], top_k: int = RETRIEVAL_TOP_K) -> List[Dict]:
+def retrieve_chunks(matter_id: str, query_embedding: List[float], top_k: int = RETRIEVAL_TOP_K) -> List[Dict]:
     """
     Retrieve similar chunks from vector store.
 
     Args:
-        case_id: Case identifier
+        matter_id: Matter identifier
         query_embedding: Query embedding vector
         top_k: Number of top results to retrieve
 
@@ -318,7 +318,7 @@ def retrieve_chunks(case_id: str, query_embedding: List[float], top_k: int = RET
         raise ValueError(f"top_k must be positive, got {top_k}")
 
     try:
-        results = search_vectors(case_id, query_embedding, limit=top_k)
+        results = search_vectors(matter_id, query_embedding, limit=top_k)
         return results
     except VectorStoreException:
         raise
@@ -796,8 +796,8 @@ async def generate_answer(
         ) from e
 
 
-async def query_case(
-    case_id: str,
+async def query_matter(
+    matter_id: str,
     query: str,
     db: Session,
     top_k: int = FINAL_CHUNK_COUNT,
@@ -817,7 +817,7 @@ async def query_case(
     8. Return structured response
 
     Args:
-        case_id: Case identifier (UUID string)
+        matter_id: Matter identifier (UUID string)
         query: User query string
         db: Database session
         top_k: Number of chunks to include in context
@@ -827,7 +827,7 @@ async def query_case(
         Dict with keys:
         - answer: Generated answer string (or None if error)
         - sources: List of source dicts with citation info
-        - case_id: Case identifier
+        - matter_id: Matter identifier
         - query: Original query
         - model: Model name used
         - tokens_used: Total tokens consumed
@@ -837,7 +837,7 @@ async def query_case(
     error_response = {
         "answer": None,
         "sources": [],
-        "case_id": case_id,
+        "matter_id": matter_id,
         "query": query,
         "model": "gpt-4o",
         "tokens_used": 0,
@@ -851,10 +851,10 @@ async def query_case(
         return error_response
 
     try:
-        # Get case from database
-        case = db.query(Case).filter(Case.id == case_id).first()
-        if not case:
-            error_response["error"] = f"Case not found: {case_id}"
+        # Get matter from database
+        matter = db.query(Matter).filter(Matter.id == matter_id).first()
+        if not matter:
+            error_response["error"] = f"Matter not found: {matter_id}"
             return error_response
 
         # 2. Embed query
@@ -873,10 +873,10 @@ async def query_case(
 
         # 3. Retrieve chunks
         try:
-            retrieved_chunks = retrieve_chunks(case_id, query_embedding, top_k=RETRIEVAL_TOP_K)
+            retrieved_chunks = retrieve_chunks(matter_id, query_embedding, top_k=RETRIEVAL_TOP_K)
         except (VectorStoreException, ValueError) as e:
             logger.error(f"Chunk retrieval failed: {str(e)}")
-            error_response["error"] = f"No chunks found for case"
+            error_response["error"] = f"No chunks found for matter"
             return error_response
         except Exception as e:
             logger.error(f"Unexpected error retrieving chunks: {str(e)}")
@@ -917,7 +917,7 @@ async def query_case(
 
         # 5. Format context with token budgeting
         try:
-            formatted_context = format_legal_context(final_chunks, case.name)
+            formatted_context = format_legal_context(final_chunks, matter.name)
 
             # Count tokens in context
             context_tokens = count_tokens_gpt4o(formatted_context)
@@ -928,7 +928,7 @@ async def query_case(
             if estimated_total > CONTEXT_TOKEN_BUDGET:
                 # Trim context to fewer chunks
                 final_chunks = final_chunks[:2]
-                formatted_context = format_legal_context(final_chunks, case.name)
+                formatted_context = format_legal_context(final_chunks, matter.name)
                 context_tokens = count_tokens_gpt4o(formatted_context)
                 estimated_total = context_tokens + query_tokens + 500
 
@@ -1028,14 +1028,14 @@ async def query_case(
         )
 
         # Generate document summary (NEW)
-        doc_summary = generate_document_summary(case)
+        doc_summary = generate_document_summary(matter)
 
         # Prepare successful response (using cleaned_answer without hallucinated citations)
         return {
             "answer": cleaned_answer,
             "sources": sources,
             "citations": grounded_citations,  # Citations with supporting excerpts
-            "case_id": case_id,
+            "matter_id": matter_id,
             "query": query,
             "model": "gpt-4o",
             "tokens_used": tokens_used,
@@ -1058,11 +1058,11 @@ async def query_case(
         }
 
     except QueryProcessingException as e:
-        logger.error(f"Query processing error in query_case: {str(e)}")
+        logger.error(f"Query processing error in query_matter: {str(e)}")
         error_response["error"] = f"Query processing failed: {str(e)}"
         return error_response
     except Exception as e:
-        logger.error(f"Unexpected error in query_case: {str(e)}")
+        logger.error(f"Unexpected error in query_matter: {str(e)}")
         raise QueryProcessingException(
             "Unexpected error in query processing pipeline",
             detail=str(e)

@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useCallback } from "react"
+import React, { useState, useCallback, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import {
   ArrowLeft,
@@ -17,7 +17,6 @@ import {
   Download,
   Eye,
   Trash2,
-  ChevronRight,
 } from "lucide-react"
 import AppLayout from "@/layouts/AppLayout"
 import ChatPanel from "@/components/ChatPanel"
@@ -30,54 +29,32 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Progress } from "@/components/ui/progress"
 import { cn, formatRelativeTime } from "@/lib/utils"
-import type { QueryMessage, Citation, Document, AuditEntry } from "@/lib/types"
+import { useMatter, useAskQuestion } from "@/hooks/use-matters"
+import type { QueryMessage, Citation, AuditEntry } from "@/lib/types"
 
-// Mock data
-const matterData = {
-  id: "1",
-  title: "Acme vs Global Corp",
-  jurisdiction: "US - Federal",
-  status: "active" as const,
-  team: ["John Smith", "Sarah Chen"],
-  documentsCount: 12,
-  queriesCount: 45,
-  tokenUsage: 8234,
-  budget: 15000,
-  createdAt: "2025-12-01",
-}
-
-const mockDocuments: (Document & Record<string, unknown>)[] = [
-  { id: "d1", matterId: "1", name: "Master Services Agreement.pdf", fileType: "pdf", status: "indexed", pageCount: 42, size: 2400000, uploadedAt: new Date(Date.now() - 86400000).toISOString(), uploadedBy: "John Smith" },
-  { id: "d2", matterId: "1", name: "Amendment No. 3.docx", fileType: "docx", status: "indexed", pageCount: 8, size: 340000, uploadedAt: new Date(Date.now() - 172800000).toISOString(), uploadedBy: "Sarah Chen" },
-  { id: "d3", matterId: "1", name: "Exhibit A - Financial Statements.pdf", fileType: "pdf", status: "processing", pageCount: 156, size: 8900000, uploadedAt: new Date(Date.now() - 3600000).toISOString(), uploadedBy: "John Smith" },
-  { id: "d4", matterId: "1", name: "Counterparty Due Diligence Report.pdf", fileType: "pdf", status: "indexed", pageCount: 34, size: 1800000, uploadedAt: new Date(Date.now() - 259200000).toISOString(), uploadedBy: "Lisa Park" },
-  { id: "d5", matterId: "1", name: "Board Resolution.txt", fileType: "txt", status: "indexed", size: 12000, uploadedAt: new Date(Date.now() - 604800000).toISOString(), uploadedBy: "John Smith" },
-]
-
+// Mock audit log (no backend endpoint for this yet)
 const mockAuditLog: (AuditEntry & Record<string, unknown>)[] = [
   { id: "a1", action: "Query", user: "John Smith", details: "Summarize key risks in this contract", sources: ["MSA.pdf - Page 12", "Amendment 3 - Page 4"], timestamp: new Date(Date.now() - 3600000).toISOString() },
-  { id: "a2", action: "Upload", user: "John Smith", details: "Uploaded Exhibit A - Financial Statements.pdf", timestamp: new Date(Date.now() - 7200000).toISOString() },
-  { id: "a3", action: "Query", user: "Sarah Chen", details: "What are the termination provisions?", sources: ["MSA.pdf - Page 28", "MSA.pdf - Page 29"], timestamp: new Date(Date.now() - 86400000).toISOString() },
-  { id: "a4", action: "Export", user: "John Smith", details: "Exported evidence bundle for indemnification analysis", timestamp: new Date(Date.now() - 172800000).toISOString() },
-  { id: "a5", action: "Upload", user: "Sarah Chen", details: "Uploaded Amendment No. 3.docx", timestamp: new Date(Date.now() - 259200000).toISOString() },
+  { id: "a2", action: "Upload", user: "John Smith", details: "Uploaded document", timestamp: new Date(Date.now() - 7200000).toISOString() },
 ]
 
-// Contract review mock
+// Contract review mock (no backend endpoint for this yet)
 const contractRisks = [
   { clause: "Indemnification (Section 8.2)", risk: "high" as const, summary: "Unlimited indemnification exposure for IP infringement claims. No cap or basket provisions." },
   { clause: "Termination for Convenience (Section 12.1)", risk: "medium" as const, summary: "30-day notice period may be insufficient. No wind-down provisions for ongoing work." },
   { clause: "Limitation of Liability (Section 9.1)", risk: "low" as const, summary: "Standard mutual cap at 12 months' fees. Carve-outs are appropriate." },
-  { clause: "Data Protection (Section 14)", risk: "high" as const, summary: "Missing sub-processor notification requirements. GDPR Article 28 compliance gap." },
-  { clause: "Assignment (Section 16.3)", risk: "medium" as const, summary: "Silent on change of control assignment. May allow unwanted counterparty changes." },
 ]
 
 export default function MatterWorkspacePage() {
   const params = useParams()
   const router = useRouter()
+  const matterId = params.id as string
   const [messages, setMessages] = useState<QueryMessage[]>([])
   const [selectedCitations, setSelectedCitations] = useState<Citation[]>([])
-  const [isQuerying, setIsQuerying] = useState(false)
   const [draftType, setDraftType] = useState("")
+
+  const { data: matter, isLoading, error } = useMatter(matterId)
+  const askQuestion = useAskQuestion(matterId)
 
   const handleSendMessage = useCallback((content: string) => {
     const userMsg: QueryMessage = {
@@ -87,85 +64,54 @@ export default function MatterWorkspacePage() {
       timestamp: new Date().toISOString(),
     }
     setMessages((prev) => [...prev, userMsg])
-    setIsQuerying(true)
 
-    // Simulate AI response
-    setTimeout(() => {
-      const aiMsg: QueryMessage = {
-        id: `msg-${Date.now() + 1}`,
-        role: "assistant",
-        content: `Based on my analysis of the uploaded documents, here is my response to your question:\n\nThe Master Services Agreement contains several key provisions relevant to your query. Specifically, Section 8.2 outlines indemnification obligations with unlimited exposure for IP claims, while Section 12.1 provides for termination with a 30-day notice period.\n\nI identified 3 documents containing relevant information, with the strongest authority found in the MSA (pages 12-15) and Amendment No. 3 (pages 4-5).`,
-        citations: [
-          { documentName: "Master Services Agreement.pdf", pageNumber: 12, section: "Section 8.2 - Indemnification", excerpt: "Each party shall indemnify and hold harmless the other party from any claims arising from...", relevanceScore: 0.94 },
-          { documentName: "Master Services Agreement.pdf", pageNumber: 28, section: "Section 12.1 - Termination", excerpt: "Either party may terminate this Agreement upon thirty (30) days written notice...", relevanceScore: 0.87 },
-          { documentName: "Amendment No. 3.docx", pageNumber: 4, section: "Amendment to Section 8", excerpt: "The indemnification provisions of the Agreement are hereby amended to include...", relevanceScore: 0.82 },
-        ],
-        confidenceScore: 87,
-        timestamp: new Date().toISOString(),
-      }
-      setMessages((prev) => [...prev, aiMsg])
-      setSelectedCitations(aiMsg.citations || [])
-      setIsQuerying(false)
-    }, 2500)
-  }, [])
+    askQuestion.mutate(content, {
+      onSuccess: (result) => {
+        if (result.answer) {
+          // Map backend sources to Citation format
+          const citations: Citation[] = (result.sources || []).map((s) => ({
+            documentName: matter?.name || "Document",
+            pageNumber: parseInt(s.page_num) || 0,
+            section: "",
+            excerpt: s.content?.slice(0, 200) || "",
+            relevanceScore: s.relevance_score || 0,
+          }))
 
-  const docColumns = [
-    {
-      key: "name",
-      header: "Document",
-      render: (item: typeof mockDocuments[0]) => (
-        <div className="flex items-center gap-3">
-          <div className={cn(
-            "flex h-9 w-9 items-center justify-center rounded-sm",
-            item.fileType === "pdf" ? "bg-red-50" : item.fileType === "docx" ? "bg-blue-50" : "bg-surface"
-          )}>
-            <FileText className={cn(
-              "h-4 w-4",
-              item.fileType === "pdf" ? "text-red-700" : item.fileType === "docx" ? "text-blue-700" : "text-muted"
-            )} />
-          </div>
-          <div>
-            <p className="font-medium text-foreground text-sm">{item.name}</p>
-            <p className="text-xs text-muted">
-              {item.pageCount ? `${item.pageCount} pages` : ""} &middot; {(item.size / 1024 / 1024).toFixed(1)} MB
-            </p>
-          </div>
-        </div>
-      ),
-    },
-    {
-      key: "status",
-      header: "Status",
-      render: (item: typeof mockDocuments[0]) => (
-        <Badge variant={item.status as "indexed" | "processing" | "error"}>
-          {item.status === "indexed" && <CheckCircle2 className="h-3 w-3 mr-1" />}
-          {item.status === "processing" && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
-          {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
-        </Badge>
-      ),
-    },
-    {
-      key: "uploadedBy",
-      header: "Uploaded By",
-      render: (item: typeof mockDocuments[0]) => <span className="text-muted text-sm">{item.uploadedBy as string}</span>,
-    },
-    {
-      key: "uploadedAt",
-      header: "Date",
-      render: (item: typeof mockDocuments[0]) => <span className="text-muted text-sm">{formatRelativeTime(item.uploadedAt)}</span>,
-    },
-    {
-      key: "actions",
-      header: "",
-      className: "w-24",
-      render: () => (
-        <div className="flex gap-1">
-          <Button variant="ghost" size="icon" className="h-8 w-8"><Eye className="h-4 w-4 text-muted" /></Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8"><Trash2 className="h-4 w-4 text-muted" /></Button>
-        </div>
-      ),
-    },
-  ]
+          const confidenceScore = typeof result.confidence === "object"
+            ? Math.round((result.confidence.score || 0) * 100)
+            : 0
+
+          const aiMsg: QueryMessage = {
+            id: `msg-${Date.now() + 1}`,
+            role: "assistant",
+            content: result.answer,
+            citations,
+            confidenceScore,
+            timestamp: new Date().toISOString(),
+          }
+          setMessages((prev) => [...prev, aiMsg])
+          setSelectedCitations(citations)
+        } else {
+          const errorMsg: QueryMessage = {
+            id: `msg-${Date.now() + 1}`,
+            role: "assistant",
+            content: result.error || "Sorry, I couldn't generate an answer. Please try rephrasing your question.",
+            timestamp: new Date().toISOString(),
+          }
+          setMessages((prev) => [...prev, errorMsg])
+        }
+      },
+      onError: () => {
+        const errorMsg: QueryMessage = {
+          id: `msg-${Date.now() + 1}`,
+          role: "assistant",
+          content: "An error occurred while processing your question. Please try again.",
+          timestamp: new Date().toISOString(),
+        }
+        setMessages((prev) => [...prev, errorMsg])
+      },
+    })
+  }, [askQuestion, matter])
 
   const auditColumns = [
     {
@@ -203,8 +149,35 @@ export default function MatterWorkspacePage() {
     },
   ]
 
+  if (isLoading) {
+    return (
+      <AppLayout title="Loading...">
+        <div className="flex items-center justify-center py-24">
+          <Loader2 className="h-6 w-6 animate-spin text-muted" />
+          <span className="ml-2 text-muted">Loading matter...</span>
+        </div>
+      </AppLayout>
+    )
+  }
+
+  if (error || !matter) {
+    return (
+      <AppLayout title="Error">
+        <div className="py-24 text-center">
+          <p className="text-muted">Matter not found or backend unavailable.</p>
+          <Button variant="outline" className="mt-4" onClick={() => router.push("/matters")}>
+            <ArrowLeft className="h-4 w-4" /> Back to Matters
+          </Button>
+        </div>
+      </AppLayout>
+    )
+  }
+
+  const statusBadgeVariant = matter.status === "ready" ? "active" : matter.status === "processing" ? "review" : "error"
+  const statusLabel = matter.status === "ready" ? "Ready" : matter.status === "processing" ? "Processing" : "Error"
+
   return (
-    <AppLayout title={matterData.title}>
+    <AppLayout title={matter.name}>
       {/* Breadcrumb + Header */}
       <div className="mb-8">
         <button
@@ -217,11 +190,11 @@ export default function MatterWorkspacePage() {
         <div className="flex items-start justify-between">
           <div>
             <div className="flex items-center gap-3">
-              <h2 className="text-2xl font-display font-semibold text-foreground">{matterData.title}</h2>
-              <Badge variant="active">Active</Badge>
+              <h2 className="text-2xl font-display font-semibold text-foreground">{matter.name}</h2>
+              <Badge variant={statusBadgeVariant}>{statusLabel}</Badge>
             </div>
             <p className="text-sm text-muted mt-1.5">
-              {matterData.jurisdiction} &middot; {matterData.documentsCount} documents &middot; Created {matterData.createdAt}
+              {matter.file_type.toUpperCase()} &middot; {matter.documents_count} chunks &middot; {matter.queries_count} queries &middot; Created {formatRelativeTime(matter.created_at)}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -229,13 +202,20 @@ export default function MatterWorkspacePage() {
               <Download className="h-4 w-4" />
               Export Bundle
             </Button>
-            <Button size="sm">
-              <Upload className="h-4 w-4" />
-              Upload Document
-            </Button>
           </div>
         </div>
       </div>
+
+      {/* Processing indicator */}
+      {matter.status === "processing" && (
+        <div className="mb-6 rounded-sm border border-amber-200 bg-amber-50/60 p-4 flex items-center gap-3">
+          <Loader2 className="h-5 w-5 animate-spin text-amber-600" />
+          <div>
+            <p className="text-sm font-medium text-amber-800">Document is being processed</p>
+            <p className="text-xs text-amber-600 mt-0.5">This may take a few minutes. You can ask questions once processing is complete.</p>
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <Tabs defaultValue="ask-ai" className="space-y-6">
@@ -243,10 +223,6 @@ export default function MatterWorkspacePage() {
           <TabsTrigger value="ask-ai">
             <MessageSquare className="h-4 w-4 mr-2" />
             Ask AI
-          </TabsTrigger>
-          <TabsTrigger value="documents">
-            <FileText className="h-4 w-4 mr-2" />
-            Documents
           </TabsTrigger>
           <TabsTrigger value="contract-review">
             <Shield className="h-4 w-4 mr-2" />
@@ -269,42 +245,12 @@ export default function MatterWorkspacePage() {
               <ChatPanel
                 messages={messages}
                 onSend={handleSendMessage}
-                isLoading={isQuerying}
+                isLoading={askQuestion.isPending}
                 onSelectCitation={setSelectedCitations}
               />
             </div>
             <div className="w-80 bg-white rounded-sm border border-border shadow-sm p-5 overflow-y-auto">
               <CitationPanel citations={selectedCitations} />
-            </div>
-          </div>
-        </TabsContent>
-
-        {/* Documents Tab */}
-        <TabsContent value="documents">
-          <div className="space-y-4">
-            {/* Upload zone */}
-            <div className="border-2 border-dashed border-border rounded-sm p-8 text-center hover:border-foreground/20 transition-colors bg-white">
-              <Upload className="h-8 w-8 text-muted mx-auto mb-3" />
-              <p className="text-sm font-medium text-foreground">
-                Drag & drop files here, or click to browse
-              </p>
-              <p className="text-xs text-muted mt-1">
-                Supports PDF, DOCX, and TXT files up to 50MB
-              </p>
-              <Button variant="outline" size="sm" className="mt-4">
-                Browse Files
-              </Button>
-            </div>
-
-            {/* Documents list */}
-            <div className="bg-white rounded-sm border border-border shadow-sm">
-              <div className="p-4 border-b border-border flex items-center justify-between">
-                <h3 className="font-display font-semibold text-foreground">Documents ({mockDocuments.length})</h3>
-                <div className="flex items-center gap-2">
-                  <Input placeholder="Search documents..." className="w-48 h-8 text-sm" />
-                </div>
-              </div>
-              <DataTable columns={docColumns} data={mockDocuments} />
             </div>
           </div>
         </TabsContent>
@@ -359,11 +305,11 @@ export default function MatterWorkspacePage() {
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted">High Risk</span>
-                    <span className="font-medium text-red-700">2</span>
+                    <span className="font-medium text-red-700">1</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted">Medium Risk</span>
-                    <span className="font-medium text-amber-700">2</span>
+                    <span className="font-medium text-amber-700">1</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted">Low Risk</span>

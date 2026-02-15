@@ -10,6 +10,7 @@ import {
   ArrowRight,
   FileText,
   Clock,
+  Loader2,
 } from "lucide-react"
 import AppLayout from "@/layouts/AppLayout"
 import StatsCard from "@/components/StatsCard"
@@ -18,21 +19,8 @@ import DataTable from "@/components/DataTable"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { formatRelativeTime } from "@/lib/utils"
-
-const stats = [
-  { title: "Active Matters", value: "18", icon: Briefcase, trend: { value: "3", positive: true } },
-  { title: "Token Usage", value: "42,390", icon: Zap, trend: { value: "12%", positive: true } },
-  { title: "Pending Reviews", value: "7", icon: AlertCircle, trend: { value: "2", positive: false } },
-  { title: "Queries This Week", value: "156", icon: MessageSquare, trend: { value: "18%", positive: true } },
-]
-
-const recentMatters = [
-  { id: "1", title: "Acme vs Global Corp", jurisdiction: "US - Federal", status: "active" as const, lastActivity: new Date(Date.now() - 7200000).toISOString(), documentsCount: 12 },
-  { id: "2", title: "Smith Estate Planning", jurisdiction: "US - California", status: "active" as const, lastActivity: new Date(Date.now() - 18000000).toISOString(), documentsCount: 8 },
-  { id: "3", title: "TechStart IP Review", jurisdiction: "US - Delaware", status: "review" as const, lastActivity: new Date(Date.now() - 86400000).toISOString(), documentsCount: 23 },
-  { id: "4", title: "Metro Construction Dispute", jurisdiction: "UK", status: "active" as const, lastActivity: new Date(Date.now() - 172800000).toISOString(), documentsCount: 15 },
-  { id: "5", title: "Phoenix Merger Analysis", jurisdiction: "EU", status: "closed" as const, lastActivity: new Date(Date.now() - 604800000).toISOString(), documentsCount: 34 },
-]
+import { useMatters } from "@/hooks/use-matters"
+import type { MatterResponse } from "@/lib/api-services"
 
 const recentActivity = [
   { action: "Query answered", matter: "Acme vs Global Corp", user: "J. Smith", time: "10 min ago", icon: MessageSquare },
@@ -42,50 +30,60 @@ const recentActivity = [
   { action: "Draft exported", matter: "Phoenix Merger", user: "M. Torres", time: "Yesterday", icon: FileText },
 ]
 
-const statusMap: Record<string, "active" | "review" | "closed"> = {
-  active: "active",
-  review: "review",
-  closed: "closed",
+function mapStatus(status: string): "active" | "review" | "closed" {
+  if (status === "ready") return "active"
+  if (status === "processing") return "review"
+  return "closed"
 }
 
 export default function DashboardPage() {
   const router = useRouter()
+  const { data: matters, isLoading, error } = useMatters()
+
+  const recentMatters = (matters || []).slice(0, 5)
+
+  // Compute stats from real data
+  const activeCount = (matters || []).filter(m => m.status === "ready").length
+  const processingCount = (matters || []).filter(m => m.status === "processing").length
+  const totalMatters = (matters || []).length
+
+  const stats = [
+    { title: "Active Matters", value: String(activeCount), icon: Briefcase, trend: { value: String(totalMatters) + " total", positive: true } },
+    { title: "Processing", value: String(processingCount), icon: Zap, trend: processingCount > 0 ? { value: "in progress", positive: true } : undefined },
+    { title: "Total Matters", value: String(totalMatters), icon: AlertCircle },
+    { title: "Error", value: String((matters || []).filter(m => m.status === "error").length), icon: MessageSquare },
+  ]
 
   const matterColumns = [
     {
       key: "title",
       header: "Matter",
-      render: (item: typeof recentMatters[0]) => (
+      render: (item: MatterResponse) => (
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-sm bg-surface">
             <Briefcase className="h-3.5 w-3.5 text-muted" />
           </div>
           <div>
-            <p className="text-[13px] font-medium text-foreground">{item.title}</p>
-            <p className="text-[11px] text-muted">{item.documentsCount} documents</p>
+            <p className="text-[13px] font-medium text-foreground">{item.name}</p>
+            <p className="text-[11px] text-muted">{item.file_type.toUpperCase()}</p>
           </div>
         </div>
       ),
     },
     {
-      key: "jurisdiction",
-      header: "Jurisdiction",
-      render: (item: typeof recentMatters[0]) => <span className="text-[13px] text-muted">{item.jurisdiction}</span>,
-    },
-    {
       key: "status",
       header: "Status",
-      render: (item: typeof recentMatters[0]) => (
-        <Badge variant={statusMap[item.status]}>
-          {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+      render: (item: MatterResponse) => (
+        <Badge variant={mapStatus(item.status)}>
+          {item.status === "ready" ? "Ready" : item.status === "processing" ? "Processing" : item.status === "error" ? "Error" : item.status}
         </Badge>
       ),
     },
     {
       key: "lastActivity",
       header: "Last Activity",
-      render: (item: typeof recentMatters[0]) => (
-        <span className="text-[13px] text-muted">{formatRelativeTime(item.lastActivity)}</span>
+      render: (item: MatterResponse) => (
+        <span className="text-[13px] text-muted">{item.updated_at ? formatRelativeTime(item.updated_at) : formatRelativeTime(item.created_at)}</span>
       ),
     },
   ]
@@ -124,11 +122,28 @@ export default function DashboardPage() {
               View All <ArrowRight className="h-3.5 w-3.5 ml-1" />
             </Button>
           </div>
-          <DataTable
-            columns={matterColumns}
-            data={recentMatters}
-            onRowClick={(item) => router.push(`/matters/${item.id}`)}
-          />
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-5 w-5 animate-spin text-muted" />
+              <span className="ml-2 text-sm text-muted">Loading matters...</span>
+            </div>
+          ) : error ? (
+            <div className="px-6 py-12 text-center">
+              <p className="text-sm text-muted">Failed to load matters. Is the backend running?</p>
+            </div>
+          ) : recentMatters.length === 0 ? (
+            <div className="px-6 py-12 text-center">
+              <Briefcase className="h-8 w-8 text-muted mx-auto mb-3" />
+              <p className="text-sm font-medium text-foreground">No matters yet</p>
+              <p className="text-xs text-muted mt-1">Create your first matter to get started</p>
+            </div>
+          ) : (
+            <DataTable
+              columns={matterColumns}
+              data={recentMatters}
+              onRowClick={(item) => router.push(`/matters/${item.id}`)}
+            />
+          )}
         </div>
 
         {/* Activity Feed */}

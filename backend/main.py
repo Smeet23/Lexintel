@@ -15,27 +15,27 @@ logger = logging.getLogger(__name__)
 try:
     from backend.config import get_settings
     from backend.database import get_db
-    from backend.models import Case, Query
+    from backend.models import Matter, Query
     from backend.services.storage import upload_document_to_blob, validate_file_format
-    from backend.services.rag_engine import query_case
-    from backend.validators import validate_filename, validate_case_name, validate_question, validate_file_type
+    from backend.services.rag_engine import query_matter
+    from backend.validators import validate_filename, validate_matter_name, validate_question, validate_file_type
     from backend.services.progress import publish_uploaded
 except ImportError:
     try:
         from config import get_settings
         from database import get_db
-        from models import Case, Query
+        from models import Matter, Query
         from services.storage import upload_document_to_blob, validate_file_format
-        from services.rag_engine import query_case
-        from validators import validate_filename, validate_case_name, validate_question, validate_file_type
+        from services.rag_engine import query_matter
+        from validators import validate_filename, validate_matter_name, validate_question, validate_file_type
         from services.progress import publish_uploaded
     except ImportError:
         from .config import get_settings
         from .database import get_db
-        from .models import Case, Query
+        from .models import Matter, Query
         from .services.storage import upload_document_to_blob, validate_file_format
-        from .services.rag_engine import query_case
-        from .validators import validate_filename, validate_case_name, validate_question, validate_file_type
+        from .services.rag_engine import query_matter
+        from .validators import validate_filename, validate_matter_name, validate_question, validate_file_type
         from .services.progress import publish_uploaded
 
 settings = get_settings()
@@ -70,34 +70,69 @@ def health_check():
 
 
 # ============================================
-# CASE MANAGEMENT ENDPOINTS
+# MATTER MANAGEMENT ENDPOINTS
 # ============================================
 
-@app.get("/cases", response_model=list)
-async def list_cases(
+@app.get("/matters", response_model=list)
+async def list_matters(
     db: Session = Depends(get_db)
 ):
-    """List all cases"""
-    cases = db.query(Case).filter(Case.is_deleted == False).all()
+    """List all matters"""
+    matters = db.query(Matter).filter(Matter.is_deleted == False).all()
     return [
         {
-            "id": str(case.id),
-            "name": case.name,
-            "status": case.status,
-            "file_type": case.file_type,
-            "created_at": case.created_at.isoformat(),
-            "updated_at": case.updated_at.isoformat() if case.updated_at else None
+            "id": str(matter.id),
+            "name": matter.name,
+            "status": matter.status,
+            "file_type": matter.file_type,
+            "created_at": matter.created_at.isoformat(),
+            "updated_at": matter.updated_at.isoformat() if matter.updated_at else None
         }
-        for case in cases
+        for matter in matters
     ]
 
-@app.post("/cases", response_model=dict)
-async def upload_case(
+
+@app.get("/matters/{matter_id}", response_model=dict)
+async def get_matter(
+    matter_id: str,
+    db: Session = Depends(get_db)
+):
+    """Get a single matter by ID"""
+    try:
+        matter_uuid = UUID(matter_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid matter ID format"
+        )
+
+    matter = db.query(Matter).filter(Matter.id == matter_uuid, Matter.is_deleted == False).first()
+    if not matter:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Matter not found"
+        )
+
+    return {
+        "id": str(matter.id),
+        "name": matter.name,
+        "status": matter.status,
+        "file_type": matter.file_type,
+        "blob_storage_path": matter.blob_storage_path,
+        "documents_count": len(matter.chunks),
+        "queries_count": len(matter.queries),
+        "created_at": matter.created_at.isoformat(),
+        "updated_at": matter.updated_at.isoformat() if matter.updated_at else None
+    }
+
+
+@app.post("/matters", response_model=dict)
+async def upload_matter(
     name: str = Form(...),
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    """Upload a case document (PDF, DOCX, or TXT)"""
+    """Upload a matter document (PDF, DOCX, or TXT)"""
     # Validate MIME type
     allowed_types = [
         "application/pdf",
@@ -114,8 +149,8 @@ async def upload_case(
     if file.filename:
         validate_filename(file.filename)
 
-    # Validate case name using dedicated validator
-    validate_case_name(name)
+    # Validate matter name using dedicated validator
+    validate_matter_name(name)
 
     try:
         # Read file content early for validation
@@ -137,28 +172,28 @@ async def upload_case(
                 detail=f"Invalid {file_type.upper()} file format"
             )
 
-        # Create case record with status "processing"
-        case_id = uuid.uuid4()
-        case = Case(
-            id=case_id,
+        # Create matter record with status "processing"
+        matter_id = uuid.uuid4()
+        matter = Matter(
+            id=matter_id,
             name=name,
             blob_storage_path="",
             file_type=file_type,
             status="processing"
         )
-        db.add(case)
+        db.add(matter)
         db.commit()
 
         # Upload file to blob storage
-        blob_path = await upload_document_to_blob(file_content, str(case_id), file.filename)
+        blob_path = await upload_document_to_blob(file_content, str(matter_id), file.filename)
 
-        # Update case with blob path
-        case.blob_storage_path = blob_path
+        # Update matter with blob path
+        matter.blob_storage_path = blob_path
         db.commit()
-        db.refresh(case)
+        db.refresh(matter)
 
         # Publish "uploaded" progress event
-        publish_uploaded(str(case_id), file.filename or "document")
+        publish_uploaded(str(matter_id), file.filename or "document")
 
         # Send document processing task to Celery queue
         try:
@@ -168,19 +203,19 @@ async def upload_case(
 
         task = celery_app.send_task(
             'backend.tasks.process_document_task',
-            args=(str(case_id),),
+            args=(str(matter_id),),
             queue='celery'
         )
-        logger.info(f"Queued document processing task {task.id} for case {case_id}")
+        logger.info(f"Queued document processing task {task.id} for matter {matter_id}")
 
         return {
-            "id": str(case.id),
-            "name": case.name,
-            "status": case.status,
-            "file_type": case.file_type,
-            "blob_storage_path": case.blob_storage_path,
+            "id": str(matter.id),
+            "name": matter.name,
+            "status": matter.status,
+            "file_type": matter.file_type,
+            "blob_storage_path": matter.blob_storage_path,
             "task_id": task.id,
-            "created_at": case.created_at.isoformat()
+            "created_at": matter.created_at.isoformat()
         }
 
     except HTTPException:
@@ -188,64 +223,92 @@ async def upload_case(
         raise
     except Exception as e:
         db.rollback()
-        logger.exception(f"Failed to upload case: {str(e)}")
+        logger.exception(f"Failed to upload matter: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to upload case. Please try again."
+            detail="Failed to upload matter. Please try again."
         )
+
+
+@app.delete("/matters/{matter_id}", response_model=dict)
+async def delete_matter(
+    matter_id: str,
+    db: Session = Depends(get_db)
+):
+    """Soft delete a matter"""
+    try:
+        matter_uuid = UUID(matter_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid matter ID format"
+        )
+
+    matter = db.query(Matter).filter(Matter.id == matter_uuid, Matter.is_deleted == False).first()
+    if not matter:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Matter not found"
+        )
+
+    matter.is_deleted = True
+    matter.updated_at = datetime.now(timezone.utc)
+    db.commit()
+
+    return {"id": str(matter.id), "deleted": True}
 
 
 # ============================================
 # RAG QUERY ENDPOINTS
 # ============================================
 
-@app.post("/cases/{case_id}/ask", response_model=dict)
+@app.post("/matters/{matter_id}/ask", response_model=dict)
 async def ask_question(
-    case_id: str,
+    matter_id: str,
     question: str = Body(..., embed=True),
     db: Session = Depends(get_db)
 ):
-    """Ask a question about a case"""
+    """Ask a question about a matter"""
     # Validate question input
     validate_question(question)
 
     try:
-        case_uuid = UUID(case_id)
+        matter_uuid = UUID(matter_id)
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid case ID format"
+            detail="Invalid matter ID format"
         )
 
-    # Check if case exists
-    case = db.query(Case).filter(Case.id == case_uuid).first()
-    if not case:
+    # Check if matter exists
+    matter = db.query(Matter).filter(Matter.id == matter_uuid).first()
+    if not matter:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Case not found"
+            detail="Matter not found"
         )
 
-    # Check if case is ready for querying
-    if case.status == "processing":
+    # Check if matter is ready for querying
+    if matter.status == "processing":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Case is still being processed. Please try again in a moment."
+            detail="Matter is still being processed. Please try again in a moment."
         )
-    elif case.status == "error":
+    elif matter.status == "error":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Case processing failed. Please re-upload the document."
+            detail="Matter processing failed. Please re-upload the document."
         )
 
     # Get RAG response
     try:
-        rag_result = await query_case(str(case_uuid), question, db)
+        rag_result = await query_matter(str(matter_uuid), question, db)
 
         # Only store if answer was generated successfully
         if rag_result.get("answer"):
             db_query = Query(
                 id=uuid.uuid4(),
-                case_id=case_uuid,
+                matter_id=matter_uuid,
                 question=question,
                 answer=rag_result.get("answer", ""),
                 citations=rag_result.get("sources", []),
@@ -263,32 +326,32 @@ async def ask_question(
         )
 
 
-@app.get("/cases/{case_id}/status", response_model=dict)
-async def get_case_status(
-    case_id: str,
+@app.get("/matters/{matter_id}/status", response_model=dict)
+async def get_matter_status(
+    matter_id: str,
     db: Session = Depends(get_db)
 ):
-    """Get the status of a case"""
+    """Get the status of a matter"""
     try:
-        case_uuid = UUID(case_id)
+        matter_uuid = UUID(matter_id)
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid case ID format"
+            detail="Invalid matter ID format"
         )
 
-    case = db.query(Case).filter(Case.id == case_uuid).first()
-    if not case:
+    matter = db.query(Matter).filter(Matter.id == matter_uuid).first()
+    if not matter:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Case not found"
+            detail="Matter not found"
         )
 
     return {
-        "id": str(case.id),
-        "name": case.name,
-        "status": case.status,
-        "created_at": case.created_at.isoformat()
+        "id": str(matter.id),
+        "name": matter.name,
+        "status": matter.status,
+        "created_at": matter.created_at.isoformat()
     }
 
 
@@ -296,9 +359,9 @@ async def get_case_status(
 # SSE PROGRESS STREAMING ENDPOINT
 # ============================================
 
-@app.get("/cases/{case_id}/progress")
-async def case_progress_stream(
-    case_id: str,
+@app.get("/matters/{matter_id}/progress")
+async def matter_progress_stream(
+    matter_id: str,
     db: Session = Depends(get_db)
 ):
     """
@@ -306,21 +369,21 @@ async def case_progress_stream(
 
     Subscribes to Redis pub/sub channel and streams progress events to the client.
     """
-    # Validate case ID
+    # Validate matter ID
     try:
-        case_uuid = UUID(case_id)
+        matter_uuid = UUID(matter_id)
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid case ID format"
+            detail="Invalid matter ID format"
         )
 
-    # Check case exists
-    case = db.query(Case).filter(Case.id == case_uuid).first()
-    if not case:
+    # Check matter exists
+    matter = db.query(Matter).filter(Matter.id == matter_uuid).first()
+    if not matter:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Case not found"
+            detail="Matter not found"
         )
 
     async def event_generator():
@@ -330,7 +393,7 @@ async def case_progress_stream(
             decode_responses=True
         )
         pubsub = redis_client.pubsub()
-        channel = f"lexintel:case:{case_id}:progress"
+        channel = f"lexintel:matter:{matter_id}:progress"
 
         try:
             await pubsub.subscribe(channel)
@@ -339,7 +402,7 @@ async def case_progress_stream(
             # Send initial connection event
             yield {
                 "event": "connected",
-                "data": json.dumps({"case_id": case_id, "status": "connected"})
+                "data": json.dumps({"matter_id": matter_id, "status": "connected"})
             }
 
             # Listen for messages

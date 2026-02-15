@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import {
   Briefcase,
@@ -8,8 +8,8 @@ import {
   Search,
   Filter,
   MoreHorizontal,
-  FileText,
-  Trash2,
+  Loader2,
+  Upload,
 } from "lucide-react"
 import AppLayout from "@/layouts/AppLayout"
 import PageHeader from "@/components/PageHeader"
@@ -33,29 +33,21 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { formatRelativeTime } from "@/lib/utils"
+import { useMatters, useCreateMatter, useDeleteMatter } from "@/hooks/use-matters"
+import type { MatterResponse } from "@/lib/api-services"
 
-interface Matter {
-  id: string
-  title: string
-  jurisdiction: string
-  status: "active" | "review" | "closed" | "archived"
-  documentsCount: number
-  queriesCount: number
-  tokenUsage: number
-  lastActivity: string
-  createdAt: string
+function mapStatus(status: string): "active" | "review" | "closed" {
+  if (status === "ready") return "active"
+  if (status === "processing") return "review"
+  return "closed"
 }
 
-const mockMatters: Matter[] = [
-  { id: "1", title: "Acme vs Global Corp", jurisdiction: "US - Federal", status: "active", documentsCount: 12, queriesCount: 45, tokenUsage: 8234, lastActivity: new Date(Date.now() - 7200000).toISOString(), createdAt: "2025-12-01" },
-  { id: "2", title: "Smith Estate Planning", jurisdiction: "US - California", status: "active", documentsCount: 8, queriesCount: 23, tokenUsage: 4120, lastActivity: new Date(Date.now() - 18000000).toISOString(), createdAt: "2025-12-15" },
-  { id: "3", title: "TechStart IP Review", jurisdiction: "US - Delaware", status: "review", documentsCount: 23, queriesCount: 67, tokenUsage: 12890, lastActivity: new Date(Date.now() - 86400000).toISOString(), createdAt: "2026-01-03" },
-  { id: "4", title: "Metro Construction Dispute", jurisdiction: "UK", status: "active", documentsCount: 15, queriesCount: 31, tokenUsage: 6450, lastActivity: new Date(Date.now() - 172800000).toISOString(), createdAt: "2026-01-10" },
-  { id: "5", title: "Phoenix Merger Analysis", jurisdiction: "EU", status: "closed", documentsCount: 34, queriesCount: 89, tokenUsage: 18900, lastActivity: new Date(Date.now() - 604800000).toISOString(), createdAt: "2025-11-20" },
-  { id: "6", title: "Harbor Real Estate Lease", jurisdiction: "US - New York", status: "active", documentsCount: 6, queriesCount: 12, tokenUsage: 2340, lastActivity: new Date(Date.now() - 3600000).toISOString(), createdAt: "2026-01-28" },
-  { id: "7", title: "Nordic Data Privacy Audit", jurisdiction: "EU - GDPR", status: "review", documentsCount: 18, queriesCount: 41, tokenUsage: 9870, lastActivity: new Date(Date.now() - 259200000).toISOString(), createdAt: "2026-01-15" },
-  { id: "8", title: "Cypress Insurance Claim", jurisdiction: "US - Florida", status: "active", documentsCount: 9, queriesCount: 28, tokenUsage: 5620, lastActivity: new Date(Date.now() - 43200000).toISOString(), createdAt: "2026-02-01" },
-]
+function statusLabel(status: string): string {
+  if (status === "ready") return "Ready"
+  if (status === "processing") return "Processing"
+  if (status === "error") return "Error"
+  return status
+}
 
 export default function MattersPage() {
   const router = useRouter()
@@ -63,57 +55,65 @@ export default function MattersPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [showNewDialog, setShowNewDialog] = useState(false)
   const [newTitle, setNewTitle] = useState("")
-  const [newJurisdiction, setNewJurisdiction] = useState("")
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const filtered = mockMatters.filter((m) => {
-    const matchSearch = m.title.toLowerCase().includes(search.toLowerCase()) ||
-      m.jurisdiction.toLowerCase().includes(search.toLowerCase())
+  const { data: matters, isLoading, error } = useMatters()
+  const createMatter = useCreateMatter()
+  const deleteMatter = useDeleteMatter()
+
+  const allMatters = matters || []
+
+  const filtered = allMatters.filter((m) => {
+    const matchSearch = m.name.toLowerCase().includes(search.toLowerCase())
     const matchStatus = statusFilter === "all" || m.status === statusFilter
     return matchSearch && matchStatus
   })
+
+  const handleCreateMatter = async () => {
+    if (!newTitle.trim() || !selectedFile) return
+
+    try {
+      const result = await createMatter.mutateAsync({ name: newTitle.trim(), file: selectedFile })
+      setShowNewDialog(false)
+      setNewTitle("")
+      setSelectedFile(null)
+      router.push(`/matters/${result.id}`)
+    } catch {
+      // Error is available via createMatter.error
+    }
+  }
 
   const columns = [
     {
       key: "title",
       header: "Matter",
-      render: (item: Matter) => (
+      render: (item: MatterResponse) => (
         <div className="flex items-center gap-4">
           <div className="flex h-10 w-10 items-center justify-center rounded-sm bg-surface">
             <Briefcase className="h-4 w-4 text-foreground" />
           </div>
           <div>
-            <p className="font-medium text-foreground text-base">{item.title}</p>
-            <p className="text-sm text-muted mt-0.5">{item.documentsCount} docs &middot; {item.queriesCount} queries</p>
+            <p className="font-medium text-foreground text-base">{item.name}</p>
+            <p className="text-sm text-muted mt-0.5">{item.file_type.toUpperCase()}</p>
           </div>
         </div>
       ),
     },
     {
-      key: "jurisdiction",
-      header: "Jurisdiction",
-      render: (item: Matter) => <span className="text-foreground text-sm">{item.jurisdiction}</span>,
-    },
-    {
       key: "status",
       header: "Status",
-      render: (item: Matter) => (
-        <Badge variant={item.status as "active" | "review" | "closed"}>
-          {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+      render: (item: MatterResponse) => (
+        <Badge variant={mapStatus(item.status)}>
+          {statusLabel(item.status)}
         </Badge>
-      ),
-    },
-    {
-      key: "tokenUsage",
-      header: "Tokens",
-      render: (item: Matter) => (
-        <span className="text-muted font-mono text-sm">{item.tokenUsage.toLocaleString()}</span>
       ),
     },
     {
       key: "lastActivity",
       header: "Last Activity",
-      render: (item: Matter) => (
-        <span className="text-muted text-sm">{formatRelativeTime(item.lastActivity)}</span>
+      render: (item: MatterResponse) => (
+        <span className="text-muted text-sm">{item.updated_at ? formatRelativeTime(item.updated_at) : formatRelativeTime(item.created_at)}</span>
       ),
     },
     {
@@ -159,25 +159,38 @@ export default function MattersPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="active">Active</SelectItem>
-            <SelectItem value="review">In Review</SelectItem>
-            <SelectItem value="closed">Closed</SelectItem>
+            <SelectItem value="ready">Ready</SelectItem>
+            <SelectItem value="processing">Processing</SelectItem>
+            <SelectItem value="error">Error</SelectItem>
           </SelectContent>
         </Select>
       </div>
 
       {/* Table */}
       <div className="bg-white rounded-sm border border-border shadow-sm">
-        <DataTable
-          columns={columns}
-          data={filtered}
-          onRowClick={(item) => router.push(`/matters/${item.id}`)}
-          emptyMessage="No matters found"
-        />
-        {filtered.length > 0 && (
-          <div className="border-t border-border px-5 py-4 text-sm text-muted">
-            Showing {filtered.length} of {mockMatters.length} matters
+        {isLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="h-5 w-5 animate-spin text-muted" />
+            <span className="ml-2 text-sm text-muted">Loading matters...</span>
           </div>
+        ) : error ? (
+          <div className="py-16 text-center">
+            <p className="text-sm text-muted">Failed to load matters. Is the backend running?</p>
+          </div>
+        ) : (
+          <>
+            <DataTable
+              columns={columns}
+              data={filtered}
+              onRowClick={(item) => router.push(`/matters/${item.id}`)}
+              emptyMessage="No matters found"
+            />
+            {filtered.length > 0 && (
+              <div className="border-t border-border px-5 py-4 text-sm text-muted">
+                Showing {filtered.length} of {allMatters.length} matters
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -187,12 +200,12 @@ export default function MattersPage() {
           <DialogHeader>
             <DialogTitle>Create New Matter</DialogTitle>
             <DialogDescription>
-              Set up a new legal matter to begin uploading documents and querying.
+              Upload a document to begin analyzing. Supports PDF, DOCX, and TXT files.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-5 mt-4">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-2">Matter Title</label>
+              <label className="block text-sm font-medium text-foreground mb-2">Matter Name</label>
               <Input
                 placeholder="e.g., Acme Corp Acquisition Review"
                 value={newTitle}
@@ -200,30 +213,57 @@ export default function MattersPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-2">Jurisdiction</label>
-              <Select value={newJurisdiction} onValueChange={setNewJurisdiction}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select jurisdiction" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="us-federal">US - Federal</SelectItem>
-                  <SelectItem value="us-california">US - California</SelectItem>
-                  <SelectItem value="us-new-york">US - New York</SelectItem>
-                  <SelectItem value="us-delaware">US - Delaware</SelectItem>
-                  <SelectItem value="uk">United Kingdom</SelectItem>
-                  <SelectItem value="eu">European Union</SelectItem>
-                </SelectContent>
-              </Select>
+              <label className="block text-sm font-medium text-foreground mb-2">Document</label>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.docx,.txt"
+                className="hidden"
+                onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+              />
+              {selectedFile ? (
+                <div className="flex items-center gap-3 rounded-sm border border-border p-3">
+                  <Briefcase className="h-4 w-4 text-muted" />
+                  <span className="text-sm text-foreground flex-1 truncate">{selectedFile.name}</span>
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedFile(null)}>
+                    Remove
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  variant="outline"
+                  className="w-full justify-center gap-2"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload className="h-4 w-4" />
+                  Choose File
+                </Button>
+              )}
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowNewDialog(false)}>
+            <Button variant="outline" onClick={() => { setShowNewDialog(false); setNewTitle(""); setSelectedFile(null) }}>
               Cancel
             </Button>
-            <Button onClick={() => { setShowNewDialog(false); router.push("/matters/new") }}>
-              Create Matter
+            <Button
+              onClick={handleCreateMatter}
+              disabled={!newTitle.trim() || !selectedFile || createMatter.isPending}
+            >
+              {createMatter.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Create Matter"
+              )}
             </Button>
           </DialogFooter>
+          {createMatter.isError && (
+            <p className="text-sm text-red-600 mt-2">
+              Failed to create matter. Please try again.
+            </p>
+          )}
         </DialogContent>
       </Dialog>
     </AppLayout>

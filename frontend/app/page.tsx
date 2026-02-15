@@ -22,16 +22,9 @@ import {
   Menu,
   X,
   Home,
-  Clock,
-  FolderOpen,
-  Library,
-  Compass,
   Send,
   Paperclip,
-  Globe,
-  Plus,
   Settings,
-  Workflow,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -168,51 +161,41 @@ function ProductShowcase() {
             </p>
           </div>
 
-          {/* Product mockup — mimics Harvey's app UI */}
+          {/* Product mockup — shows actual LexIntel app UI */}
           <div className="bg-surface rounded-lg border border-border shadow-lg overflow-hidden">
             <div className="flex h-[520px]">
-              {/* Sidebar */}
-              <div className="w-[200px] bg-white border-r border-border p-4 hidden md:flex flex-col">
-                <div className="flex items-center gap-2 mb-5">
-                  <div className="h-7 w-7 rounded-sm bg-foreground flex items-center justify-center">
-                    <Scale className="h-3.5 w-3.5 text-white" />
-                  </div>
-                  <span className="text-[13px] font-medium text-foreground">Whitford Lane</span>
+              {/* Sidebar — matches real app */}
+              <div className="w-[190px] bg-surface border-r border-border p-4 hidden md:flex flex-col">
+                <div className="flex items-center gap-2 mb-6">
+                  <Scale className="h-4 w-4 text-foreground" />
+                  <span className="font-display text-[15px] text-foreground">LexIntel</span>
                 </div>
 
-                <button className="w-full bg-foreground text-white rounded-sm py-2 text-[13px] font-medium mb-5">
-                  Create
-                </button>
-
                 <nav className="space-y-1 text-[13px]">
-                  <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-sm bg-surface text-foreground font-medium">
-                    <Home className="h-4 w-4" /> Home
+                  <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-sm bg-white text-foreground font-medium shadow-sm">
+                    <Home className="h-4 w-4" /> Dashboard
                   </div>
-                  <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-sm text-muted hover:bg-surface/50">
-                    <Workflow className="h-4 w-4" /> Workflows
+                  <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-sm text-muted">
+                    <FileText className="h-4 w-4" /> Matters
                   </div>
-                  <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-sm text-muted hover:bg-surface/50">
-                    <Clock className="h-4 w-4" /> History
+                  <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-sm text-muted">
+                    <BookOpen className="h-4 w-4" /> Precedents
                   </div>
-                  <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-sm text-muted hover:bg-surface/50">
-                    <FolderOpen className="h-4 w-4" /> Vault
+                  <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-sm text-muted">
+                    <Search className="h-4 w-4" /> Team
+                  </div>
+                  <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-sm text-muted">
+                    <Settings className="h-4 w-4" /> Settings
                   </div>
                 </nav>
 
-                <div className="mt-2 pl-7 space-y-1.5 text-[12px] text-muted">
-                  <p className="truncate">Annual and Weekly Finan...</p>
-                  <p className="truncate">Delta Supply Solutions for...</p>
-                  <p className="truncate">Comprehensive Supply C...</p>
-                  <p className="truncate">Spectrum of Rights</p>
-                  <p className="text-foreground/50 text-[11px] mt-1">View all...</p>
-                </div>
-
-                <div className="mt-auto space-y-1 text-[13px]">
-                  <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-sm text-muted">
-                    <Library className="h-4 w-4" /> Library
-                  </div>
-                  <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-sm text-muted">
-                    <Compass className="h-4 w-4" /> Guidance
+                <div className="mt-6 pt-4 border-t border-border">
+                  <p className="text-[10px] font-medium text-muted/50 uppercase tracking-[0.1em] px-2.5 mb-2">Recent Matters</p>
+                  <div className="space-y-1.5 text-[12px] text-muted pl-2.5">
+                    <p className="truncate">Acme vs Global Corp</p>
+                    <p className="truncate">Smith Estate Planning</p>
+                    <p className="truncate">TechStart IP Review</p>
+                    <p className="truncate">Nordic Data Privacy</p>
                   </div>
                 </div>
               </div>
@@ -220,36 +203,32 @@ function ProductShowcase() {
               {/* Main content area */}
               <div className="flex-1 flex flex-col items-center justify-center p-8 bg-white">
                 <h2 className="font-display text-[28px] text-foreground mb-4">LexIntel</h2>
-                <div className="flex items-center gap-3 mb-10">
+                <div className="flex items-center gap-4 mb-10">
+                  <button className="flex items-center gap-1.5 text-[13px] text-muted hover:text-foreground transition-colors">
+                    <MessageSquare className="h-3.5 w-3.5" /> Ask AI
+                  </button>
                   <button className="flex items-center gap-1.5 text-[13px] text-muted hover:text-foreground transition-colors">
                     <FileText className="h-3.5 w-3.5" /> Draft document
                   </button>
                   <button className="flex items-center gap-1.5 text-[13px] text-muted hover:text-foreground transition-colors">
-                    <ListChecks className="h-3.5 w-3.5" /> Review table
+                    <Shield className="h-3.5 w-3.5" /> Review contract
                   </button>
                 </div>
 
                 {/* Chat input */}
                 <div className="w-full max-w-xl">
-                  <div className="flex items-center gap-4 text-[13px] text-muted mb-3">
-                    <span>Client matter <ChevronRight className="inline h-3 w-3" /></span>
-                    <span className="ml-auto">Prompts <ChevronRight className="inline h-3 w-3" /></span>
-                  </div>
                   <div className="border border-border rounded-lg bg-white shadow-sm">
                     <div className="px-4 py-4">
-                      <p className="text-[14px] text-muted/50">Ask LexIntel anything. Type @ to add sources.</p>
+                      <p className="text-[14px] text-muted/50">Ask a question about your documents...</p>
                     </div>
                     <div className="flex items-center gap-3 px-4 py-3 border-t border-border">
                       <button className="flex items-center gap-1.5 text-[12px] text-muted">
-                        <Paperclip className="h-3.5 w-3.5" /> Files
+                        <Paperclip className="h-3.5 w-3.5" /> Upload files
                       </button>
                       <button className="flex items-center gap-1.5 text-[12px] text-muted">
-                        <BookOpen className="h-3.5 w-3.5" /> Sources
+                        <BookOpen className="h-3.5 w-3.5" /> Citations
                       </button>
-                      <div className="ml-auto flex items-center gap-2">
-                        <button className="h-7 w-7 rounded-sm flex items-center justify-center text-muted hover:bg-surface">
-                          <Settings className="h-3.5 w-3.5" />
-                        </button>
+                      <div className="ml-auto">
                         <button className="h-7 w-7 rounded-sm bg-foreground flex items-center justify-center text-white">
                           <Send className="h-3.5 w-3.5" />
                         </button>
@@ -257,24 +236,9 @@ function ProductShowcase() {
                     </div>
                   </div>
 
-                  {/* Integration badges */}
-                  <div className="flex flex-wrap items-center justify-center gap-2 mt-5">
-                    {[
-                      { name: "Vault", icon: FolderOpen },
-                      { name: "Web search", icon: Globe },
-                      { name: "LexisNexis", icon: BookOpen },
-                      { name: "iManage", icon: FileText },
-                    ].map((integration) => (
-                      <div
-                        key={integration.name}
-                        className="flex items-center gap-1.5 border border-border rounded-full px-3 py-1.5 text-[12px] text-muted bg-white hover:border-border-strong transition-colors"
-                      >
-                        <integration.icon className="h-3 w-3" />
-                        {integration.name}
-                        <Plus className="h-3 w-3 text-muted/50" />
-                      </div>
-                    ))}
-                  </div>
+                  <p className="text-center text-[11px] text-muted/50 mt-3">
+                    Every answer includes source citations and confidence scores
+                  </p>
                 </div>
               </div>
             </div>

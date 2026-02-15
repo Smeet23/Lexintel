@@ -8,17 +8,17 @@ import redis.asyncio as redis
 logger = logging.getLogger(__name__)
 
 
-def generate_cache_key(query: str, case_id: str) -> str:
-    """Generate normalized cache key from query and case_id.
+def generate_cache_key(query: str, matter_id: str) -> str:
+    """Generate normalized cache key from query and matter_id.
 
     Normalizes query to lowercase with single spaces for deterministic keys.
 
     Args:
         query: User query string
-        case_id: Case UUID as string
+        matter_id: Matter UUID as string
 
     Returns:
-        Cache key: "query:{case_id}:{md5_hash}"
+        Cache key: "query:{matter_id}:{md5_hash}"
     """
     # Normalize: lowercase + single spaces
     normalized = " ".join(query.lower().split())
@@ -26,7 +26,7 @@ def generate_cache_key(query: str, case_id: str) -> str:
     # Hash the normalized query
     query_hash = hashlib.md5(normalized.encode()).hexdigest()
 
-    return f"query:{case_id}:{query_hash}"
+    return f"query:{matter_id}:{query_hash}"
 
 
 class QueryCache:
