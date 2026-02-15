@@ -170,7 +170,7 @@ export default function TeamPage() {
           <DialogHeader>
             <DialogTitle>Invite Team Member</DialogTitle>
             <DialogDescription>
-              Send an invitation to join your Veritas AI workspace.
+              Send an invitation to join your LexIntel workspace.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 mt-4">

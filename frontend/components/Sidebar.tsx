@@ -37,7 +37,7 @@ export default function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 z-40 flex h-screen flex-col bg-white border-r border-border transition-all duration-300",
+        "fixed left-0 top-0 z-40 flex h-screen flex-col bg-surface border-r border-border transition-all duration-300",
         collapsed ? "w-[68px]" : "w-[260px]"
       )}
     >
@@ -48,7 +48,7 @@ export default function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
         </div>
         {!collapsed && (
           <span className="font-display text-[17px] tracking-tight text-foreground animate-fade-in">
-            Veritas
+            LexIntel
           </span>
         )}
       </div>
@@ -69,8 +69,8 @@ export default function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
               className={cn(
                 "flex items-center gap-3 rounded-sm px-3 py-2.5 text-[13px] font-medium transition-all duration-200",
                 isActive
-                  ? "bg-surface text-foreground"
-                  : "text-muted hover:bg-surface/60 hover:text-foreground"
+                  ? "bg-white text-foreground shadow-sm"
+                  : "text-muted hover:bg-white/60 hover:text-foreground"
               )}
             >
               <item.icon className="h-[18px] w-[18px] shrink-0" />

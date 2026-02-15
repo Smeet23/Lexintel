@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "Veritas AI - Legal Intelligence Platform",
+  title: "LexIntel - Legal Intelligence Platform",
   description: "Jurisdiction-aware legal AI with verified citations and full audit trails",
 }
 

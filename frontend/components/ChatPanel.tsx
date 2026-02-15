@@ -52,7 +52,7 @@ function MessageBubble({
             </div>
           )}
           <span className={cn("text-[11px] font-semibold uppercase tracking-[0.05em]", isUser ? "text-white/50" : "text-muted")}>
-            {isUser ? "You" : "Veritas AI"}
+            {isUser ? "You" : "LexIntel"}
           </span>
           <span className={cn("text-[11px]", isUser ? "text-white/30" : "text-muted-foreground")}>
             {new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
@@ -154,7 +154,7 @@ export default function ChatPanel({
             <div className="h-10 w-10 rounded-sm bg-surface flex items-center justify-center mb-4">
               <Scale className="h-5 w-5 text-muted" />
             </div>
-            <h3 className="font-display text-[18px] text-foreground">Ask Veritas AI</h3>
+            <h3 className="font-display text-[18px] text-foreground">Ask LexIntel</h3>
             <p className="text-[13px] text-muted mt-1.5 max-w-sm leading-relaxed">
               Ask questions about your uploaded documents. Every answer includes source citations and confidence scores.
             </p>

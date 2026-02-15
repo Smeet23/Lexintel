@@ -19,7 +19,7 @@ export default function LoginPage() {
     setError("")
     setIsLoading(true)
     setTimeout(() => {
-      localStorage.setItem("veritas_token", "demo-token")
+      localStorage.setItem("lexintel_token", "demo-token")
       router.push("/dashboard")
     }, 800)
   }
@@ -37,7 +37,7 @@ export default function LoginPage() {
             <Scale className="h-4 w-4 text-primary-foreground" />
           </div>
           <span className="font-display text-[17px] font-semibold text-primary-foreground tracking-tight">
-            Veritas AI
+            LexIntel
           </span>
         </div>
 
@@ -85,7 +85,7 @@ export default function LoginPage() {
             <div className="flex h-9 w-9 items-center justify-center rounded-md bg-foreground">
               <Scale className="h-4 w-4 text-primary-foreground" />
             </div>
-            <span className="font-display text-[17px] font-semibold text-foreground">Veritas AI</span>
+            <span className="font-display text-[17px] font-semibold text-foreground">LexIntel</span>
           </div>
 
           <h2 className="font-display text-[22px] font-semibold text-foreground tracking-tight">Welcome back</h2>

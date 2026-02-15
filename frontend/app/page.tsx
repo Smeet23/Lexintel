@@ -57,7 +57,7 @@ function Navbar() {
         <Link href="/" className="flex items-center gap-2.5">
           <Scale className="h-5 w-5 text-foreground" />
           <span className="font-display text-[19px] text-foreground tracking-tight">
-            Veritas
+            LexIntel
           </span>
         </Link>
 
@@ -164,7 +164,7 @@ function ProductShowcase() {
           <div className="pt-8">
             <p className="text-[15px] text-muted leading-relaxed">
               More than <span className="text-foreground font-medium">10,000 legal professionals</span> use
-              Veritas to cut through complexity to navigate complex legal work.
+              LexIntel to cut through complexity to navigate complex legal work.
             </p>
           </div>
 
@@ -219,7 +219,7 @@ function ProductShowcase() {
 
               {/* Main content area */}
               <div className="flex-1 flex flex-col items-center justify-center p-8 bg-white">
-                <h2 className="font-display text-[28px] text-foreground mb-4">Veritas</h2>
+                <h2 className="font-display text-[28px] text-foreground mb-4">LexIntel</h2>
                 <div className="flex items-center gap-3 mb-10">
                   <button className="flex items-center gap-1.5 text-[13px] text-muted hover:text-foreground transition-colors">
                     <FileText className="h-3.5 w-3.5" /> Draft document
@@ -237,7 +237,7 @@ function ProductShowcase() {
                   </div>
                   <div className="border border-border rounded-lg bg-white shadow-sm">
                     <div className="px-4 py-4">
-                      <p className="text-[14px] text-muted/50">Ask Veritas anything. Type @ to add sources.</p>
+                      <p className="text-[14px] text-muted/50">Ask LexIntel anything. Type @ to add sources.</p>
                     </div>
                     <div className="flex items-center gap-3 px-4 py-3 border-t border-border">
                       <button className="flex items-center gap-1.5 text-[12px] text-muted">
@@ -423,7 +423,7 @@ function FeaturesSection() {
             </h2>
             <p className="mt-5 text-[16px] text-white/50 leading-relaxed max-w-md">
               Whether you are litigating, closing deals, or advising on regulatory matters —
-              Veritas adapts to how your team works.
+              LexIntel adapts to how your team works.
             </p>
             <Link href="/dashboard" className="mt-8 inline-block">
               <Button
@@ -550,7 +550,7 @@ function SecuritySection() {
 function FAQSection() {
   const faqs = [
     {
-      q: "How does Veritas ensure citation accuracy?",
+      q: "How does LexIntel ensure citation accuracy?",
       a: "Every response includes direct references to source documents with page numbers, section identifiers, and relevance scores. Our retrieval system cross-validates against the original corpus to maintain 99%+ citation accuracy.",
     },
     {
@@ -558,7 +558,7 @@ function FAQSection() {
       a: "Data is hosted on enterprise-grade cloud infrastructure with SOC 2 Type II certification. We offer regional data residency options including US, EU, and Australia.",
     },
     {
-      q: "Does Veritas train on my data?",
+      q: "Does LexIntel train on my data?",
       a: "No. We contractually prohibit using customer data for model training. Your documents, queries, and responses are never used to improve or train any models.",
     },
     {
@@ -609,7 +609,7 @@ function CTASection() {
           your legal workflow?
         </h2>
         <p className="mt-6 text-[17px] text-white/40 leading-relaxed max-w-md mx-auto">
-          Join hundreds of firms using Veritas AI to research,
+          Join hundreds of firms using LexIntel to research,
           analyze, and draft with verifiable precision.
         </p>
         <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
@@ -662,7 +662,7 @@ function Footer() {
           <div className="col-span-2 md:col-span-1">
             <div className="flex items-center gap-2 mb-4">
               <Scale className="h-4 w-4 text-foreground" />
-              <span className="font-display text-[16px] text-foreground">Veritas</span>
+              <span className="font-display text-[16px] text-foreground">LexIntel</span>
             </div>
             <p className="text-[13px] text-muted leading-relaxed">
               Legal intelligence,<br />verified.
@@ -688,7 +688,7 @@ function Footer() {
 
         <div className="mt-14 pt-6 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-[12px] text-muted">
-            &copy; 2026 Veritas AI. All rights reserved.
+            &copy; 2026 LexIntel. All rights reserved.
           </p>
           <div className="flex items-center gap-6 text-[12px] text-muted">
             <a href="#" className="hover:text-foreground transition-colors">Privacy</a>
