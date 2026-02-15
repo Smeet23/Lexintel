@@ -18,6 +18,7 @@ import {
   Eye,
   Trash2,
 } from "lucide-react"
+import { motion } from "framer-motion"
 import AppLayout from "@/layouts/AppLayout"
 import ChatPanel from "@/components/ChatPanel"
 import CitationPanel from "@/components/CitationPanel"
@@ -179,7 +180,12 @@ export default function MatterWorkspacePage() {
   return (
     <AppLayout title={matter.name}>
       {/* Breadcrumb + Header */}
-      <div className="mb-8">
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+        className="mb-8"
+      >
         <button
           onClick={() => router.push("/matters")}
           className="flex items-center gap-1 text-sm text-muted hover:text-foreground transition-colors mb-4 cursor-pointer"
@@ -204,11 +210,11 @@ export default function MatterWorkspacePage() {
             </Button>
           </div>
         </div>
-      </div>
+      </motion.div>
 
       {/* Processing indicator */}
       {matter.status === "processing" && (
-        <div className="mb-6 rounded-sm border border-amber-200 bg-amber-50/60 p-4 flex items-center gap-3">
+        <div className="mb-6 rounded-xl border border-amber-200/60 bg-amber-50/60 p-4 flex items-center gap-3">
           <Loader2 className="h-5 w-5 animate-spin text-amber-600" />
           <div>
             <p className="text-sm font-medium text-amber-800">Document is being processed</p>
@@ -241,7 +247,7 @@ export default function MatterWorkspacePage() {
         {/* Ask AI Tab */}
         <TabsContent value="ask-ai">
           <div className="flex gap-6 h-[calc(100vh-280px)]">
-            <div className="flex-1 bg-white rounded-sm border border-border shadow-sm overflow-hidden">
+            <div className="flex-1 bg-white rounded-xl border border-border shadow-elevated overflow-hidden">
               <ChatPanel
                 messages={messages}
                 onSend={handleSendMessage}
@@ -249,7 +255,7 @@ export default function MatterWorkspacePage() {
                 onSelectCitation={setSelectedCitations}
               />
             </div>
-            <div className="w-80 bg-white rounded-sm border border-border shadow-sm p-5 overflow-y-auto">
+            <div className="w-80 bg-white rounded-xl border border-border shadow-elevated p-5 overflow-y-auto">
               <CitationPanel citations={selectedCitations} />
             </div>
           </div>
@@ -259,14 +265,14 @@ export default function MatterWorkspacePage() {
         <TabsContent value="contract-review">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-4">
-              <div className="bg-white rounded-sm border border-border shadow-sm p-6">
+              <div className="bg-white rounded-xl border border-border shadow-elevated p-6">
                 <h3 className="text-lg font-display font-semibold text-foreground mb-4">Risk Analysis</h3>
                 <div className="space-y-3">
                   {contractRisks.map((risk, idx) => (
                     <div
                       key={idx}
                       className={cn(
-                        "rounded-sm border p-4 transition-colors hover:shadow-sm cursor-pointer",
+                        "rounded-xl border p-4 transition-colors hover:shadow-sm cursor-pointer",
                         risk.risk === "high" ? "border-red-200 bg-red-50/60" :
                         risk.risk === "medium" ? "border-amber-200 bg-amber-50/60" :
                         "border-emerald-200 bg-emerald-50/60"
@@ -296,7 +302,7 @@ export default function MatterWorkspacePage() {
             </div>
 
             <div className="space-y-4">
-              <div className="bg-white rounded-sm border border-border shadow-sm p-6">
+              <div className="bg-white rounded-xl border border-border shadow-elevated p-6">
                 <h4 className="font-display font-semibold text-foreground mb-4">Summary</h4>
                 <div className="space-y-3">
                   <div className="flex justify-between text-sm">
@@ -325,7 +331,7 @@ export default function MatterWorkspacePage() {
                 </div>
               </div>
 
-              <div className="bg-white rounded-sm border border-border shadow-sm p-6">
+              <div className="bg-white rounded-xl border border-border shadow-elevated p-6">
                 <h4 className="font-display font-semibold text-foreground mb-3">Missing Clauses</h4>
                 <ul className="space-y-2 text-sm">
                   {["Force Majeure", "Non-Compete", "Audit Rights"].map((clause) => (
@@ -343,7 +349,7 @@ export default function MatterWorkspacePage() {
         {/* Draft Assistant Tab */}
         <TabsContent value="draft-assistant">
           <div className="max-w-3xl">
-            <div className="bg-white rounded-sm border border-border shadow-sm p-6">
+            <div className="bg-white rounded-xl border border-border shadow-elevated p-6">
               <h3 className="text-lg font-display font-semibold text-foreground mb-2">Draft Assistant</h3>
               <p className="text-sm text-muted mb-6">
                 Generate legal documents with inline source references from your matter documents.
@@ -370,7 +376,7 @@ export default function MatterWorkspacePage() {
                   <label className="block text-sm font-medium text-foreground mb-2">Instructions</label>
                   <textarea
                     placeholder="Describe what you need drafted. Be specific about the audience, key points to cover, and any constraints..."
-                    className="flex min-h-[120px] w-full rounded-sm border border-input bg-white px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-foreground/10 focus:border-foreground/20 resize-none"
+                    className="flex min-h-[120px] w-full rounded-lg border border-input bg-white px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-foreground/10 focus:border-foreground/20 resize-none"
                   />
                 </div>
 
@@ -385,7 +391,7 @@ export default function MatterWorkspacePage() {
 
         {/* Audit Log Tab */}
         <TabsContent value="audit-log">
-          <div className="bg-white rounded-sm border border-border shadow-sm">
+          <div className="bg-white rounded-xl border border-border shadow-elevated">
             <div className="p-4 border-b border-border flex items-center justify-between">
               <h3 className="font-display font-semibold text-foreground">Activity Log</h3>
               <Button variant="outline" size="sm">

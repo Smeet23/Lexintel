@@ -149,7 +149,7 @@ export default function TeamPage() {
           { role: "Associates", count: mockTeam.filter((m) => m.role === "Associate").length, desc: "Access to assigned matters" },
           { role: "Paralegals", count: mockTeam.filter((m) => m.role === "Paralegal").length, desc: "Document upload and basic queries" },
         ].map((r) => (
-          <div key={r.role} className="bg-white rounded-sm border border-border p-6 shadow-sm">
+          <div key={r.role} className="bg-white rounded-xl border border-border p-6 shadow-elevated">
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium text-muted">{r.role}</p>
               <span className="text-2xl font-bold text-foreground">{r.count}</span>
@@ -160,7 +160,7 @@ export default function TeamPage() {
       </div>
 
       {/* Team Table */}
-      <div className="bg-white rounded-sm border border-border shadow-sm">
+      <div className="bg-white rounded-xl border border-border shadow-elevated">
         <DataTable columns={columns} data={mockTeam} />
       </div>
 

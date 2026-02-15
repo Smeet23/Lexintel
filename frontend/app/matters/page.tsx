@@ -2,6 +2,7 @@
 
 import React, { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
+import { motion } from "framer-motion"
 import {
   Briefcase,
   Plus,
@@ -90,7 +91,7 @@ export default function MattersPage() {
       header: "Matter",
       render: (item: MatterResponse) => (
         <div className="flex items-center gap-4">
-          <div className="flex h-10 w-10 items-center justify-center rounded-sm bg-surface">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-surface">
             <Briefcase className="h-4 w-4 text-foreground" />
           </div>
           <div>
@@ -142,18 +143,23 @@ export default function MattersPage() {
       />
 
       {/* Filters */}
-      <div className="flex items-center gap-4 mb-8">
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.1 }}
+        className="flex items-center gap-4 mb-8"
+      >
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
           <Input
             placeholder="Search matters..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
+            className="pl-9 rounded-lg"
           />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-40 rounded-lg">
             <Filter className="h-4 w-4 mr-2 text-muted" />
             <SelectValue placeholder="Status" />
           </SelectTrigger>
@@ -164,10 +170,15 @@ export default function MattersPage() {
             <SelectItem value="error">Error</SelectItem>
           </SelectContent>
         </Select>
-      </div>
+      </motion.div>
 
       {/* Table */}
-      <div className="bg-white rounded-sm border border-border shadow-sm">
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.15 }}
+        className="bg-white rounded-xl border border-border shadow-elevated"
+      >
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
             <Loader2 className="h-5 w-5 animate-spin text-muted" />
@@ -192,7 +203,7 @@ export default function MattersPage() {
             )}
           </>
         )}
-      </div>
+      </motion.div>
 
       {/* New Matter Dialog */}
       <Dialog open={showNewDialog} onOpenChange={setShowNewDialog}>
@@ -210,6 +221,7 @@ export default function MattersPage() {
                 placeholder="e.g., Acme Corp Acquisition Review"
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
+                className="rounded-lg"
               />
             </div>
             <div>
@@ -222,7 +234,7 @@ export default function MattersPage() {
                 onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
               />
               {selectedFile ? (
-                <div className="flex items-center gap-3 rounded-sm border border-border p-3">
+                <div className="flex items-center gap-3 rounded-lg border border-border p-3">
                   <Briefcase className="h-4 w-4 text-muted" />
                   <span className="text-sm text-foreground flex-1 truncate">{selectedFile.name}</span>
                   <Button variant="ghost" size="sm" onClick={() => setSelectedFile(null)}>
@@ -232,7 +244,7 @@ export default function MattersPage() {
               ) : (
                 <Button
                   variant="outline"
-                  className="w-full justify-center gap-2"
+                  className="w-full justify-center gap-2 rounded-lg border-dashed"
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <Upload className="h-4 w-4" />
