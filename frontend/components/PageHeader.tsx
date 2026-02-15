@@ -12,7 +12,7 @@ export default function PageHeader({ title, description, actions }: PageHeaderPr
       <div>
         <h2 className="font-display text-[28px] text-foreground tracking-tight">{title}</h2>
         {description && (
-          <p className="mt-1.5 text-[14px] text-muted">{description}</p>
+          <p className="mt-1.5 text-[14px] text-muted-foreground">{description}</p>
         )}
       </div>
       {actions && <div className="flex items-center gap-2">{actions}</div>}

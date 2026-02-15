@@ -57,7 +57,7 @@ function MessageBubble({
               <Scale className="h-3 w-3 text-foreground" />
             </div>
           )}
-          <span className={cn("text-[11px] font-semibold uppercase tracking-[0.05em]", isUser ? "text-white/50" : "text-muted")}>
+          <span className={cn("text-[11px] font-semibold uppercase tracking-[0.05em]", isUser ? "text-white/50" : "text-muted-foreground")}>
             {isUser ? "You" : "LexIntel"}
           </span>
           <span className={cn("text-[11px]", isUser ? "text-white/30" : "text-muted-foreground")}>
@@ -75,7 +75,7 @@ function MessageBubble({
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-6 text-[11px] text-muted hover:text-foreground px-2"
+                className="h-6 text-[11px] text-muted-foreground hover:text-foreground px-2"
                 onClick={() => {
                   setShowSources(!showSources)
                   if (onViewCitations && message.citations) {
@@ -93,7 +93,7 @@ function MessageBubble({
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 text-[11px] text-muted ml-auto px-2"
+              className="h-6 text-[11px] text-muted-foreground ml-auto px-2"
               onClick={handleCopy}
             >
               {copied ? <Check className="h-3 w-3 mr-1" /> : <Copy className="h-3 w-3 mr-1" />}
@@ -114,8 +114,8 @@ function MessageBubble({
               {message.citations.map((c, i) => (
                 <div key={i} className="flex items-center gap-2 rounded-lg bg-surface px-3 py-2 text-[12px]">
                   <span className="font-medium text-foreground">{c.documentName}</span>
-                  <span className="text-muted">p. {c.pageNumber}</span>
-                  {c.section && <span className="text-muted">&middot; {c.section}</span>}
+                  <span className="text-muted-foreground">p. {c.pageNumber}</span>
+                  {c.section && <span className="text-muted-foreground">&middot; {c.section}</span>}
                   <span className="ml-auto text-foreground font-mono text-[11px]">{Math.round(c.relevanceScore * 100)}%</span>
                 </div>
               ))}
@@ -166,10 +166,10 @@ export default function ChatPanel({
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center py-12">
             <div className="h-12 w-12 rounded-xl bg-surface flex items-center justify-center mb-4">
-              <Scale className="h-5 w-5 text-muted" />
+              <Scale className="h-5 w-5 text-muted-foreground" />
             </div>
             <h3 className="font-display text-[18px] text-foreground">Ask LexIntel</h3>
-            <p className="text-[13px] text-muted mt-1.5 max-w-sm leading-relaxed">
+            <p className="text-[13px] text-muted-foreground mt-1.5 max-w-sm leading-relaxed">
               Ask questions about your uploaded documents. Every answer includes source citations and confidence scores.
             </p>
           </div>
@@ -181,7 +181,7 @@ export default function ChatPanel({
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="flex items-center gap-2 text-muted px-1"
+            className="flex items-center gap-2 text-muted-foreground px-1"
           >
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
             <span className="text-[13px]">Analyzing documents...</span>

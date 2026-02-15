@@ -57,7 +57,7 @@ export default function BillingPage() {
       header: "Invoice",
       render: (item: Invoice) => (
         <div className="flex items-center gap-2">
-          <FileText className="h-4 w-4 text-muted" />
+          <FileText className="h-4 w-4 text-muted-foreground" />
           <span className="font-medium text-sm">{item.id}</span>
         </div>
       ),
@@ -65,7 +65,7 @@ export default function BillingPage() {
     {
       key: "date",
       header: "Date",
-      render: (item: Invoice) => <span className="text-sm text-muted">{formatDate(item.date)}</span>,
+      render: (item: Invoice) => <span className="text-sm text-muted-foreground">{formatDate(item.date)}</span>,
     },
     {
       key: "plan",
@@ -129,11 +129,11 @@ export default function BillingPage() {
           <div className="space-y-5">
             <div>
               <div className="flex justify-between text-sm mb-2">
-                <span className="text-muted">Monthly usage</span>
+                <span className="text-muted-foreground">Monthly usage</span>
                 <span className="font-medium">{tokenUsed.toLocaleString()} / {tokenLimit.toLocaleString()}</span>
               </div>
               <Progress value={tokenPercent} />
-              <p className="text-xs text-muted mt-1">{tokenPercent}% of monthly limit used</p>
+              <p className="text-xs text-muted-foreground mt-1">{tokenPercent}% of monthly limit used</p>
             </div>
 
             {/* Per-matter breakdown */}
@@ -145,7 +145,7 @@ export default function BillingPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-sm text-foreground truncate">{item.matter}</span>
-                        <span className="text-xs font-mono text-muted ml-2">{item.tokens.toLocaleString()}</span>
+                        <span className="text-xs font-mono text-muted-foreground ml-2">{item.tokens.toLocaleString()}</span>
                       </div>
                       <div className="h-1.5 rounded-full bg-surface overflow-hidden">
                         <div
@@ -154,7 +154,7 @@ export default function BillingPage() {
                         />
                       </div>
                     </div>
-                    <span className="text-xs text-muted w-16 text-right">${item.cost.toFixed(2)}</span>
+                    <span className="text-xs text-muted-foreground w-16 text-right">${item.cost.toFixed(2)}</span>
                   </div>
                 ))}
               </div>
@@ -168,7 +168,7 @@ export default function BillingPage() {
           <div className="space-y-5">
             <div className="rounded-xl bg-surface border border-border p-4">
               <p className="text-sm font-semibold text-foreground">Professional Plan</p>
-              <p className="text-2xl font-bold text-foreground mt-1">$299<span className="text-sm font-normal text-muted">/month</span></p>
+              <p className="text-2xl font-bold text-foreground mt-1">$299<span className="text-sm font-normal text-muted-foreground">/month</span></p>
             </div>
             <ul className="space-y-3">
               {[
@@ -186,7 +186,7 @@ export default function BillingPage() {
               ))}
             </ul>
             <div className="border-t border-border pt-4">
-              <p className="text-xs text-muted">
+              <p className="text-xs text-muted-foreground">
                 <Calendar className="inline h-3 w-3 mr-1" />
                 Next billing date: March 1, 2026
               </p>

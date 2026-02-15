@@ -71,7 +71,7 @@ export default function TeamPage() {
           </div>
           <div>
             <p className="font-medium text-foreground">{item.name}</p>
-            <p className="text-xs text-muted">{item.email}</p>
+            <p className="text-xs text-muted-foreground">{item.email}</p>
           </div>
         </div>
       ),
@@ -81,7 +81,7 @@ export default function TeamPage() {
       header: "Role",
       render: (item: TeamMember) => (
         <div className="flex items-center gap-1.5">
-          <Shield className="h-3.5 w-3.5 text-muted" />
+          <Shield className="h-3.5 w-3.5 text-muted-foreground" />
           <span className="text-sm">{item.role}</span>
         </div>
       ),
@@ -109,7 +109,7 @@ export default function TeamPage() {
       key: "lastActive",
       header: "Last Active",
       render: (item: TeamMember) => (
-        <span className="text-sm text-muted">
+        <span className="text-sm text-muted-foreground">
           {item.lastActive ? formatRelativeTime(item.lastActive) : "Never"}
         </span>
       ),
@@ -120,7 +120,7 @@ export default function TeamPage() {
       className: "w-12",
       render: () => (
         <Button variant="ghost" size="icon" className="h-8 w-8">
-          <MoreHorizontal className="h-4 w-4 text-muted" />
+          <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
         </Button>
       ),
     },
@@ -151,10 +151,10 @@ export default function TeamPage() {
         ].map((r) => (
           <div key={r.role} className="bg-white rounded-xl border border-border p-6 shadow-elevated">
             <div className="flex items-center justify-between">
-              <p className="text-sm font-medium text-muted">{r.role}</p>
+              <p className="text-sm font-medium text-muted-foreground">{r.role}</p>
               <span className="text-2xl font-bold text-foreground">{r.count}</span>
             </div>
-            <p className="text-xs text-muted mt-1">{r.desc}</p>
+            <p className="text-xs text-muted-foreground mt-1">{r.desc}</p>
           </div>
         ))}
       </div>
@@ -177,7 +177,7 @@ export default function TeamPage() {
             <div>
               <label className="block text-sm font-medium text-foreground mb-1.5">Email Address</label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   type="email"
                   placeholder="colleague@firm.com"

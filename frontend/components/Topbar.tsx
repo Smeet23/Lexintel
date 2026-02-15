@@ -17,7 +17,7 @@ export default function Topbar({ title }: TopbarProps) {
       <div className="flex items-center gap-2">
         {/* Search */}
         <div className="relative hidden md:block">
-          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
+          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search..."
             className="w-56 pl-8 h-8 text-[13px] bg-white/60 border-transparent focus:border-border focus:bg-white rounded-lg"
@@ -26,7 +26,7 @@ export default function Topbar({ title }: TopbarProps) {
 
         {/* Notifications */}
         <Button variant="ghost" size="icon" className="relative h-8 w-8 rounded-lg hover:bg-white/80">
-          <Bell className="h-4 w-4 text-muted" />
+          <Bell className="h-4 w-4 text-muted-foreground" />
           <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-foreground ring-2 ring-white" />
         </Button>
 
@@ -40,9 +40,9 @@ export default function Topbar({ title }: TopbarProps) {
           </div>
           <div className="hidden md:block text-left">
             <p className="text-[13px] font-medium text-foreground leading-none">John Smith</p>
-            <p className="text-[11px] text-muted mt-0.5">Partner</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">Partner</p>
           </div>
-          <ChevronDown className="h-3 w-3 text-muted hidden md:block" />
+          <ChevronDown className="h-3 w-3 text-muted-foreground hidden md:block" />
         </button>
       </div>
     </header>

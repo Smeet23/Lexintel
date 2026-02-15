@@ -120,7 +120,7 @@ export default function LoginPage() {
           </div>
 
           <h2 className="font-display text-[22px] font-semibold text-foreground tracking-tight">Welcome back</h2>
-          <p className="text-[14px] text-muted mt-1.5">Sign in to continue to your workspace</p>
+          <p className="text-[14px] text-muted-foreground mt-1.5">Sign in to continue to your workspace</p>
 
           <form onSubmit={handleSubmit} className="mt-8 space-y-5">
             {error && (
@@ -159,7 +159,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-foreground transition-colors cursor-pointer"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -169,7 +169,7 @@ export default function LoginPage() {
             <div className="flex items-center justify-between">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" className="rounded border-border accent-foreground h-3.5 w-3.5" />
-                <span className="text-[13px] text-muted">Remember me</span>
+                <span className="text-[13px] text-muted-foreground">Remember me</span>
               </label>
               <a href="#" className="text-[13px] text-foreground hover:text-foreground/70 font-medium transition-colors">
                 Forgot password?
@@ -191,7 +191,7 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          <p className="text-center text-[13px] text-muted mt-8">
+          <p className="text-center text-[13px] text-muted-foreground mt-8">
             Don&apos;t have an account?{" "}
             <a href="#" className="text-foreground hover:text-foreground/70 font-medium transition-colors">
               Request access

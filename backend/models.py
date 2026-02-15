@@ -1,6 +1,6 @@
 """SQLAlchemy ORM models for legal RAG app"""
 from sqlalchemy import Column, String, DateTime, Boolean, ForeignKey, Text, JSON, Integer, Index
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship, declarative_base
 from datetime import datetime, timezone
 import uuid
@@ -24,6 +24,54 @@ class FileType(str, enum.Enum):
     TXT = "txt"
 
 
+class UserRole(str, enum.Enum):
+    """User roles within a firm"""
+    ADMIN = "admin"
+    PARTNER = "partner"
+    ASSOCIATE = "associate"
+    PARALEGAL = "paralegal"
+
+
+class Firm(Base):
+    __tablename__ = "firms"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False)
+    slug = Column(String(255), nullable=False, unique=True, index=True)
+    logo_url = Column(String(500), nullable=True)
+    theme_config = Column(JSONB, nullable=True, server_default='{}')
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    # Relationships
+    users = relationship("User", back_populates="firm")
+    matters = relationship("Matter", back_populates="firm")
+
+    def __repr__(self):
+        return f"<Firm(id={self.id}, name={self.name}, slug={self.slug})>"
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email = Column(String(255), nullable=False, unique=True, index=True)
+    password_hash = Column(String(255), nullable=False)
+    name = Column(String(255), nullable=True)
+    role = Column(String(50), default="associate", nullable=False)
+    firm_id = Column(UUID(as_uuid=True), ForeignKey("firms.id"), nullable=True, index=True)
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    # Relationships
+    firm = relationship("Firm", back_populates="users")
+
+    def __repr__(self):
+        return f"<User(id={self.id}, email={self.email}, role={self.role})>"
+
+
 class Matter(Base):
     __tablename__ = "matters"
 
@@ -35,10 +83,12 @@ class Matter(Base):
     is_deleted = Column(Boolean, default=False, nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    firm_id = Column(UUID(as_uuid=True), ForeignKey("firms.id"), nullable=True, index=True)
 
     # Relationships
     chunks = relationship("Chunk", back_populates="matter")
     queries = relationship("Query", back_populates="matter")
+    firm = relationship("Firm", back_populates="matters")
 
     def __repr__(self):
         return f"<Matter(id={self.id}, name={self.name}, status={self.status})>"

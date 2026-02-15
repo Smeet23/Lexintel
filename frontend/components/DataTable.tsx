@@ -32,7 +32,7 @@ export default function DataTable({
               <th
                 key={col.key}
                 className={cn(
-                  "py-3.5 px-5 text-[11px] font-medium uppercase tracking-[0.06em] text-muted bg-surface/30",
+                  "py-3.5 px-5 text-[11px] font-medium uppercase tracking-[0.06em] text-muted-foreground bg-surface/30",
                   col.className
                 )}
               >
@@ -46,7 +46,7 @@ export default function DataTable({
             <tr>
               <td
                 colSpan={columns.length}
-                className="py-16 text-center text-sm text-muted"
+                className="py-16 text-center text-sm text-muted-foreground"
               >
                 {emptyMessage}
               </td>

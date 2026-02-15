@@ -103,3 +103,65 @@ export interface DashboardStats {
   pendingReviews: number
   recentQueries: number
 }
+
+// ============================================
+// FIRM & THEME TYPES
+// ============================================
+
+export interface ThemeColorTokens {
+  [key: string]: string
+}
+
+export interface ThemeTypography {
+  "font-sans"?: string
+  "font-display"?: string
+  "font-mono"?: string
+}
+
+export interface ThemeLayout {
+  "radius-sm"?: string
+  "radius-md"?: string
+  "radius-lg"?: string
+  "radius-xl"?: string
+}
+
+export interface ThemeShadows {
+  color?: string
+  opacity?: string
+  blur?: string
+  spread?: string
+  "offset-x"?: string
+  "offset-y"?: string
+}
+
+export interface ThemeConfig {
+  light: ThemeColorTokens
+  dark: ThemeColorTokens
+  typography?: ThemeTypography
+  layout?: ThemeLayout
+  shadows?: ThemeShadows
+}
+
+export interface FirmThemeResponse {
+  firm_name: string
+  firm_slug: string
+  logo_url: string | null
+  theme: ThemeConfig
+}
+
+export interface FirmResponse {
+  id: string
+  name: string
+  slug: string
+  logo_url: string | null
+  theme_config: ThemeConfig | null
+  created_at: string
+  updated_at: string
+}
+
+export interface FirmMember {
+  id: string
+  email: string
+  name: string | null
+  role: "admin" | "partner" | "associate" | "paralegal"
+}

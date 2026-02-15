@@ -132,13 +132,13 @@ export default function MatterWorkspacePage() {
     {
       key: "details",
       header: "Details",
-      render: (item: typeof mockAuditLog[0]) => <span className="text-sm text-muted">{item.details}</span>,
+      render: (item: typeof mockAuditLog[0]) => <span className="text-sm text-muted-foreground">{item.details}</span>,
     },
     {
       key: "sources",
       header: "Sources",
       render: (item: typeof mockAuditLog[0]) => (
-        <span className="text-xs text-muted">
+        <span className="text-xs text-muted-foreground">
           {(item.sources as string[] | undefined)?.join(", ") || "-"}
         </span>
       ),
@@ -146,7 +146,7 @@ export default function MatterWorkspacePage() {
     {
       key: "timestamp",
       header: "Time",
-      render: (item: typeof mockAuditLog[0]) => <span className="text-xs text-muted">{formatRelativeTime(item.timestamp)}</span>,
+      render: (item: typeof mockAuditLog[0]) => <span className="text-xs text-muted-foreground">{formatRelativeTime(item.timestamp)}</span>,
     },
   ]
 
@@ -154,8 +154,8 @@ export default function MatterWorkspacePage() {
     return (
       <AppLayout title="Loading...">
         <div className="flex items-center justify-center py-24">
-          <Loader2 className="h-6 w-6 animate-spin text-muted" />
-          <span className="ml-2 text-muted">Loading matter...</span>
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <span className="ml-2 text-muted-foreground">Loading matter...</span>
         </div>
       </AppLayout>
     )
@@ -165,7 +165,7 @@ export default function MatterWorkspacePage() {
     return (
       <AppLayout title="Error">
         <div className="py-24 text-center">
-          <p className="text-muted">Matter not found or backend unavailable.</p>
+          <p className="text-muted-foreground">Matter not found or backend unavailable.</p>
           <Button variant="outline" className="mt-4" onClick={() => router.push("/matters")}>
             <ArrowLeft className="h-4 w-4" /> Back to Matters
           </Button>
@@ -188,7 +188,7 @@ export default function MatterWorkspacePage() {
       >
         <button
           onClick={() => router.push("/matters")}
-          className="flex items-center gap-1 text-sm text-muted hover:text-foreground transition-colors mb-4 cursor-pointer"
+          className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4 cursor-pointer"
         >
           <ArrowLeft className="h-4 w-4" /> Back to Matters
         </button>
@@ -199,7 +199,7 @@ export default function MatterWorkspacePage() {
               <h2 className="text-2xl font-display font-semibold text-foreground">{matter.name}</h2>
               <Badge variant={statusBadgeVariant}>{statusLabel}</Badge>
             </div>
-            <p className="text-sm text-muted mt-1.5">
+            <p className="text-sm text-muted-foreground mt-1.5">
               {matter.file_type.toUpperCase()} &middot; {matter.documents_count} chunks &middot; {matter.queries_count} queries &middot; Created {formatRelativeTime(matter.created_at)}
             </p>
           </div>
@@ -288,7 +288,7 @@ export default function MatterWorkspacePage() {
                           )} />
                           <div>
                             <p className="font-medium text-foreground text-sm">{risk.clause}</p>
-                            <p className="text-sm text-muted mt-1">{risk.summary}</p>
+                            <p className="text-sm text-muted-foreground mt-1">{risk.summary}</p>
                           </div>
                         </div>
                         <Badge variant={risk.risk === "high" ? "error" : risk.risk === "medium" ? "review" : "active"}>
@@ -306,24 +306,24 @@ export default function MatterWorkspacePage() {
                 <h4 className="font-display font-semibold text-foreground mb-4">Summary</h4>
                 <div className="space-y-3">
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted">Total Clauses Analyzed</span>
+                    <span className="text-muted-foreground">Total Clauses Analyzed</span>
                     <span className="font-medium">24</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted">High Risk</span>
+                    <span className="text-muted-foreground">High Risk</span>
                     <span className="font-medium text-red-700">1</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted">Medium Risk</span>
+                    <span className="text-muted-foreground">Medium Risk</span>
                     <span className="font-medium text-amber-700">1</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted">Low Risk</span>
+                    <span className="text-muted-foreground">Low Risk</span>
                     <span className="font-medium text-emerald-700">1</span>
                   </div>
                   <div className="border-t border-border pt-3">
                     <div className="flex justify-between text-sm mb-2">
-                      <span className="text-muted">Overall Score</span>
+                      <span className="text-muted-foreground">Overall Score</span>
                       <span className="font-bold text-amber-700">62/100</span>
                     </div>
                     <Progress value={62} />
@@ -335,7 +335,7 @@ export default function MatterWorkspacePage() {
                 <h4 className="font-display font-semibold text-foreground mb-3">Missing Clauses</h4>
                 <ul className="space-y-2 text-sm">
                   {["Force Majeure", "Non-Compete", "Audit Rights"].map((clause) => (
-                    <li key={clause} className="flex items-center gap-2 text-muted">
+                    <li key={clause} className="flex items-center gap-2 text-muted-foreground">
                       <div className="h-1.5 w-1.5 rounded-full bg-foreground" />
                       {clause}
                     </li>
@@ -351,7 +351,7 @@ export default function MatterWorkspacePage() {
           <div className="max-w-3xl">
             <div className="bg-white rounded-xl border border-border shadow-elevated p-6">
               <h3 className="text-lg font-display font-semibold text-foreground mb-2">Draft Assistant</h3>
-              <p className="text-sm text-muted mb-6">
+              <p className="text-sm text-muted-foreground mb-6">
                 Generate legal documents with inline source references from your matter documents.
               </p>
 

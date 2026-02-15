@@ -64,6 +64,18 @@ app.add_middleware(
 )
 
 
+# Import and register firm router
+try:
+    from backend.routers.firms import router as firms_router
+except ImportError:
+    try:
+        from routers.firms import router as firms_router
+    except ImportError:
+        from .routers.firms import router as firms_router
+
+app.include_router(firms_router)
+
+
 @app.get("/health")
 def health_check():
     return {"status": "ok"}

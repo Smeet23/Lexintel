@@ -108,3 +108,29 @@ export async function getMatterStatus(id: string): Promise<MatterStatusResponse>
   const { data } = await api.get<MatterStatusResponse>(`/matters/${id}/status`)
   return data
 }
+
+// ============================================
+// Firm & Theme API Service Functions
+// ============================================
+
+import type { FirmThemeResponse, ThemeConfig, FirmMember } from "./types"
+
+export async function getFirmTheme(slug: string): Promise<FirmThemeResponse> {
+  const { data } = await api.get<FirmThemeResponse>(`/api/firms/${slug}/theme`)
+  return data
+}
+
+export async function updateFirmTheme(slug: string, theme: Partial<ThemeConfig>): Promise<{ firm_slug: string; theme: ThemeConfig }> {
+  const { data } = await api.put(`/api/firms/${slug}/theme`, theme)
+  return data
+}
+
+export async function resetFirmTheme(slug: string): Promise<{ firm_slug: string; theme: ThemeConfig }> {
+  const { data } = await api.post(`/api/firms/${slug}/theme/reset`)
+  return data
+}
+
+export async function getFirmMembers(slug: string): Promise<FirmMember[]> {
+  const { data } = await api.get<FirmMember[]>(`/api/firms/${slug}/members`)
+  return data
+}

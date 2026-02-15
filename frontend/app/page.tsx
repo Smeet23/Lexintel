@@ -103,7 +103,7 @@ function Navbar() {
             <a
               key={item}
               href={`#${["platform", "features", "security", "faq"][i]}`}
-              className="text-[14px] text-muted hover:text-foreground transition-colors relative after:absolute after:bottom-0 after:left-0 after:w-0 after:h-px after:bg-foreground after:transition-all hover:after:w-full"
+              className="text-[14px] text-muted-foreground hover:text-foreground transition-colors relative after:absolute after:bottom-0 after:left-0 after:w-0 after:h-px after:bg-foreground after:transition-all hover:after:w-full"
             >
               {item}
             </a>
@@ -179,7 +179,7 @@ function HeroSection() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.1, ease }}
-            className="text-[13px] font-medium text-muted uppercase tracking-[0.12em] mb-6"
+            className="text-[13px] font-medium text-muted-foreground uppercase tracking-[0.12em] mb-6"
           >
             Legal Intelligence Platform
           </motion.p>
@@ -196,7 +196,7 @@ function HeroSection() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.4, ease }}
-            className="mt-8 text-[18px] md:text-[20px] text-muted leading-relaxed max-w-xl"
+            className="mt-8 text-[18px] md:text-[20px] text-muted-foreground leading-relaxed max-w-xl"
           >
             Trusted by legal professionals worldwide. Every answer backed by
             source documents, page numbers, and confidence scores.
@@ -232,7 +232,7 @@ function ProductShowcase() {
         <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-12 items-start">
           <FadeIn delay={0.1}>
             <div className="pt-8">
-              <p className="text-[15px] text-muted leading-relaxed">
+              <p className="text-[15px] text-muted-foreground leading-relaxed">
                 More than <span className="text-foreground font-medium">10,000 legal professionals</span> use
                 LexIntel to cut through complexity to navigate complex legal work.
               </p>
@@ -261,15 +261,15 @@ function ProductShowcase() {
                       { icon: Search, label: "Team" },
                       { icon: Settings, label: "Settings" },
                     ].map((item) => (
-                      <div key={item.label} className="flex items-center gap-2.5 px-2.5 py-2 rounded-md text-muted">
+                      <div key={item.label} className="flex items-center gap-2.5 px-2.5 py-2 rounded-md text-muted-foreground">
                         <item.icon className="h-4 w-4" /> {item.label}
                       </div>
                     ))}
                   </nav>
 
                   <div className="mt-6 pt-4 border-t border-border">
-                    <p className="text-[10px] font-medium text-muted/50 uppercase tracking-[0.1em] px-2.5 mb-2">Recent Matters</p>
-                    <div className="space-y-1.5 text-[12px] text-muted pl-2.5">
+                    <p className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-[0.1em] px-2.5 mb-2">Recent Matters</p>
+                    <div className="space-y-1.5 text-[12px] text-muted-foreground pl-2.5">
                       <p className="truncate">Acme vs Global Corp</p>
                       <p className="truncate">Smith Estate Planning</p>
                       <p className="truncate">TechStart IP Review</p>
@@ -287,7 +287,7 @@ function ProductShowcase() {
                       { icon: FileText, label: "Draft document" },
                       { icon: Shield, label: "Review contract" },
                     ].map((item) => (
-                      <button key={item.label} className="flex items-center gap-1.5 text-[13px] text-muted hover:text-foreground transition-colors">
+                      <button key={item.label} className="flex items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground transition-colors">
                         <item.icon className="h-3.5 w-3.5" /> {item.label}
                       </button>
                     ))}
@@ -296,13 +296,13 @@ function ProductShowcase() {
                   <div className="w-full max-w-xl">
                     <div className="border border-border rounded-xl bg-white shadow-elevated">
                       <div className="px-4 py-4">
-                        <p className="text-[14px] text-muted/50">Ask a question about your documents...</p>
+                        <p className="text-[14px] text-muted-foreground/50">Ask a question about your documents...</p>
                       </div>
                       <div className="flex items-center gap-3 px-4 py-3 border-t border-border">
-                        <button className="flex items-center gap-1.5 text-[12px] text-muted">
+                        <button className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
                           <Paperclip className="h-3.5 w-3.5" /> Upload files
                         </button>
-                        <button className="flex items-center gap-1.5 text-[12px] text-muted">
+                        <button className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
                           <BookOpen className="h-3.5 w-3.5" /> Citations
                         </button>
                         <div className="ml-auto">
@@ -313,7 +313,7 @@ function ProductShowcase() {
                       </div>
                     </div>
 
-                    <p className="text-center text-[11px] text-muted/50 mt-3">
+                    <p className="text-center text-[11px] text-muted-foreground/50 mt-3">
                       Every answer includes source citations and confidence scores
                     </p>
                   </div>
@@ -345,7 +345,7 @@ function MetricsSection() {
                 <p className="font-display text-[2.5rem] md:text-[3rem] text-foreground tracking-tight leading-none">
                   {m.value}
                 </p>
-                <p className="text-[13px] text-muted mt-3 leading-snug">
+                <p className="text-[13px] text-muted-foreground mt-3 leading-snug">
                   {m.label}
                 </p>
               </div>
@@ -396,14 +396,14 @@ function PlatformSection() {
       <div className="max-w-[1200px] mx-auto">
         <FadeIn>
           <div className="max-w-2xl mb-16">
-            <p className="text-[12px] font-medium text-muted uppercase tracking-[0.12em] mb-4">
+            <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-[0.12em] mb-4">
               Platform
             </p>
             <h2 className="font-display text-[2.5rem] md:text-[3rem] text-foreground tracking-tight leading-[1.1]">
               Built for the complexity<br />
               of legal work
             </h2>
-            <p className="mt-5 text-[16px] text-muted leading-relaxed">
+            <p className="mt-5 text-[16px] text-muted-foreground leading-relaxed">
               A comprehensive platform that combines AI research, contract analysis,
               and document drafting — all with verifiable citations.
             </p>
@@ -420,7 +420,7 @@ function PlatformSection() {
                 <h3 className="font-display text-[18px] text-foreground mt-5 mb-3">
                   {cap.title}
                 </h3>
-                <p className="text-[14px] text-muted leading-relaxed">
+                <p className="text-[14px] text-muted-foreground leading-relaxed">
                   {cap.description}
                 </p>
                 <div className="mt-6 flex items-center gap-1 text-[13px] font-medium text-foreground opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-1 group-hover:translate-y-0">
@@ -546,14 +546,14 @@ function SecuritySection() {
       <div className="max-w-[1200px] mx-auto">
         <FadeIn>
           <div className="max-w-2xl mb-16">
-            <p className="text-[12px] font-medium text-muted uppercase tracking-[0.12em] mb-4">
+            <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-[0.12em] mb-4">
               Security
             </p>
             <h2 className="font-display text-[2.5rem] md:text-[3rem] text-foreground tracking-tight leading-[1.1]">
               For the Most<br />
               Sensitive Matters
             </h2>
-            <p className="mt-5 text-[16px] text-muted leading-relaxed">
+            <p className="mt-5 text-[16px] text-muted-foreground leading-relaxed">
               Built on a non-negotiable principle: protecting the security and confidentiality
               of your data. Enterprise-grade controls from the ground up.
             </p>
@@ -570,7 +570,7 @@ function SecuritySection() {
                 <h3 className="font-display text-[18px] text-foreground mt-5 mb-2">
                   {f.title}
                 </h3>
-                <p className="text-[14px] text-muted leading-relaxed">
+                <p className="text-[14px] text-muted-foreground leading-relaxed">
                   {f.description}
                 </p>
               </div>
@@ -583,7 +583,7 @@ function SecuritySection() {
             <h3 className="font-display text-[20px] text-foreground mb-3">
               Enterprise-grade security and controls
             </h3>
-            <p className="text-[14px] text-muted leading-relaxed max-w-lg mb-8">
+            <p className="text-[14px] text-muted-foreground leading-relaxed max-w-lg mb-8">
               Our platform is designed to safeguard the most sensitive information,
               with certifications that meet the highest industry standards.
             </p>
@@ -633,7 +633,7 @@ function FAQSection() {
     <section id="faq" className="py-32 px-6 bg-surface/60">
       <div className="max-w-[800px] mx-auto">
         <FadeIn>
-          <p className="text-[12px] font-medium text-muted uppercase tracking-[0.12em] mb-4">
+          <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-[0.12em] mb-4">
             Resources
           </p>
           <h2 className="font-display text-[2.5rem] md:text-[3rem] text-foreground tracking-tight leading-[1.1] mb-14">
@@ -648,9 +648,9 @@ function FAQSection() {
               <details className="group border-b border-border">
                 <summary className="flex items-center justify-between py-6 cursor-pointer list-none">
                   <h3 className="text-[16px] font-medium text-foreground pr-8">{faq.q}</h3>
-                  <ChevronRight className="h-4 w-4 text-muted shrink-0 transition-transform duration-300 group-open:rotate-90" />
+                  <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 transition-transform duration-300 group-open:rotate-90" />
                 </summary>
-                <p className="text-[14px] text-muted leading-relaxed pb-6 pr-12">
+                <p className="text-[14px] text-muted-foreground leading-relaxed pb-6 pr-12">
                   {faq.a}
                 </p>
               </details>
@@ -733,7 +733,7 @@ function Footer() {
               </div>
               <span className="font-display text-[16px] text-foreground">LexIntel</span>
             </div>
-            <p className="text-[13px] text-muted leading-relaxed">
+            <p className="text-[13px] text-muted-foreground leading-relaxed">
               Legal intelligence,<br />verified.
             </p>
           </div>
@@ -745,7 +745,7 @@ function Footer() {
               <ul className="space-y-2.5">
                 {col.links.map((link) => (
                   <li key={link}>
-                    <a href="#" className="text-[13px] text-muted hover:text-foreground transition-colors">
+                    <a href="#" className="text-[13px] text-muted-foreground hover:text-foreground transition-colors">
                       {link}
                     </a>
                   </li>
@@ -756,10 +756,10 @@ function Footer() {
         </div>
 
         <div className="mt-14 pt-6 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-[12px] text-muted">
+          <p className="text-[12px] text-muted-foreground">
             &copy; 2026 LexIntel. All rights reserved.
           </p>
-          <div className="flex items-center gap-6 text-[12px] text-muted">
+          <div className="flex items-center gap-6 text-[12px] text-muted-foreground">
             <a href="#" className="hover:text-foreground transition-colors">Privacy</a>
             <a href="#" className="hover:text-foreground transition-colors">Terms</a>
             <a href="#" className="hover:text-foreground transition-colors">Security</a>
