@@ -1,25 +1,26 @@
-"""OpenAI embeddings service for text and chunk embedding"""
+"""Google Generative AI embeddings service with retry logic and caching"""
+import hashlib
 import logging
 from functools import lru_cache
 from typing import List
-from langchain_community.embeddings import OpenAIEmbeddings
-from backend.config import get_settings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from tenacity import retry, retry_if_exception_type, wait_random_exponential, stop_after_attempt
 
-# Exception handling
 try:
-    from openai import OpenAIError, RateLimitError, APIError
+    from backend.config import get_settings
 except ImportError:
-    # Fallback for older OpenAI versions
     try:
-        from openai.error import OpenAIError, RateLimitError, APIError
+        from config import get_settings
     except ImportError:
-        # If imports fail, create dummy exceptions
-        class OpenAIError(Exception):
-            pass
-        class RateLimitError(OpenAIError):
-            pass
-        class APIError(OpenAIError):
-            pass
+        from ..config import get_settings
+
+try:
+    from google.api_core.exceptions import ResourceExhausted, GoogleAPIError
+except ImportError:
+    class GoogleAPIError(Exception):
+        pass
+    class ResourceExhausted(GoogleAPIError):
+        pass
 
 try:
     from backend.exceptions import EmbeddingException
@@ -27,82 +28,112 @@ except ImportError:
     try:
         from exceptions import EmbeddingException
     except ImportError:
-        from .exceptions import EmbeddingException
+        from ..exceptions import EmbeddingException
+
+try:
+    from backend.services.embedding_cache import get_embedding_cache
+except ImportError:
+    try:
+        from services.embedding_cache import get_embedding_cache
+    except ImportError:
+        from .embedding_cache import get_embedding_cache
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
 # Embeddings configuration
-EMBEDDING_MODEL = "text-embedding-3-large"
-EMBEDDING_DIMENSIONS = 3072  # Output dimension for text-embedding-3-large
+EMBEDDING_MODEL = "models/gemini-embedding-001"
+EMBEDDING_DIMENSIONS = 768  # Reduced from default 3072 to match Qdrant collection
 
 
 @lru_cache(maxsize=1)
-def get_embeddings_client() -> OpenAIEmbeddings:
+def get_embeddings_client() -> GoogleGenerativeAIEmbeddings:
     """
-    Get OpenAI embeddings client with configured model.
+    Get Google Generative AI embeddings client with configured model.
 
     Returns:
-        OpenAIEmbeddings instance for text-embedding-3-large
+        GoogleGenerativeAIEmbeddings instance for gemini-embedding-001
 
     Raises:
-        ValueError: If OpenAI API key is not configured
+        ValueError: If Google API key is not configured
     """
-    if not settings.openai_api_key:
-        raise ValueError("OPENAI_API_KEY environment variable not set")
+    if not settings.google_api_key:
+        raise ValueError("GOOGLE_API_KEY environment variable not set")
 
     logger.debug(f"Creating embeddings client for model {EMBEDDING_MODEL}")
 
-    return OpenAIEmbeddings(
-        openai_api_key=settings.openai_api_key,
-        model=EMBEDDING_MODEL
+    return GoogleGenerativeAIEmbeddings(
+        google_api_key=settings.google_api_key,
+        model=EMBEDDING_MODEL,
     )
 
 
+@retry(
+    retry=retry_if_exception_type((ResourceExhausted, GoogleAPIError)),
+    wait=wait_random_exponential(min=1, max=60),
+    stop=stop_after_attempt(6),
+    reraise=True
+)
 def embed_text(text: str) -> List[float]:
     """
     Embed a single piece of text into a vector.
+    Uses SHA-256 cache key to avoid redundant API calls for repeated queries.
 
     Args:
         text: Text to embed
 
     Returns:
-        List of floats representing the embedding (3072 dimensions)
+        List of floats representing the embedding (768 dimensions)
 
     Raises:
         ValueError: If text is empty
-        EmbeddingException: If API call fails
+        EmbeddingException: If API call fails after retries
     """
     if not text or not text.strip():
         raise ValueError("Text cannot be empty")
 
+    # Check cache first
+    cache_key = hashlib.sha256(text.encode()).hexdigest()
+    cache = get_embedding_cache()
+    cached = cache.get(cache_key)
+    if cached is not None:
+        logger.debug("Embedding cache hit")
+        return cached.tolist() if hasattr(cached, 'tolist') else list(cached)
+
     try:
         logger.debug(f"Embedding text of length {len(text)}")
         embeddings = get_embeddings_client()
-        embedding = embeddings.embed_query(text)
+        embedding = embeddings.embed_query(text, output_dimensionality=EMBEDDING_DIMENSIONS)
 
         if not embedding:
-            raise ValueError("OpenAI returned empty embedding")
+            raise ValueError("Google returned empty embedding")
+
+        # Store in cache (float32 halves memory: ~3KB vs ~6KB per entry)
+        import numpy as np
+        cache.put(cache_key, np.array(embedding, dtype=np.float32))
 
         logger.debug(f"Successfully embedded text, dimension: {len(embedding)}")
         return embedding
 
     except ValueError:
         raise
-    except (OpenAIError, RateLimitError, APIError) as e:
-        logger.error(f"OpenAI API error during text embedding: {str(e)}")
-        raise EmbeddingException(
-            "Failed to embed text with OpenAI",
-            detail=f"OpenAI error: {str(e)}"
-        ) from e
+    except (ResourceExhausted, GoogleAPIError):
+        # Let tenacity handle these
+        raise
     except Exception as e:
-        logger.error(f"Unexpected error during text embedding: {str(e)}")
+        logger.error(f"Google AI API error during text embedding: {str(e)}")
         raise EmbeddingException(
-            "Unexpected error during text embedding",
-            detail=str(e)
+            "Failed to embed text with Google AI",
+            detail=f"Google AI error: {str(e)}"
         ) from e
 
 
+@retry(
+    retry=retry_if_exception_type((ResourceExhausted, GoogleAPIError)),
+    wait=wait_random_exponential(min=1, max=60),
+    stop=stop_after_attempt(6),
+    reraise=True
+)
 def embed_chunks(chunks: List[str]) -> List[List[float]]:
     """
     Embed multiple chunks of text into vectors.
@@ -111,11 +142,11 @@ def embed_chunks(chunks: List[str]) -> List[List[float]]:
         chunks: List of text chunks to embed
 
     Returns:
-        List of embeddings (each 3072 dimensions)
+        List of embeddings (each 768 dimensions)
 
     Raises:
         ValueError: If chunks list is empty or contains empty strings
-        EmbeddingException: If API call fails
+        EmbeddingException: If API call fails after retries
     """
     if not chunks:
         raise ValueError("Chunks list cannot be empty")
@@ -126,57 +157,56 @@ def embed_chunks(chunks: List[str]) -> List[List[float]]:
             raise ValueError(f"Chunk at index {i} is empty")
 
     try:
-        logger.info(f"Embedding {len(chunks)} chunks")
-        embeddings = get_embeddings_client()
-        embeddings_list = embeddings.embed_documents(chunks)
+        import numpy as np
+        cache = get_embedding_cache()
 
-        if not embeddings_list:
-            raise ValueError("OpenAI returned empty embeddings list")
+        # Check cache for each chunk — only send uncached ones to the API
+        results = [None] * len(chunks)
+        uncached_indices = []
+        uncached_texts = []
 
-        if len(embeddings_list) != len(chunks):
-            raise ValueError(
-                f"Embedding count mismatch: expected {len(chunks)}, got {len(embeddings_list)}"
-            )
+        for i, chunk in enumerate(chunks):
+            cache_key = hashlib.sha256(chunk.encode()).hexdigest()
+            cached = cache.get(cache_key)
+            if cached is not None:
+                results[i] = cached.tolist() if hasattr(cached, 'tolist') else list(cached)
+            else:
+                uncached_indices.append(i)
+                uncached_texts.append(chunk)
+
+        cache_hits = len(chunks) - len(uncached_texts)
+        if cache_hits > 0:
+            logger.info(f"Embedding cache: {cache_hits}/{len(chunks)} hits, {len(uncached_texts)} to embed")
+
+        # Call API only for uncached chunks
+        if uncached_texts:
+            logger.info(f"Embedding {len(uncached_texts)} chunks via API")
+            embeddings_client = get_embeddings_client()
+            api_embeddings = embeddings_client.embed_documents(uncached_texts, output_dimensionality=EMBEDDING_DIMENSIONS)
+
+            if not api_embeddings or len(api_embeddings) != len(uncached_texts):
+                raise ValueError(
+                    f"Embedding count mismatch: expected {len(uncached_texts)}, "
+                    f"got {len(api_embeddings) if api_embeddings else 0}"
+                )
+
+            # Store in cache and assemble results
+            for idx, embedding in zip(uncached_indices, api_embeddings):
+                results[idx] = embedding
+                cache_key = hashlib.sha256(chunks[idx].encode()).hexdigest()
+                cache.put(cache_key, np.array(embedding, dtype=np.float32))
 
         logger.info(f"Successfully embedded {len(chunks)} chunks")
-        return embeddings_list
+        return results
 
     except ValueError:
         raise
-    except (OpenAIError, RateLimitError, APIError) as e:
-        logger.error(f"OpenAI API error during chunk embedding: {str(e)}")
-        raise EmbeddingException(
-            "Failed to embed chunks with OpenAI",
-            detail=f"OpenAI error: {str(e)}"
-        ) from e
+    except (ResourceExhausted, GoogleAPIError):
+        # Let tenacity handle these
+        raise
     except Exception as e:
-        logger.error(f"Unexpected error during chunk embedding: {str(e)}")
+        logger.error(f"Google AI API error during chunk embedding: {str(e)}")
         raise EmbeddingException(
-            "Unexpected error during chunk embedding",
-            detail=str(e)
+            "Failed to embed chunks with Google AI",
+            detail=f"Google AI error: {str(e)}"
         ) from e
-
-
-def estimate_embedding_cost(text_length: int) -> float:
-    """
-    Estimate the cost of embedding text with text-embedding-3-large.
-
-    OpenAI charges $0.02 per 1M tokens for text-embedding-3-large.
-    Rough estimate: 1 token ≈ 4 characters.
-
-    Args:
-        text_length: Total character length of text to embed
-
-    Returns:
-        Estimated cost in USD
-    """
-    # Estimate tokens (1 token per 4 characters)
-    tokens = text_length // 4
-
-    # Cost per 1M tokens
-    cost_per_million = 0.02
-
-    # Calculate cost
-    cost = (tokens / 1_000_000) * cost_per_million
-
-    return cost

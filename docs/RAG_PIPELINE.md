@@ -24,12 +24,12 @@ LexIntel's RAG (Retrieval-Augmented Generation) pipeline is a sophisticated mult
 
 ### Key Characteristics
 
-- **Semantic Search**: Uses OpenAI text-embedding-3-large (3072 dimensions) for deep semantic understanding
+- **Semantic Search**: Uses Google gemini-embedding-001 (768 dimensions) for deep semantic understanding
 - **Vector Storage**: Qdrant database with cosine similarity for efficient retrieval
 - **Reranking**: Cross-encoder models improve relevance beyond vector similarity alone
 - **Citation Grounding**: Validates all citations against source material to prevent hallucinations
 - **Confidence Scoring**: Multi-factor confidence assessment (0.0-1.0) with detailed explanations
-- **Token Budgeting**: Ensures context fits within GPT-4o token limits while maintaining quality
+- **Token Budgeting**: Ensures context fits within Gemini token limits while maintaining quality
 - **Multi-Format Support**: Handles PDFs, DOCX, and TXT files with format-specific citations
 
 ### Legal Domain Specialization
@@ -55,8 +55,8 @@ The pipeline is specifically engineered for legal documents:
         ┌─────────────────────────────────────────┐
         │  PHASE 1: QUERY PROCESSING              │
         │  - Validate input (min 3 chars)          │
-        │  - Embed with text-embedding-3-large     │
-        │  - 3072-dimensional vector output        │
+        │  - Embed with gemini-embedding-001        │
+        │  - 768-dimensional vector output         │
         └─────────────────┬───────────────────────┘
                            │
                            ▼
@@ -80,7 +80,7 @@ The pipeline is specifically engineered for legal documents:
                            ▼
         ┌─────────────────────────────────────────┐
         │  PHASE 4: LLM ANSWER GENERATION         │
-        │  - Call GPT-4o (temperature=0.2)         │
+        │  - Call Gemini 2.5 Flash Lite (temperature=0.2) │
         │  - System prompt: Legal assistant        │
         │  - Max output: 2000 tokens               │
         │  - Return: answer + token usage          │
@@ -169,13 +169,13 @@ def validate_query(query: str) -> bool:
 ```python
 async def embed_query(query: str) -> List[float]:
     """
-    Convert query text to 3072-dimensional vector using
-    OpenAI's text-embedding-3-large model.
+    Convert query text to 768-dimensional vector using
+    Google's gemini-embedding-001 model.
 
     Returns:
-        Vector of shape (3072,)
+        Vector of shape (768,)
     """
-    # Call OpenAI API
+    # Call Google AI API via langchain-google-genai
     # Returns normalized embedding for cosine similarity
 ```
 
@@ -183,10 +183,10 @@ async def embed_query(query: str) -> List[float]:
 
 | Parameter | Value | Rationale |
 |-----------|-------|-----------|
-| Model | `text-embedding-3-large` | Highest semantic quality for legal text |
-| Dimensions | 3072 | Captures fine-grained legal semantics |
+| Model | `gemini-embedding-001` | High-quality embeddings via Google AI |
+| Dimensions | 768 | Efficient vector size with strong semantic capture |
 | Normalization | L2 | Compatible with cosine similarity |
-| Cost | $0.02 per 1M tokens | Balances quality and cost |
+| Cost | Free tier available | Google AI free tier for development |
 
 ### Error Scenarios
 
@@ -194,7 +194,7 @@ async def embed_query(query: str) -> List[float]:
 |----------|----------|
 | Query < 3 characters | Return error: "Query must be at least 3 characters" |
 | Query is empty | Return error: "Query cannot be empty" |
-| OpenAI API unavailable | Raise `EmbeddingException` with retry guidance |
+| Google AI API unavailable | Raise `EmbeddingException` with retry guidance |
 | Embedding generation fails | Return error: "Failed to process query" |
 | API rate limit hit | Implement exponential backoff (1s, 2s, 4s, 8s) |
 
@@ -215,7 +215,7 @@ Find the most relevant document chunks using semantic similarity and cross-encod
 ### Inputs
 
 - `case_id`: Case identifier
-- `query_embedding`: 3072-dimensional vector from Phase 1
+- `query_embedding`: 768-dimensional vector from Phase 1
 - Query string (for reranking)
 
 ### Process
@@ -442,20 +442,17 @@ For each chunk in sorted order:
 # Token Budget Configuration
 CONTEXT_TOKEN_BUDGET = 12_800  # tokens
 
-def count_tokens_gpt4o(text: str) -> int:
+def count_tokens(text: str) -> int:
     """
-    Count tokens using tiktoken encoder for GPT-4o.
+    Count tokens using tiktoken encoder for Gemini.
 
-    Encoding: cl100k_base (same as GPT-4 and GPT-4o)
+    Encoding: cl100k_base (standard tokenizer for estimation)
     Tool: tiktoken.get_encoding("cl100k_base")
-
-    Reference: https://github.com/openai/tiktoken
-    OpenAI Token Counting: https://platform.openai.com/docs/guides/tokens
     """
 
 # Token accounting
-context_tokens = count_tokens_gpt4o(formatted_context)
-query_tokens = count_tokens_gpt4o(query)
+context_tokens = count_tokens(formatted_context)
+query_tokens = count_tokens(query)
 response_buffer = 500  # Reserve for response
 
 total_estimated = context_tokens + query_tokens + response_buffer
@@ -463,7 +460,7 @@ total_estimated = context_tokens + query_tokens + response_buffer
 
 **Token Budget Breakdown**
 
-Context window: 128,000 tokens (GPT-4o max)
+Context window: 1,048,576 tokens (Gemini max)
 Allocated budget: 12,800 tokens (10% of max)
 
 Explicit Token Accounting:
@@ -478,7 +475,7 @@ Explicit Token Accounting:
 | **Total** | **~12,800** | Sum of all components |
 
 **Why 12,800 (10% of 128K)?**
-- GPT-4o context limit: 128,000 tokens
+- Gemini context limit: 1,048,576 tokens
 - Using 10% keeps costs predictable and leaves room for retrieval iterations
 - Enough for system prompt (~500) + query (~200) + 4 high-quality chunks (~8K) + response (~3.6K)
 - Standard practice for RAG systems balancing quality vs cost
@@ -492,7 +489,7 @@ if estimated_total > CONTEXT_TOKEN_BUDGET:
     # Strategy: Use fewer chunks (degrade gracefully)
     final_chunks = final_chunks[:2]  # Reduce to top 2
     formatted_context = format_legal_context(final_chunks, case.name)
-    context_tokens = count_tokens_gpt4o(formatted_context)
+    context_tokens = count_tokens(formatted_context)
 
     if still_exceeds_budget:
         return error_response("Context too large for processing")
@@ -534,7 +531,7 @@ if estimated_total > CONTEXT_TOKEN_BUDGET:
 
 ### Purpose
 
-Generate a factual, legal-specialized answer based on the retrieved context using GPT-4o with legal-specific system prompt.
+Generate a factual, legal-specialized answer based on the retrieved context using Google Gemini with legal-specific system prompt.
 
 ### Inputs
 
@@ -584,7 +581,7 @@ async def generate_answer(
     temperature: float = 0.2
 ) -> Tuple[str, int]:
     """
-    Generate answer using OpenAI ChatCompletion API.
+    Generate answer using Google Gemini API.
 
     Args:
         query: User question
@@ -595,23 +592,23 @@ async def generate_answer(
         (answer_text, tokens_used)
     """
 
-    client = AsyncOpenAI(api_key=settings.openai_api_key)
+    import google.generativeai as genai
+    genai.configure(api_key=settings.google_api_key)
 
-    messages = [
-        {"role": "system", "content": LEGAL_SYSTEM_PROMPT},
-        {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {query}"}
-    ]
+    model = genai.GenerativeModel("gemini-2.5-flash-lite")
 
-    response = await client.chat.completions.create(
-        model="gpt-4o",
-        messages=messages,
-        temperature=0.2,        # Deterministic, precise responses
-        max_tokens=2000,        # Prevent extremely long responses
-        timeout=30              # Don't hang forever
+    prompt = f"{LEGAL_SYSTEM_PROMPT}\n\nContext:\n{context}\n\nQuestion: {query}"
+
+    response = model.generate_content(
+        prompt,
+        generation_config=genai.GenerationConfig(
+            temperature=0.2,        # Deterministic, precise responses
+            max_output_tokens=2000, # Prevent extremely long responses
+        )
     )
 
-    answer = response.choices[0].message.content
-    tokens_used = response.usage.total_tokens
+    answer = response.text
+    tokens_used = response.usage_metadata.total_token_count
 
     return answer, tokens_used
 ```
@@ -620,7 +617,7 @@ async def generate_answer(
 
 | Parameter | Value | Rationale |
 |-----------|-------|-----------|
-| Model | `gpt-4o` | Best quality for legal analysis |
+| Model | `gemini-2.5-flash-lite` | Cost-effective quality for legal analysis |
 | Temperature | 0.2 | Low = deterministic, precise (not creative) |
 | Max Tokens | 2000 | Long enough for detailed legal answers |
 | Timeout | 30 seconds | Prevent hanging requests |
@@ -656,7 +653,7 @@ of contract. [Page 5]"
 
 | Scenario | Handling |
 |----------|----------|
-| API Key missing | Raise error before call: "OpenAI API key not configured" |
+| API Key missing | Raise error before call: "Google API key not configured" |
 | Rate limit (429) | Exponential backoff: 1s, 2s, 4s, 8s |
 | API error (5xx) | Retry up to 3 times with backoff |
 | Timeout | Return error: "Failed to generate answer: API error" |
@@ -1322,7 +1319,7 @@ response = {
     # Metadata
     "case_id": "550e8400-e29b-41d4-a716-446655440000",
     "query": "What damages were awarded?",
-    "model": "gpt-4o",
+    "model": "gemini-2.5-flash-lite",
     "tokens_used": 1247,
 
     # Confidence
@@ -1366,7 +1363,7 @@ error_response = {
     "citations": [],
     "case_id": case_id,
     "query": query,
-    "model": "gpt-4o",
+    "model": "gemini-2.5-flash-lite",
     "tokens_used": 0,
     "confidence": {
         "level": "none",
@@ -1415,12 +1412,12 @@ Complete, structured JSON response ready for API client.
 | | MIN_QUERY_LENGTH | 3 | int | Prevents single-char noise |
 | | Query encoding | UTF-8 | string | Standard text encoding |
 | **Embeddings** | | | | |
-| | EMBEDDING_MODEL | `text-embedding-3-large` | string | Highest quality for legal text |
-| | EMBEDDING_DIMENSIONS | 3072 | int | Fine-grained semantic representation |
-| | Embedding cost | $0.02 per 1M tokens | float | Economical for high-volume use |
+| | EMBEDDING_MODEL | `gemini-embedding-001` | string | High-quality Google AI embeddings |
+| | EMBEDDING_DIMENSIONS | 768 | int | Efficient semantic representation |
+| | Embedding cost | Free tier available | float | Google AI free tier for development |
 | **Vector Search** | | | | |
 | | Vector DB | Qdrant | string | Scalable, fast vector search |
-| | VECTOR_SIZE | 3072 | int | Matches embedding dimensions |
+| | VECTOR_SIZE | 768 | int | Matches embedding dimensions |
 | | DISTANCE_METRIC | Cosine | string | Standard for embeddings |
 | | RETRIEVAL_TOP_K | 10 | int | Initial retrieval width |
 | | MIN_CONFIDENCE_SCORE | 0.6 | float | Filter weak matches |
@@ -1432,16 +1429,16 @@ Complete, structured JSON response ready for API client.
 | | Content Preview | 300 chars | int | Balance speed/context |
 | | FINAL_CHUNK_COUNT | 4 | int | Final context size |
 | **Context** | | | | |
-| | CHUNK_SIZE | 1500 | int | Characters per document chunk |
-| | CHUNK_OVERLAP | 300 | int | Context continuity between chunks |
+| | CHUNKING_STRATEGY | Hybrid semantic | string | markdown headers → SemanticChunker → fallback |
+| | MIN_CHUNK_SIZE | 50 | int | Minimum characters to keep a chunk |
 | | CONTEXT_TOKEN_BUDGET | 12,800 | int | Total tokens including response |
 | | Max response tokens | 500 | int | Safety buffer |
 | **LLM** | | | | |
-| | LLM Model | `gpt-4o` | string | Best quality for legal analysis |
+| | LLM Model | `gemini-2.5-flash-lite` | string | Cost-effective legal analysis |
 | | Temperature | 0.2 | float | Low = deterministic, precise |
 | | Max tokens | 2000 | int | Allow detailed legal responses |
 | | Timeout | 30 seconds | int | Prevent API hangs |
-| | API Key | OPENAI_API_KEY | env var | OpenAI authentication |
+| | API Key | GOOGLE_API_KEY | env var | Google AI authentication |
 | **Citation** | | | | |
 | | Citation patterns | [Page X], [Paragraph X], [Lines X-Y] | list | Multi-format support |
 | | Max excerpt | 500 chars | int | Supporting text preview |
@@ -1460,7 +1457,7 @@ Complete, structured JSON response ready for API client.
 
 ```bash
 # Environment variables (.env file)
-OPENAI_API_KEY=sk-...
+GOOGLE_API_KEY=AIza-...
 QDRANT_URL=http://localhost:6333
 DATABASE_URL=postgresql://...
 CACHE_TTL_SECONDS=86400
@@ -1614,7 +1611,7 @@ if estimated_total > CONTEXT_TOKEN_BUDGET:
     # Graceful degradation: use fewer, higher-quality chunks
     final_chunks = final_chunks[:2]
     formatted_context = format_legal_context(final_chunks, case.name)
-    context_tokens = count_tokens_gpt4o(formatted_context)
+    context_tokens = count_tokens(formatted_context)
 
     if context_tokens + query_tokens + 500 > CONTEXT_TOKEN_BUDGET:
         return {
@@ -1744,7 +1741,7 @@ def cache_embedding(query: str, embedding: List[float]):
 
 collection_config = {
     "vectors": {
-        "size": 3072,
+        "size": 768,
         "distance": "Cosine",
         "hnsw_config": {
             "m": 16,              # Number of connections
@@ -1782,7 +1779,7 @@ def count_tokens_cached(text: str) -> int:
     if text_hash in _token_cache:
         return _token_cache[text_hash]
 
-    count = count_tokens_gpt4o(text)
+    count = count_tokens(text)
     _token_cache[text_hash] = count
     return count
 ```
@@ -1819,7 +1816,7 @@ async def parallel_phases():
 ```python
 # Reuse database connections
 # Qdrant client caching with @lru_cache
-# OpenAI client async for concurrent requests
+# Google AI client async for concurrent requests
 ```
 
 **Impact**: Handle 10x more concurrent queries
@@ -1875,7 +1872,7 @@ FINAL_CHUNK_COUNT = 4     # Use top 4
 - Embedding: ~$0.000005 (query embedding)
 - Vector search: ~$0.00001 (Qdrant API)
 - Reranking: ~$0.00001 (model inference)
-- LLM: ~$0.0001 (GPT-4o with 1000 context + 200 output tokens)
+- LLM: ~$0.0001 (Gemini with 1000 context + 200 output tokens)
 - **Total: ~$0.00015 per query**
 
 #### 2. Token Budget Tuning
@@ -2170,7 +2167,7 @@ rules apply. Therefore, the plaintiff's damages are..."
 Query: "What remedies is the plaintiff seeking?"
 
 Phase 1 - Embedding:
-Query → [3072-dim vector]
+Query → [768-dim vector]
 
 Phase 2 - Retrieval:
 Vector search: Find 10 similar chunks
@@ -2256,7 +2253,7 @@ User warned: Confidence dropped from "high" to "medium"
 
 ## Summary of RAG Pipeline Strengths
 
-1. **Semantic Understanding**: 3072-dimensional embeddings capture fine-grained legal semantics
+1. **Semantic Understanding**: 768-dimensional embeddings from Google gemini-embedding-001 capture legal semantics efficiently
 2. **Multi-Stage Ranking**: Vector similarity + cross-encoder reranking > single-stage retrieval
 3. **Citation Grounding**: Every answer is traceable to source documents
 4. **Hallucination Detection**: Proactively removes unsupported claims

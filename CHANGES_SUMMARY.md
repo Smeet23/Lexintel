@@ -53,7 +53,7 @@ Implemented a complete end-to-end working RAG pipeline using Celery task queue (
 - `process_document_task`: Async task for document processing
   1. Download PDF from Blob Storage
   2. Chunk PDF using LangChain (800 chars, 150 overlap)
-  3. Generate embeddings using OpenAI text-embedding-3-large
+  3. Generate embeddings using Google gemini-embedding-001
   4. Create Qdrant collection for case
   5. Upsert vectors with metadata
   6. Store chunk metadata in PostgreSQL
@@ -198,7 +198,7 @@ POST /cases/{id}/ask (question)
   ↓
 [Embed question] → [Search Qdrant] → [Filter by confidence]
   ↓
-[Generate answer with GPT-4o] → [Extract citations]
+[Generate answer with Gemini 2.5 Flash Lite] → [Extract citations]
   ↓
 Store Query in database
   ↓
@@ -216,7 +216,7 @@ DATABASE_URL=postgresql://legal_user:secure_password@localhost:5432/legal_rag
 QDRANT_URL=http://localhost:6333
 
 # LLM & Embeddings
-OPENAI_API_KEY=sk-your-key-here
+GOOGLE_API_KEY=your-google-api-key-here
 
 # Storage
 AZURE_STORAGE_CONNECTION_STRING=UseDevelopmentStorage=true
@@ -254,8 +254,8 @@ curl -X POST http://localhost:8000/cases/{case_id}/ask \
 
 - **Upload**: < 1 second
 - **Chunking**: 1-3 seconds (depends on PDF size)
-- **Embedding**: 2-10 seconds (OpenAI API call)
-- **Query**: 2-5 seconds (Qdrant search + GPT-4o)
+- **Embedding**: 2-10 seconds (Google AI API call)
+- **Query**: 2-5 seconds (Qdrant search + Gemini 2.5 Flash Lite)
 - **Total E2E**: ~10-20 seconds from upload to first query
 
 ## Known Limitations
@@ -263,7 +263,7 @@ curl -X POST http://localhost:8000/cases/{case_id}/ask \
 1. **No Authentication** - Using demo user for testing
 2. **Content Preview** - Vector store stores first 200 chars only
 3. **Single Collection** - All cases use same Qdrant collection initially
-4. **No async embeddings** - OpenAI embeddings use sync LangChain client
+4. **No async embeddings** - Google AI embeddings use sync LangChain client
 
 ## Next Steps
 

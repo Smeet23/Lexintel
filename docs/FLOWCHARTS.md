@@ -52,7 +52,7 @@ graph TD
 
     ChunkContent --> ChunkOK{Chunks<br/>Generated?}
     ChunkOK -->|None| NoChunksError["Log Error<br/>Mark Case: failed"]
-    ChunkOK -->|Yes| GenerateEmbed["Generate Embeddings<br/>Call OpenAI Embedding API<br/>model: text-embedding-3-small"]
+    ChunkOK -->|Yes| GenerateEmbed["Generate Embeddings<br/>Call Google AI Embedding API<br/>model: gemini-embedding-001"]
 
     GenerateEmbed --> EmbedOK{Embeddings<br/>Success?}
     EmbedOK -->|Fail| EmbedRetry{Retry Count<br/>< 3?}
@@ -61,7 +61,7 @@ graph TD
     EmbedRetry -->|No| EmbedFailed["Log Error<br/>Mark Case: failed"]
 
     EmbedOK -->|Success| CreateQdrant["Create Qdrant<br/>Collection<br/>collection: case_id"]
-    CreateQdrant --> UpsertVectors["Upsert Vectors to Qdrant<br/>chunk_id, embedding, metadata<br/>vector_size: 1536"]
+    CreateQdrant --> UpsertVectors["Upsert Vectors to Qdrant<br/>chunk_id, embedding, metadata<br/>vector_size: 768"]
 
     UpsertVectors --> UpsertOK{Upsert<br/>Success?}
     UpsertOK -->|Fail| UpsertRetry{Retry Count<br/>< 3?}
@@ -141,7 +141,7 @@ graph TD
     CheckStatus -->|No| StatusError["400 Bad Request<br/>Case Not Ready"]
     CheckStatus -->|Yes| StoreQuery["Store Query in DB<br/>case_id, user_id<br/>status: pending"]
 
-    StoreQuery --> EmbedQuery["Generate Query Embedding<br/>Call OpenAI Embedding API<br/>model: text-embedding-3-small"]
+    StoreQuery --> EmbedQuery["Generate Query Embedding<br/>Call Google AI Embedding API<br/>model: gemini-embedding-001"]
 
     EmbedQuery --> EmbedOK{Embedding<br/>Success?}
     EmbedOK -->|Fail| EmbedRetry{Retry Count<br/>< 3?}
@@ -159,14 +159,14 @@ graph TD
 
     RerankChunks --> FormatContext["Format Context String<br/>Concatenate Chunks<br/>Max Tokens: 12,800<br/>Include Citations: Page X"]
 
-    FormatContext --> CountTokens["Count Tokens<br/>Using tiktoken<br/>for GPT-4o"]
+    FormatContext --> CountTokens["Count Tokens<br/>Using token estimation<br/>for Gemini"]
 
     CountTokens --> CheckTokens{Tokens<br/><= 12,800?}
     CheckTokens -->|No| TruncateContext["Truncate Context<br/>Keep Most Recent Chunks"]
     CheckTokens -->|Yes| ReadyContext["Context Ready"]
     TruncateContext --> ReadyContext
 
-    ReadyContext --> CallLLM["Call GPT-4o API<br/>system: legal_prompt<br/>user: query+context<br/>max_tokens: 2000"]
+    ReadyContext --> CallLLM["Call Gemini API<br/>system: legal_prompt<br/>user: query+context<br/>max_tokens: 2000"]
 
     CallLLM --> LLMOk{LLM<br/>Success?}
     LLMOk -->|Fail| LLMRetry{Retry Count<br/>< 3?}
@@ -222,7 +222,7 @@ graph TD
 - **Case Status Check**: Only allows queries on fully processed cases
 - **Embedding Success**: Retries with backoff if embedding API fails
 - **Vector Search**: Minimum confidence threshold (0.6) filters weak matches
-- **Token Budget**: Ensures context fits within 12,800 token budget for GPT-4o
+- **Token Budget**: Ensures context fits within 12,800 token budget for Gemini
 - **Citation Extraction**: Parses and validates citations are grounded in context
 - **Result Handling**: Returns empty results if no relevant chunks found
 
@@ -543,7 +543,7 @@ graph TD
     CacheMiss --> ReturnDB["Return Embedding"]
     ReturnDB --> EndDBHit([Database Hit])
 
-    CheckDB -->|No| CallAPI["Call OpenAI API<br/>text-embedding-3-small<br/>input: chunk_content"]
+    CheckDB -->|No| CallAPI["Call Google AI API<br/>gemini-embedding-001<br/>input: chunk_content"]
 
     CallAPI --> APISuccess{API Call<br/>Success?}
 
@@ -553,7 +553,7 @@ graph TD
     APIError -->|No| APIFailed["Return Error<br/>Raise Exception"]
     APIFailed --> EndAPIFail([API Error])
 
-    APISuccess -->|Success| ExtractEmbed["Extract Embedding<br/>Vector 1536-dim<br/>numpy array"]
+    APISuccess -->|Success| ExtractEmbed["Extract Embedding<br/>Vector 768-dim<br/>numpy array"]
 
     ExtractEmbed --> StoreDB["Store in PostgreSQL<br/>UPDATE chunk SET<br/>embedding = vector"]
 
@@ -588,7 +588,7 @@ graph TD
 - **Cache Check**: Fast lookup in OrderedDict for recently used embeddings
 - **Hit Path**: Move accessed item to end (most recent), increment hit counter, return
 - **Miss Path**: Check PostgreSQL for previously computed embeddings
-- **API Call Path**: If not cached or stored, call OpenAI with retry logic
+- **API Call Path**: If not cached or stored, call Google AI with retry logic
 - **Size Management**: Evict LRU (oldest) item when cache reaches max_size
 - **Persistence**: Always store computed embeddings in PostgreSQL for future hits
 
@@ -619,7 +619,7 @@ graph TD
     LogSuccess --> ReturnSuccess["Return Result<br/>to Caller"]
     ReturnSuccess --> End([Operation Complete])
 
-    OpResult -->|Failure| CatchError["Catch Exception<br/>OpenAIError, AzureError<br/>Qdrant, Database Error"]
+    OpResult -->|Failure| CatchError["Catch Exception<br/>GoogleAIError, AzureError<br/>Qdrant, Database Error"]
 
     CatchError --> LogError["Log Error<br/>Attempt N, operation<br/>error_type, message"]
 
@@ -672,9 +672,9 @@ graph TD
 
 - **Operations with Retry Logic**:
   - Document download from Azure Blob
-  - Embedding generation via OpenAI API
+  - Embedding generation via Google AI API
   - Vector upsert to Qdrant
-  - LLM call to GPT-4o
+  - LLM call to Gemini
   - Query embedding generation
 
 ### Error Handling:

@@ -60,7 +60,7 @@
         └────────────────┼────────────────┐
                          ↓                ↓
                   ┌──────────────┐  ┌──────────────┐
-                  │   Qdrant     │  │  OpenAI API  │
+                  │   Qdrant     │  │ Google AI API│
                   │(Vector Store)│  │(Embeddings+  │
                   │              │  │ LLM Answer)  │
                   └──────────────┘  └──────────────┘
@@ -84,7 +84,7 @@
 - Azure Blob Storage for PDF files
 
 #### 4. **External Services**
-- OpenAI APIs (embeddings + LLM)
+- Google AI APIs (embeddings + LLM)
 - Azure Blob Storage
 - Redis for async task queue
 
@@ -294,29 +294,29 @@ estimate_tokens(content: str) → int  # Token approximation
 
 **Responsibilities**:
 - Generate vector embeddings for text chunks
-- Manage OpenAI API interactions
+- Manage Google AI API interactions
 - Cost estimation and caching
 
 **Configuration**:
 ```python
-EMBEDDING_MODEL = "text-embedding-3-large"
-EMBEDDING_DIMENSIONS = 3072          # Vector size
-EMBEDDING_COST = $0.02 per 1M tokens
+EMBEDDING_MODEL = "gemini-embedding-001"
+EMBEDDING_DIMENSIONS = 768           # Vector size
+EMBEDDING_COST = Free tier (Google AI)
 ```
 
 **Key Functions**:
 ```python
-get_embeddings_client() → OpenAIEmbeddings  # Cached client
+get_embeddings_client() → GoogleGenerativeAIEmbeddings  # Cached client
 embed_text(text: str) → List[float]         # Single embedding
 embed_chunks(chunks: List[str]) → List[List[float]]  # Batch
 estimate_embedding_cost(text_length: int) → float
 ```
 
-**Why text-embedding-3-large**:
-- 3072-dimensional vectors capture semantic nuance
+**Why gemini-embedding-001**:
+- 768-dimensional vectors capture semantic nuance
 - Superior performance on legal/technical documents
-- Cost-effective at $0.02/1M tokens
-- Outperforms smaller models in domain-specific retrieval
+- Free tier (Google AI) for cost-effective usage
+- Strong performance in domain-specific retrieval
 
 **Error Handling**:
 - Retry on rate limits
@@ -337,7 +337,7 @@ estimate_embedding_cost(text_length: int) → float
 
 **Configuration**:
 ```python
-VECTOR_SIZE = 3072                  # Matches embedding model
+VECTOR_SIZE = 768                   # Matches embedding model
 DISTANCE_METRIC = "Cosine"          # Similarity measure
 Collection naming: case_{case_id}   # One collection per case
 ```
@@ -393,7 +393,7 @@ point_id = int(MD5("{case_id}:{chunk_id}").hexdigest(), 16) % 2^63
 
 **Configuration**:
 ```python
-CONTEXT_TOKEN_BUDGET = 12,800      # Max context for GPT-4o
+CONTEXT_TOKEN_BUDGET = 12,800      # Max context for Gemini 2.5 Flash Lite
 MIN_QUERY_LENGTH = 3               # Minimum query length
 MIN_CONFIDENCE_SCORE = 0.15        # Retrieval threshold
 RETRIEVAL_TOP_K = 10               # Initial retrieval count
@@ -408,7 +408,7 @@ TEMPERATURE = 0.2                  # Low randomness for legal docs
    └─ Check length (≥3 chars)
 
 2. Query Embedding
-   └─ Convert question to 3072-d vector
+   └─ Convert question to 768-d vector
 
 3. Semantic Search
    └─ Search Qdrant for top 10 similar chunks
@@ -427,7 +427,7 @@ TEMPERATURE = 0.2                  # Low randomness for legal docs
       └─ If still exceeds, return error
 
 7. LLM Answer Generation
-   └─ Call OpenAI gpt-4o with context
+   └─ Call Google AI Gemini 2.5 Flash Lite with context
    └─ Temperature: 0.2 for legal precision
    └─ Timeout: 30 seconds
 
@@ -450,7 +450,7 @@ You are an expert legal analyst. Your role is to:
 
 **Key Functions**:
 ```python
-count_tokens_gpt4o(text: str) → int
+count_tokens(text: str) → int
 format_legal_context(chunks, case_name) → str
 embed_query(query: str) → List[float]
 retrieve_chunks(case_id, query_embedding) → List[Dict]
@@ -473,7 +473,7 @@ query_case(case_id, query, db, top_k=4) → Dict
     ],
     "case_id": "uuid",
     "query": "Original question",
-    "model": "gpt-4o",
+    "model": "gemini-2.5-flash-lite",
     "tokens_used": 1234,
     "confidence": "high|medium|low|none",
     "error": null
@@ -627,7 +627,7 @@ POST /cases/{case_id}/ask (protected)
 ```
 GET /health
 ├─ Response: { status: "ok|degraded|error" }
-└─ Checks: Database, Redis, Qdrant, OpenAI API
+└─ Checks: Database, Redis, Qdrant, Google AI API
 ```
 
 ---
@@ -653,7 +653,7 @@ GET /health
 4. Celery Worker
    ├─ Retrieve: PDF from Blob Storage
    ├─ Process: Chunk PDF (1500 char, 300 overlap)
-   ├─ Embed: Chunks via OpenAI API (3072-d vectors)
+   ├─ Embed: Chunks via Google AI API (768-d vectors)
    ├─ Store: Chunks in PostgreSQL
    ├─ Vector: Create Qdrant collection
    ├─ Upsert: Vectors with metadata to Qdrant
@@ -688,7 +688,7 @@ attempt < max_attempts?
 
 2. RAG Engine - Query Processing
    ├─ Validate: Question length ≥ 3 chars
-   ├─ Embed: Question → 3072-d vector (OpenAI)
+   ├─ Embed: Question → 768-d vector (Google AI)
    └─ Search: Qdrant vector similarity (top 10)
 
 3. Qdrant - Semantic Search
@@ -705,7 +705,7 @@ attempt < max_attempts?
 
 5. LLM - Answer Generation
    ├─ Prompt: System (legal assistant) + Question + Context
-   ├─ Model: gpt-4o with temperature=0.2
+   ├─ Model: gemini-2.5-flash-lite with temperature=0.2
    ├─ Token limit: 2000 output tokens
    └─ Timeout: 30 seconds
 
@@ -740,23 +740,23 @@ If total > 12,800:
 
 ## Integration Points
 
-### 1. OpenAI Integration
+### 1. Google AI Integration
 
 **Services Used**:
-- `text-embedding-3-large`: Document and query embeddings
-- `gpt-4o`: Answer generation
+- `gemini-embedding-001`: Document and query embeddings
+- `gemini-2.5-flash-lite`: Answer generation
 
 **API Calls**:
 ```python
 # Embeddings
-POST https://api.openai.com/v1/embeddings
-├─ Model: text-embedding-3-large
+POST https://generativelanguage.googleapis.com/v1/models/gemini-embedding-001:embedContent
+├─ Model: gemini-embedding-001
 ├─ Input: Text or batch of texts
-└─ Output: 3072-dimensional vectors
+└─ Output: 768-dimensional vectors
 
 # Answer Generation
-POST https://api.openai.com/v1/chat/completions
-├─ Model: gpt-4o
+POST https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash-lite:generateContent
+├─ Model: gemini-2.5-flash-lite
 ├─ Messages: System prompt + User query + Context
 ├─ Temperature: 0.2
 └─ Max tokens: 2000
@@ -812,7 +812,7 @@ DELETE /collections/{collection_name}               # Delete collection
 **Search Query Format**:
 ```json
 {
-  "vector": [float × 3072],
+  "vector": [float × 768],
   "limit": 10,
   "score_threshold": 0.15
 }
@@ -957,7 +957,7 @@ allowed_origins = ["http://localhost:3000", "https://yourdomain.com"]
 |-----------|--------------|---------|
 | PDF Upload | 500ms - 2s | File size, network |
 | PDF Chunking | 2-3s | Document length, complexity |
-| Embedding Generation | 100ms/chunk | Batch size, OpenAI API |
+| Embedding Generation | 100ms/chunk | Batch size, Google AI API |
 | Vector Search | <100ms | Collection size, network |
 | LLM Answer Generation | 1-3s | Answer length, model |
 | **Full Query (end-to-end)** | **3-5s** | All of above |
@@ -972,7 +972,7 @@ allowed_origins = ["http://localhost:3000", "https://yourdomain.com"]
 
 **Query Processing**:
 - Synchronous (no queuing)
-- Limited by OpenAI API rate limits
+- Limited by Google AI API rate limits
 - Typical: 100+ queries/minute
 
 ### Storage Requirements
@@ -980,7 +980,7 @@ allowed_origins = ["http://localhost:3000", "https://yourdomain.com"]
 **Per Case (Example: 50-page legal document)**:
 - PDF file: 2-10 MB (Azure Blob)
 - Chunks: ~50-200 chunks
-- Vectors: 50-200 × 3072 floats × 4 bytes = 600 KB - 2.4 MB (Qdrant)
+- Vectors: 50-200 × 768 floats × 4 bytes = 150 KB - 600 KB (Qdrant)
 - Metadata: ~100 KB (PostgreSQL)
 - **Total per case**: ~3-13 MB
 
@@ -991,13 +991,13 @@ allowed_origins = ["http://localhost:3000", "https://yourdomain.com"]
 ### Cost Model
 
 **Per Document (50-page legal document)**:
-- OpenAI embeddings: ~$0.001-0.002 (50-100 chunks × 3k tokens)
-- OpenAI LLM queries: ~$0.01-0.05 per query (context + answer)
+- Google AI embeddings: Free tier (Google AI)
+- Google AI LLM queries: Free tier (Google AI) per query (context + answer)
 - Azure storage: ~$0.01-0.05 per month (highly variable)
 - **Total per case**: ~$0.02-0.07 (one-time) + query costs
 
 **Per Query**:
-- OpenAI: ~$0.01-0.05
+- Google AI: Free tier (Google AI)
 - Vector search: Free (self-hosted Qdrant)
 - Database: Negligible
 - **Total per query**: ~$0.01-0.05
@@ -1017,7 +1017,7 @@ allowed_origins = ["http://localhost:3000", "https://yourdomain.com"]
 3. **PostgreSQL Scaling**: Single database instance
    - **Solution**: Read replicas, sharding by user_id
 
-4. **OpenAI Rate Limits**: API rate limiting on embeddings/LLM
+4. **Google AI Rate Limits**: API rate limiting on embeddings/LLM
    - **Solution**: Queue management, caching layer
 
 ### Horizontal Scaling Strategy
@@ -1132,7 +1132,7 @@ Qdrant:
 ├─ Disk usage
 └─ Error rate
 
-OpenAI API:
+Google AI API:
 ├─ Token usage
 ├─ Cost tracking
 ├─ Rate limit remaining
@@ -1193,7 +1193,7 @@ services:
     build: .
     environment:
       - DATABASE_URL=postgresql://legal_user:dev_password_change_in_prod@postgres:5432/lexintel
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - QDRANT_URL=http://qdrant:6333
       - REDIS_URL=redis://redis:6379/0
       - AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;
@@ -1212,7 +1212,7 @@ services:
     command: python -m backend.services.job_processor run_worker
     environment:
       - DATABASE_URL=postgresql://legal_user:dev_password_change_in_prod@postgres:5432/lexintel
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - QDRANT_URL=http://qdrant:6333
       - REDIS_URL=redis://redis:6379/0
       - AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;

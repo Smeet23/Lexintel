@@ -16,7 +16,7 @@ Complete reference documentation for all LexIntel project files with function si
 - [backend/services/storage.py](#backendservicesstoragepy) - Azure Blob Storage operations
 - [backend/services/chunking.py](#backendserviceschunkingpy) - Document chunking service
 - [backend/services/text_extraction.py](#backendservicestext_extractionpy) - Multi-format text extraction
-- [backend/services/embeddings.py](#backendservicesembeddingspy) - OpenAI embeddings service
+- [backend/services/embeddings.py](#backendservicesembeddingspy) - Google AI embeddings service
 - [backend/services/vector_store.py](#backendservicesvector_storepy) - Qdrant vector database
 - [backend/services/rag_engine.py](#backendservicesrag_enginepy) - RAG pipeline orchestration
 - [backend/services/job_processor.py](#backendservicesjob_processorpy) - Background job processing
@@ -328,7 +328,7 @@ Configuration management using Pydantic Settings for environment variables.
 
 **Attributes:**
 - `database_url` (str): PostgreSQL connection string
-- `openai_api_key` (str): OpenAI API key for embeddings and LLM
+- `google_api_key` (str): Google AI API key for embeddings and LLM
 - `qdrant_url` (str): Qdrant vector store URL (default: "http://localhost:6333")
 - `redis_url` (str): Redis connection URL (default: "redis://localhost:6379/0")
 - `celery_broker_url` (str): Celery broker URL (default: redis URL)
@@ -370,7 +370,7 @@ origins = settings.get_allowed_origins_list()
 **Usage Example:**
 ```python
 settings = get_settings()
-api_key = settings.openai_api_key
+api_key = settings.google_api_key
 ```
 
 ---
@@ -1066,9 +1066,11 @@ Document chunking service for semantic text splitting.
 #### Constants
 
 ```python
-CHUNK_SIZE = 1500              # Characters per chunk (~200-250 words)
-CHUNK_OVERLAP = 300            # Overlap between chunks for context
-SEPARATORS = ["\n\n", "\n", ". ", " ", ""]  # Splitting preferences
+# Hybrid semantic chunking strategy:
+# 1. Split by markdown headers (from pymupdf4llm)
+# 2. SemanticChunker (local all-MiniLM-L6-v2, 384-dim)
+# 3. Fallback: RecursiveCharacterTextSplitter
+MIN_CHUNK_SIZE = 50            # Minimum characters to keep a chunk
 ```
 
 ---
@@ -1121,7 +1123,7 @@ chunks = chunk_document_from_blob(file_bytes, "pdf")
 
 ##### `estimate_tokens(chunk_content: str) -> int`
 
-**Purpose:** Estimate token count using OpenAI approximation (1 token ≈ 4 chars).
+**Purpose:** Estimate token count using standard approximation (1 token ≈ 4 chars).
 
 **Parameters:**
 - `chunk_content` (str): Text to estimate
@@ -1143,7 +1145,7 @@ Multi-format text extraction supporting PDF, DOCX, and TXT.
 
 ##### `extract_pdf_text(file_bytes: bytes) -> List[Dict[str, str]]`
 
-**Purpose:** Extract text from PDF using PyMuPDF (fitz).
+**Purpose:** Extract text from PDF using pymupdf4llm (structured markdown).
 
 **Parameters:**
 - `file_bytes` (bytes): Raw PDF bytes
@@ -1238,26 +1240,26 @@ sections = extract_text(file_bytes, "pdf")
 
 ### backend/services/embeddings.py
 
-OpenAI embeddings service for semantic vector generation.
+Google AI embeddings service for semantic vector generation.
 
 #### Constants
 
 ```python
-EMBEDDING_MODEL = "text-embedding-3-large"
-EMBEDDING_DIMENSIONS = 3072  # Output vector dimension
+EMBEDDING_MODEL = "gemini-embedding-001"
+EMBEDDING_DIMENSIONS = 768  # Output vector dimension
 ```
 
 ---
 
 #### Functions
 
-##### `get_embeddings_client() -> OpenAIEmbeddings`
+##### `get_embeddings_client() -> GoogleGenerativeAIEmbeddings`
 
-**Purpose:** Get or create OpenAI embeddings client (cached singleton).
+**Purpose:** Get or create Google AI embeddings client (cached singleton).
 
-**Return Value:** `OpenAIEmbeddings` instance configured with text-embedding-3-large
+**Return Value:** `GoogleGenerativeAIEmbeddings` instance configured with gemini-embedding-001
 
-**Error Handling:** Raises `ValueError` if OPENAI_API_KEY not set
+**Error Handling:** Raises `ValueError` if GOOGLE_API_KEY not set
 
 **Usage Example:**
 ```python
@@ -1273,7 +1275,7 @@ embeddings = get_embeddings_client()
 **Parameters:**
 - `text` (str): Text to embed
 
-**Return Value:** `list[float]` - 3072-dimensional embedding vector
+**Return Value:** `list[float]` - 768-dimensional embedding vector
 
 **Error Handling:**
 - Raises `ValueError` if text empty
@@ -1282,7 +1284,7 @@ embeddings = get_embeddings_client()
 **Usage Example:**
 ```python
 query = "What was the court decision?"
-embedding = embed_text(query)  # Returns 3072-dim vector
+embedding = embed_text(query)  # Returns 768-dim vector
 ```
 
 ---
@@ -1294,7 +1296,7 @@ embedding = embed_text(query)  # Returns 3072-dim vector
 **Parameters:**
 - `chunks` (list[str]): Text chunks to embed
 
-**Return Value:** `list[list[float]]` - List of 3072-dimensional vectors
+**Return Value:** `list[list[float]]` - List of 768-dimensional vectors
 
 **Error Handling:**
 - Raises `ValueError` if list empty or contains empty strings
@@ -1312,14 +1314,14 @@ embeddings = embed_chunks(chunk_texts)
 
 ##### `estimate_embedding_cost(text_length: int) -> float`
 
-**Purpose:** Estimate cost of embedding text with text-embedding-3-large.
+**Purpose:** Estimate cost of embedding text with gemini-embedding-001.
 
 **Parameters:**
 - `text_length` (int): Total character count to embed
 
 **Return Value:** `float` - Estimated cost in USD
 
-**Calculation:** Tokens ≈ text_length / 4, Cost = (tokens / 1,000,000) * $0.02
+**Calculation:** Tokens ≈ text_length / 4 (Google AI free tier available for development)
 
 **Usage Example:**
 ```python
@@ -1336,8 +1338,9 @@ Qdrant vector database operations for semantic search.
 #### Constants
 
 ```python
-VECTOR_SIZE = 3072              # Matches text-embedding-3-large
+VECTOR_SIZE = 768               # Matches gemini-embedding-001
 DISTANCE_METRIC = "Cosine"      # Cosine similarity
+# HNSW config: m=16, ef_construct=200
 ```
 
 ---
@@ -1396,7 +1399,7 @@ client = get_qdrant_client()
 **Return Value:** `bool` - True if successful
 
 **Configuration:**
-- Vector size: 3072 dimensions
+- Vector size: 768 dimensions
 - Distance metric: Cosine similarity
 - Recreates collection if exists
 
@@ -1416,7 +1419,7 @@ create_collection(str(case_id))
 **Parameters:**
 - `case_id` (str): Case UUID
 - `chunks` (list[dict]): Chunk dicts with `id`, `content`, `page_num`, `section_name`
-- `embeddings` (list[list[float]]): 3072-dim vectors matching chunks
+- `embeddings` (list[list[float]]): 768-dim vectors matching chunks
 
 **Return Value:** `int` - Number of vectors upserted
 
@@ -1442,7 +1445,7 @@ count = upsert_vectors(str(case_id), chunks_data, embeddings_list)
 
 **Parameters:**
 - `case_id` (str): Case UUID
-- `query_embedding` (list[float]): 3072-dim query vector
+- `query_embedding` (list[float]): 768-dim query vector
 - `limit` (int): Max results to return (default: 5)
 
 **Return Value:** List of result dicts with:
@@ -1502,7 +1505,7 @@ FINAL_CHUNK_COUNT = 4          # Final chunks for context
 
 ##### `count_tokens_gpt4o(text: str) -> int`
 
-**Purpose:** Count tokens in text using tiktoken for GPT-4o model.
+**Purpose:** Count tokens in text for context budgeting.
 
 **Parameters:**
 - `text` (str): Text to count tokens for
@@ -1560,7 +1563,7 @@ context = format_legal_context(retrieved_chunks, "Smith v. Jones")
 **Parameters:**
 - `query` (str): User question
 
-**Return Value:** `list[float]` - 3072-dim embedding
+**Return Value:** `list[float]` - 768-dim embedding
 
 **Error Handling:** Raises if embedding fails
 
@@ -1696,7 +1699,7 @@ cleaned_answer, citations, has_hallucinations = extract_citations(answer, chunks
 
 ##### `async generate_answer(query: str, context: str, temperature: float = 0.2) -> Tuple[str, int]`
 
-**Purpose:** Generate answer using OpenAI GPT-4o with legal context.
+**Purpose:** Generate answer using Google Gemini with legal context.
 
 **Parameters:**
 - `query` (str): User question
@@ -1735,7 +1738,7 @@ cleaned_answer, citations, has_hallucinations = extract_citations(answer, chunks
 - `source_document` (dict): Document summary
 - `tokens_used` (int): Total tokens consumed
 - `error` (str or None): Error message if processing failed
-- `model` (str): "gpt-4o"
+- `model` (str): "gemini-2.5-flash-lite"
 
 **Pipeline Steps:**
 1. Validate query (min 3 chars)
@@ -1744,7 +1747,7 @@ cleaned_answer, citations, has_hallucinations = extract_citations(answer, chunks
 4. Filter by confidence threshold (≥0.6 similarity)
 5. Rerank chunks for better relevance
 6. Format context with token budgeting
-7. Generate answer with GPT-4o
+7. Generate answer with Google Gemini
 8. Extract and validate citations
 9. Ground citations in source text
 10. Calculate confidence score
@@ -2579,7 +2582,7 @@ const { data, isLoading } = useQuery({
 
 ### Service Dependencies
 - RAG Engine → Embeddings → Vector Store → Qdrant
-- RAG Engine → LLM (OpenAI GPT-4o)
+- RAG Engine → LLM (Google Gemini 2.5 Flash Lite)
 - Job Processor → Text Extraction → Chunking
 - Main.py → All services
 

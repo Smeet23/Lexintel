@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, status, File, UploadFile, Form, Body, Query as QueryParam, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 from uuid import UUID
@@ -7,6 +8,7 @@ import uuid
 import json
 import logging
 import asyncio
+import io
 import redis.asyncio as aioredis
 from sse_starlette.sse import EventSourceResponse
 
@@ -15,28 +17,31 @@ logger = logging.getLogger(__name__)
 try:
     from backend.config import get_settings
     from backend.database import get_db
-    from backend.models import Case, Query
-    from backend.services.storage import upload_document_to_blob, validate_file_format
+    from backend.models import Case, Chunk, Query
+    from backend.services.storage import upload_document_to_blob, download_document_from_blob, validate_file_format
     from backend.services.rag_engine import query_case
     from backend.validators import validate_filename, validate_case_name, validate_question, validate_file_type
     from backend.services.progress import publish_uploaded
+    from backend.exceptions import BlobDownloadException
 except ImportError:
     try:
         from config import get_settings
         from database import get_db
-        from models import Case, Query
-        from services.storage import upload_document_to_blob, validate_file_format
+        from models import Case, Chunk, Query
+        from services.storage import upload_document_to_blob, download_document_from_blob, validate_file_format
         from services.rag_engine import query_case
         from validators import validate_filename, validate_case_name, validate_question, validate_file_type
         from services.progress import publish_uploaded
+        from exceptions import BlobDownloadException
     except ImportError:
         from .config import get_settings
         from .database import get_db
-        from .models import Case, Query
-        from .services.storage import upload_document_to_blob, validate_file_format
+        from .models import Case, Chunk, Query
+        from .services.storage import upload_document_to_blob, download_document_from_blob, validate_file_format
         from .services.rag_engine import query_case
         from .validators import validate_filename, validate_case_name, validate_question, validate_file_type
         from .services.progress import publish_uploaded
+        from .exceptions import BlobDownloadException
 
 settings = get_settings()
 
@@ -290,6 +295,114 @@ async def get_case_status(
         "status": case.status,
         "created_at": case.created_at.isoformat()
     }
+
+
+@app.get("/cases/{case_id}/document")
+async def download_case_document(
+    case_id: str,
+    db: Session = Depends(get_db)
+):
+    """Download or view the original document for a case.
+
+    Returns the raw file bytes with the correct Content-Type and a
+    Content-Disposition header so browsers can display (PDF) or prompt
+    a download (DOCX, TXT).
+    """
+    try:
+        case_uuid = UUID(case_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid case ID format"
+        )
+
+    case = db.query(Case).filter(Case.id == case_uuid, Case.is_deleted == False).first()
+    if not case:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Case not found"
+        )
+
+    content_type_map = {
+        "pdf": "application/pdf",
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "txt": "text/plain",
+    }
+    media_type = content_type_map.get(case.file_type, "application/octet-stream")
+
+    # Derive a safe filename: use the case name with the correct extension
+    ext = case.file_type if case.file_type else "bin"
+    # If the case name already carries an extension strip it to avoid doubling
+    case_name_stem = case.name
+    if case_name_stem.lower().endswith(f".{ext}"):
+        case_name_stem = case_name_stem[: -(len(ext) + 1)]
+    filename = f"{case_name_stem}.{ext}"
+
+    try:
+        file_bytes = download_document_from_blob(case.blob_storage_path)
+    except BlobDownloadException as e:
+        logger.error(f"Failed to download document for case {case_id}: {e.message} — {e.detail}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve document from storage. Please try again."
+        )
+
+    return StreamingResponse(
+        io.BytesIO(file_bytes),
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Content-Length": str(len(file_bytes)),
+        }
+    )
+
+
+@app.get("/cases/{case_id}/chunks", response_model=list)
+async def get_case_chunks(
+    case_id: str,
+    db: Session = Depends(get_db)
+):
+    """Return all chunks for a case ordered by chunk_sequence.
+
+    Queries PostgreSQL directly (not Qdrant) so the document viewer can
+    display chunked content with section names and page numbers without
+    needing a search query.
+
+    Response items: {id, page_num, section_name, section_type, content, chunk_sequence}
+    """
+    try:
+        case_uuid = UUID(case_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid case ID format"
+        )
+
+    case = db.query(Case).filter(Case.id == case_uuid, Case.is_deleted == False).first()
+    if not case:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Case not found"
+        )
+
+    chunks = (
+        db.query(Chunk)
+        .filter(Chunk.case_id == case_uuid)
+        .order_by(Chunk.chunk_sequence.asc().nullslast())
+        .all()
+    )
+
+    return [
+        {
+            "id": str(chunk.id),
+            "page_num": chunk.page_num,
+            "section_name": chunk.section_name,
+            "section_type": chunk.section_type,
+            "content": chunk.content,
+            "chunk_sequence": chunk.chunk_sequence,
+        }
+        for chunk in chunks
+    ]
 
 
 # ============================================

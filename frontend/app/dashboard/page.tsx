@@ -10,6 +10,7 @@ import {
   ArrowRight,
   FileText,
   Clock,
+  Loader2,
 } from "lucide-react"
 import AppLayout from "@/layouts/AppLayout"
 import StatsCard from "@/components/StatsCard"
@@ -18,21 +19,8 @@ import DataTable from "@/components/DataTable"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { formatRelativeTime } from "@/lib/utils"
-
-const stats = [
-  { title: "Active Matters", value: "18", icon: Briefcase, trend: { value: "3", positive: true } },
-  { title: "Token Usage", value: "42,390", icon: Zap, trend: { value: "12%", positive: true } },
-  { title: "Pending Reviews", value: "7", icon: AlertCircle, trend: { value: "2", positive: false } },
-  { title: "Queries This Week", value: "156", icon: MessageSquare, trend: { value: "18%", positive: true } },
-]
-
-const recentMatters = [
-  { id: "1", title: "Acme vs Global Corp", jurisdiction: "US - Federal", status: "active" as const, lastActivity: new Date(Date.now() - 7200000).toISOString(), documentsCount: 12 },
-  { id: "2", title: "Smith Estate Planning", jurisdiction: "US - California", status: "active" as const, lastActivity: new Date(Date.now() - 18000000).toISOString(), documentsCount: 8 },
-  { id: "3", title: "TechStart IP Review", jurisdiction: "US - Delaware", status: "review" as const, lastActivity: new Date(Date.now() - 86400000).toISOString(), documentsCount: 23 },
-  { id: "4", title: "Metro Construction Dispute", jurisdiction: "UK", status: "active" as const, lastActivity: new Date(Date.now() - 172800000).toISOString(), documentsCount: 15 },
-  { id: "5", title: "Phoenix Merger Analysis", jurisdiction: "EU", status: "closed" as const, lastActivity: new Date(Date.now() - 604800000).toISOString(), documentsCount: 34 },
-]
+import { caseToMatter } from "@/lib/types"
+import { useCases } from "@/hooks/use-cases"
 
 const recentActivity = [
   { action: "Query answered", matter: "Acme vs Global Corp", user: "John Smith", time: "10 min ago" },
@@ -50,6 +38,22 @@ const statusMap: Record<string, "active" | "review" | "closed"> = {
 
 export default function DashboardPage() {
   const router = useRouter()
+  const { data: cases, isLoading } = useCases()
+
+  const matters = (cases || []).map(caseToMatter)
+  const recentMatters = [...matters]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 5)
+
+  const activeCount = matters.filter((m) => m.status === "active").length
+  const processingCount = matters.filter((m) => m.status === "review").length
+
+  const stats = [
+    { title: "Active Matters", value: String(activeCount), icon: Briefcase, trend: { value: String(matters.length), positive: true } },
+    { title: "Token Usage", value: "—", icon: Zap },
+    { title: "Processing", value: String(processingCount), icon: AlertCircle },
+    { title: "Total Matters", value: String(matters.length), icon: MessageSquare },
+  ]
 
   const matterColumns = [
     {
@@ -67,12 +71,11 @@ export default function DashboardPage() {
         </div>
       ),
     },
-    { key: "jurisdiction", header: "Jurisdiction" },
     {
       key: "status",
       header: "Status",
       render: (item: typeof recentMatters[0]) => (
-        <Badge variant={statusMap[item.status]}>
+        <Badge variant={statusMap[item.status] || "active"}>
           {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
         </Badge>
       ),
@@ -121,11 +124,19 @@ export default function DashboardPage() {
             </Button>
           </div>
           <div className="p-6">
-            <DataTable
-              columns={matterColumns}
-              data={recentMatters}
-              onRowClick={(item) => router.push(`/matters/${item.id}`)}
-            />
+            {isLoading ? (
+              <div className="flex items-center justify-center py-10">
+                <Loader2 className="h-5 w-5 animate-spin text-accent" />
+                <span className="ml-2 text-sm text-muted">Loading...</span>
+              </div>
+            ) : (
+              <DataTable
+                columns={matterColumns}
+                data={recentMatters}
+                onRowClick={(item) => router.push(`/matters/${item.id}`)}
+                emptyMessage="No matters yet. Create your first matter to get started."
+              />
+            )}
           </div>
         </div>
 

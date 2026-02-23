@@ -7,8 +7,8 @@ class Settings(BaseSettings):
     # Database
     database_url: str
 
-    # OpenAI
-    openai_api_key: str
+    # Google AI (Gemini)
+    google_api_key: str
 
     # Qdrant
     qdrant_url: str = "http://localhost:6333"

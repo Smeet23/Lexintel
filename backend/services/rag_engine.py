@@ -1,25 +1,18 @@
 """RAG Query Engine for legal document analysis with comprehensive error handling"""
 import logging
 import asyncio
-import tiktoken
 from typing import List, Dict, Tuple, Optional
 from uuid import UUID
 from sqlalchemy.orm import Session
-from openai import AsyncOpenAI
+import google.generativeai as genai
 
-# Exception handling
 try:
-    from openai import OpenAIError, RateLimitError, APIError
+    from google.api_core.exceptions import ResourceExhausted, GoogleAPIError
 except ImportError:
-    try:
-        from openai.error import OpenAIError, RateLimitError, APIError
-    except ImportError:
-        class OpenAIError(Exception):
-            pass
-        class RateLimitError(OpenAIError):
-            pass
-        class APIError(OpenAIError):
-            pass
+    class GoogleAPIError(Exception):
+        pass
+    class ResourceExhausted(GoogleAPIError):
+        pass
 
 try:
     from backend.services.embeddings import embed_text
@@ -37,33 +30,21 @@ except ImportError:
         from config import get_settings
         from exceptions import QueryProcessingException, EmbeddingException, VectorStoreException
     except ImportError:
-        from .services.embeddings import embed_text
-        from .services.vector_store import search_vectors
-        from .services.document_summary import generate_document_summary
-        from .models import Case, Query, Chunk
-        from .config import get_settings
-        from .exceptions import QueryProcessingException, EmbeddingException, VectorStoreException
+        from .embeddings import embed_text
+        from .vector_store import search_vectors
+        from .document_summary import generate_document_summary
+        from ..models import Case, Query, Chunk
+        from ..config import get_settings
+        from ..exceptions import QueryProcessingException, EmbeddingException, VectorStoreException
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-# Cache for tiktoken encoder (Issue 1)
-_TIKTOKEN_ENCODER = None
-
 # Cache for reranker model (lazy loaded)
 _RERANKER_MODEL = None
 
-def _get_encoder():
-    """Get cached tiktoken encoder for GPT-4o"""
-    global _TIKTOKEN_ENCODER
-    if _TIKTOKEN_ENCODER is None:
-        try:
-            _TIKTOKEN_ENCODER = tiktoken.encoding_for_model("gpt-4o")
-        except KeyError:
-            # gpt-4o not in tiktoken's registry, use cl100k_base (same as GPT-4)
-            _TIKTOKEN_ENCODER = tiktoken.get_encoding("cl100k_base")
-    return _TIKTOKEN_ENCODER
-
+# Gemini model name
+GEMINI_MODEL = "gemini-2.5-flash-lite"
 
 # Configuration
 CONTEXT_TOKEN_BUDGET = 12_800
@@ -74,26 +55,27 @@ LEGAL_SYSTEM_PROMPT = """You are an expert legal assistant specialized in analyz
    - For PDFs: [Page X]
    - For Word documents: [Paragraph X]
    - For text files: [Lines X-Y]
+   - For named sections: [Section "Section Name"]
 4. Distinguish between facts, arguments, and judgments
 5. Flag any ambiguities or gaps in the source material
 6. Never speculate beyond what the documents state
-For each claim, include the location reference and cite the specific section when available."""
+For each claim, include the location reference. When a named section is available in the excerpt metadata, use [Section "Name"] citations for precise referencing."""
 
 MIN_QUERY_LENGTH = 3
-MIN_CONFIDENCE_SCORE = 0.6  # Require 60% semantic similarity minimum (prevents weak matches)
+MIN_CONFIDENCE_SCORE = 0.3  # Require 30% semantic similarity minimum
 RETRIEVAL_TOP_K = 10
 FINAL_CHUNK_COUNT = 4
 
 
-def count_tokens_gpt4o(text: str) -> int:
+def count_tokens_estimate(text: str) -> int:
     """
-    Count tokens in text using tiktoken for GPT-4o model.
+    Estimate token count for text (roughly 4 characters per token).
 
     Args:
         text: Text to count tokens for
 
     Returns:
-        Integer number of tokens
+        Estimated number of tokens
 
     Raises:
         ValueError: If text is empty
@@ -101,27 +83,8 @@ def count_tokens_gpt4o(text: str) -> int:
     if not text or not text.strip():
         raise ValueError("Text cannot be empty")
 
-    try:
-        encoder = _get_encoder()
-        tokens = encoder.encode(text)
-        return len(tokens)
-    except Exception as e:
-        logger.error(f"Failed to count tokens: {str(e)}")
-        raise ValueError(f"Failed to count tokens: {str(e)}") from e
-
-
-def validate_token_budget(token_count: int, budget: int) -> bool:
-    """
-    Validate if token count is within budget.
-
-    Args:
-        token_count: Current token count
-        budget: Token budget limit
-
-    Returns:
-        True if within budget, False otherwise
-    """
-    return token_count <= budget
+    # Rough estimate: 1 token ~ 4 characters
+    return len(text) // 4
 
 
 def format_legal_context(chunks: List[Dict], case_name: str) -> str:
@@ -181,7 +144,7 @@ def embed_query(query: str) -> List[float]:
         query: User query string
 
     Returns:
-        3072-dimensional embedding vector
+        768-dimensional embedding vector
 
     Raises:
         ValueError: If query is empty
@@ -255,12 +218,10 @@ def rerank_chunks(
     try:
         # Prepare pairs for reranking (query, chunk_content)
         pairs = []
-        chunk_texts = []
 
         for chunk in chunks:
             content = chunk.get("content", "")[:300]  # Limit to 300 chars for efficiency
             pairs.append([query, content])
-            chunk_texts.append(content)
 
         logger.debug(f"Reranking {len(chunks)} chunks")
 
@@ -360,17 +321,23 @@ def extract_citations(answer: str, chunks: List[Dict]) -> Tuple[str, List[Dict],
     citation_patterns = [
         (r'\[Page\s+(\d+)\]', 'page'),
         (r'\[Paragraph\s+(\d+)\]', 'paragraph'),
-        (r'\[Lines\s+(\d+-\d+)\]', 'line_range')
+        (r'\[Lines\s+(\d+-\d+)\]', 'line_range'),
+        (r'\[Section\s+"([^"]+)"\]', 'section'),
     ]
 
     # Create location to chunk mapping
     location_to_chunks = {}
+    section_to_chunks = {}
     valid_locations = set()
     for chunk in chunks:
         location = str(chunk.get("page_num", ""))
         if location not in location_to_chunks:
             location_to_chunks[location] = chunk
             valid_locations.add(location)
+        # Also map section names for [Section "X"] citations
+        section_name = str(chunk.get("section_name", ""))
+        if section_name and section_name not in section_to_chunks:
+            section_to_chunks[section_name] = chunk
 
     # Extract citations and match to chunks
     unmatched_citations = []
@@ -386,7 +353,23 @@ def extract_citations(answer: str, chunks: List[Dict]) -> Tuple[str, List[Dict],
                 location = f"para {match.group(1)}"  # Convert to "para X" format
             elif citation_type == 'line_range':
                 location = f"line {match.group(1)}"  # Convert to "line X-Y" format
+            elif citation_type == 'section':
+                location = match.group(1)  # Section name
             else:
+                continue
+
+            # Match section citations against section_name metadata
+            if citation_type == 'section' and location in section_to_chunks:
+                chunk = section_to_chunks[location]
+                citation = {
+                    "chunk_id": chunk.get("chunk_id", ""),
+                    "location": location,
+                    "citation_type": citation_type,
+                    "relevance_score": chunk.get("score", 0)
+                }
+                if citation not in citations:
+                    citations.append(citation)
+                valid_matches.append(match)
                 continue
 
             if location in location_to_chunks:
@@ -736,13 +719,26 @@ def classify_confidence_level(confidence_score: float) -> str:
         return "none"
 
 
+def _get_gemini_model():
+    """Configure and return Gemini model instance."""
+    if not settings.google_api_key:
+        raise ValueError("GOOGLE_API_KEY is not configured.")
+
+    genai.configure(api_key=settings.google_api_key)
+
+    return genai.GenerativeModel(
+        model_name=GEMINI_MODEL,
+        system_instruction=LEGAL_SYSTEM_PROMPT,
+    )
+
+
 async def generate_answer(
     query: str,
     context: str,
     temperature: float = 0.2
 ) -> Tuple[str, int]:
     """
-    Generate answer using OpenAI ChatCompletion API.
+    Generate answer using Google Gemini API.
 
     Args:
         query: User query
@@ -754,39 +750,35 @@ async def generate_answer(
 
     Raises:
         ValueError: If API key is not configured
-        Exception: If API call fails
+        QueryProcessingException: If API call fails
     """
-    # Validate API key before using (Issue 3)
-    if not settings.openai_api_key:
-        logger.error("OpenAI API key not configured")
-        raise ValueError("OpenAI API key is not configured. Check OPENAI_API_KEY environment variable.")
-
     try:
-        client = AsyncOpenAI(api_key=settings.openai_api_key)
+        model = _get_gemini_model()
 
-        messages = [
-            {"role": "system", "content": LEGAL_SYSTEM_PROMPT},
-            {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {query}"}
-        ]
+        prompt = f"Context:\n{context}\n\nQuestion: {query}"
 
-        response = await client.chat.completions.create(
-            model="gpt-4o",
-            messages=messages,
-            temperature=temperature,
-            max_tokens=2000,
-            timeout=30
+        response = await model.generate_content_async(
+            prompt,
+            generation_config=genai.GenerationConfig(
+                temperature=temperature,
+                max_output_tokens=2000,
+            ),
         )
 
-        answer = response.choices[0].message.content
-        tokens_used = response.usage.total_tokens
+        answer = response.text
+        tokens_used = 0
+        if hasattr(response, 'usage_metadata') and response.usage_metadata:
+            tokens_used = getattr(response.usage_metadata, 'total_token_count', 0)
 
         return answer, tokens_used
 
-    except (OpenAIError, RateLimitError, APIError) as e:
-        logger.error(f"OpenAI API error generating answer: {str(e)}")
+    except ValueError:
+        raise
+    except (ResourceExhausted, GoogleAPIError) as e:
+        logger.error(f"Google AI API error generating answer: {str(e)}")
         raise QueryProcessingException(
-            "Failed to generate answer with OpenAI",
-            detail=f"OpenAI error: {str(e)}"
+            "Failed to generate answer with Google AI",
+            detail=f"Google AI error: {str(e)}"
         ) from e
     except Exception as e:
         logger.error(f"Unexpected error generating answer: {str(e)}")
@@ -839,9 +831,9 @@ async def query_case(
         "sources": [],
         "case_id": case_id,
         "query": query,
-        "model": "gpt-4o",
+        "model": GEMINI_MODEL,
         "tokens_used": 0,
-        "confidence": "none",
+        "confidence": {"level": "none", "score": 0.0, "factors": {}},
         "error": None
     }
 
@@ -852,7 +844,7 @@ async def query_case(
 
     try:
         # Get case from database
-        case = db.query(Case).filter(Case.id == case_id).first()
+        case = db.query(Case).filter(Case.id == UUID(case_id)).first()
         if not case:
             error_response["error"] = f"Case not found: {case_id}"
             return error_response
@@ -890,12 +882,16 @@ async def query_case(
             error_response["error"] = "No relevant documents found"
             return error_response
 
+        # Log scores for debugging
+        scores = [c.get("score", 0) for c in retrieved_chunks]
+        logger.info(f"Retrieved {len(retrieved_chunks)} chunks, scores: {[f'{s:.4f}' for s in scores]}")
+
         # 4. Filter by confidence and select top k
         high_confidence_chunks = [c for c in retrieved_chunks if c.get("score", 0) >= MIN_CONFIDENCE_SCORE]
 
         if not high_confidence_chunks:
             # All chunks are low confidence
-            error_response["confidence"] = "low"
+            error_response["confidence"] = {"level": "low", "score": 0.0, "factors": {}}
             error_response["error"] = "Retrieved documents have low relevance"
             # Include scores in response
             scores = [c.get("score", 0) for c in retrieved_chunks]
@@ -919,9 +915,9 @@ async def query_case(
         try:
             formatted_context = format_legal_context(final_chunks, case.name)
 
-            # Count tokens in context
-            context_tokens = count_tokens_gpt4o(formatted_context)
-            query_tokens = count_tokens_gpt4o(query)
+            # Count tokens in context (estimate)
+            context_tokens = count_tokens_estimate(formatted_context)
+            query_tokens = count_tokens_estimate(query)
 
             # Check token budget (reserve buffer for response)
             estimated_total = context_tokens + query_tokens + 500  # 500 token buffer
@@ -929,7 +925,7 @@ async def query_case(
                 # Trim context to fewer chunks
                 final_chunks = final_chunks[:2]
                 formatted_context = format_legal_context(final_chunks, case.name)
-                context_tokens = count_tokens_gpt4o(formatted_context)
+                context_tokens = count_tokens_estimate(formatted_context)
                 estimated_total = context_tokens + query_tokens + 500
 
                 if estimated_total > CONTEXT_TOKEN_BUDGET:
@@ -994,15 +990,30 @@ async def query_case(
         sources = []
         for chunk in final_chunks:
             chunk_id = chunk.get("chunk_id", "")
+            chunk_sequence = chunk.get("chunk_sequence", None)
 
             # Fetch full content from database (not truncated from vector store)
             full_content = ""
             try:
-                db_chunk = db.query(Chunk).filter(Chunk.id == chunk_id).first()
+                db_chunk = None
+                # Try UUID lookup first
+                if chunk_id:
+                    try:
+                        chunk_uuid = UUID(chunk_id)
+                        db_chunk = db.query(Chunk).filter(Chunk.id == chunk_uuid).first()
+                    except (ValueError, AttributeError):
+                        pass
+
+                # Fallback: query by (case_id, chunk_sequence) for backward compat
+                if not db_chunk and chunk_sequence is not None:
+                    db_chunk = db.query(Chunk).filter(
+                        Chunk.case_id == case.id,
+                        Chunk.chunk_sequence == chunk_sequence
+                    ).first()
+
                 if db_chunk:
                     full_content = db_chunk.content
                 else:
-                    # Fallback to content_preview if not found
                     full_content = chunk.get("content", "")
             except Exception as e:
                 logger.warning(f"Failed to fetch full chunk content for {chunk_id}: {str(e)}, using preview")
@@ -1037,7 +1048,7 @@ async def query_case(
             "citations": grounded_citations,  # Citations with supporting excerpts
             "case_id": case_id,
             "query": query,
-            "model": "gpt-4o",
+            "model": GEMINI_MODEL,
             "tokens_used": tokens_used,
             "confidence": {
                 "level": confidence,  # "high", "medium", "low", "none"

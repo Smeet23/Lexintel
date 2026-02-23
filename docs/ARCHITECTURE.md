@@ -86,7 +86,7 @@
     │       External Services         │
     ├─────────────────────────────────┤
     │ - Qdrant (Vector DB)            │
-    │ - OpenAI (Embeddings + LLM)     │
+    │ - Google AI (Embeddings + LLM)   │
     │ - Azure Blob Storage            │
     └─────────────────────────────────┘
 ```
@@ -128,7 +128,7 @@
 │  - Redis (Caching & Queue)                                  │
 │  - Qdrant (Vector Embeddings)                               │
 │  - Azure Blob Storage (Raw Documents)                       │
-│  - OpenAI APIs (Embeddings + LLM)                           │
+│  - Google AI APIs (Embeddings + LLM)                          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -217,7 +217,7 @@ Health & Monitoring
 **Configuration Variables:**
 ```
 DATABASE_URL              PostgreSQL connection string
-OPENAI_API_KEY           OpenAI API key for embeddings/LLM
+GOOGLE_API_KEY           Google AI API key for embeddings/LLM
 QDRANT_URL               Qdrant vector DB endpoint
 AZURE_STORAGE_CONNECTION Azure Blob Storage connection
 SECRET_KEY               JWT signing key
@@ -384,13 +384,13 @@ Indices:
 - Maintain chunk coherence for legal context
 
 **Chunking Strategy:**
-- **Chunk Size:** 800 characters (balance between context and specificity)
-- **Overlap:** 150 characters (preserve argument continuity)
-- **Separators:** Hierarchical (paragraph → sentence → word)
+- **Strategy:** Hybrid semantic (markdown headers → SemanticChunker → fallback recursive)
+- **Section Detection:** Legal boundary patterns across multiple jurisdictions
+- **Post-Processing:** Markdown cleanup + small chunk merging (min 50 chars)
 - **Metadata:** Page number, section name, sequence
 
 **Text Extraction Methods:**
-- **PDF:** PyMuPDF (fitz) with page-level extraction
+- **PDF:** pymupdf4llm with structured markdown extraction
 - **DOCX:** python-docx library with paragraph extraction
 - **TXT:** Direct line-by-line reading
 
@@ -423,9 +423,9 @@ List of Chunk objects:
 - Handle API rate limits and failures
 
 **Embedding Model:**
-- **Model:** OpenAI text-embedding-3-large
-- **Dimensions:** 3072
-- **Cost:** $0.02 per 1M tokens
+- **Model:** Google gemini-embedding-001 via langchain-google-genai
+- **Dimensions:** 768
+- **Cost:** Free tier available (Google AI)
 - **Batch Size:** 20 chunks (for efficiency)
 
 **Caching Strategy:**
@@ -464,7 +464,7 @@ List of Chunk objects:
 Collection Name: case_{case_id}
 Point Schema:
   id: hash(chunk_id) % 2^32 (deterministic)
-  vector: [3072 dimensions]
+  vector: [768 dimensions]
   payload: {
     chunk_id: UUID,
     case_id: UUID,
@@ -511,7 +511,7 @@ Point Schema:
 ```
 1. Query Embedding
    Input: User question
-   Output: 3072-dimensional embedding
+   Output: 768-dimensional embedding
 
 2. Vector Similarity Search
    Input: Query embedding
@@ -520,12 +520,12 @@ Point Schema:
 
 3. Context Window Management
    Input: Retrieved chunks
-   Budget: ~12,800 tokens (~50% of GPT-4o context)
+   Budget: ~12,800 tokens (~50% of Gemini context)
    Logic: Select top 4 chunks, validate token count
    Output: Formatted context string
 
 4. LLM Answer Generation
-   Model: OpenAI GPT-4o
+   Model: Google Gemini 2.5 Flash Lite
    Temperature: 0.2 (high precision for legal docs)
    System Prompt: Legal assistant role
    Input: Context + Query
@@ -549,7 +549,7 @@ MIN_QUERY_LENGTH = 3 characters
 MIN_CONFIDENCE_SCORE = 0.6 (60% similarity)
 RETRIEVAL_TOP_K = 10 chunks
 FINAL_CHUNK_COUNT = 4 chunks (for context window)
-GPT_MODEL = "gpt-4o"
+GEMINI_MODEL = "gemini-2.5-flash-lite"
 TEMPERATURE = 0.2 (low for legal precision)
 ```
 
@@ -570,14 +570,14 @@ case law, and legal statutes. Your role is to:
 
 **Key Functions:**
 - `query_case(case_id: UUID, question: str, db: Session) -> Dict` - Execute RAG pipeline
-- `count_tokens_gpt4o(text: str) -> int` - Token counting
+- `count_tokens(text: str) -> int` - Token counting
 - `search_and_rank_chunks(...)` - Retrieval and ranking
 - `format_context(chunks: List[Chunk]) -> str` - Context formatting
 - `extract_citations(answer: str) -> List[Dict]` - Citation extraction
 
 **Error Handling:**
 - Insufficient context for query
-- OpenAI API timeout/rate limits
+- Google AI API timeout/rate limits
 - Citation mismatch (hallucination detection)
 - Empty or invalid queries
 - Vector search failures
@@ -827,10 +827,10 @@ Key Components:
    - Mark as status="processing"
    - Download document from Blob Storage
    - Extract text (PDF/DOCX/TXT specific logic)
-   - Chunk document semantically:
-     * 800 char chunks with 150 char overlap
-     * Preserve page numbers & section names
-   - Generate embeddings (OpenAI text-embedding-3-large)
+   - Hybrid semantic chunking:
+     * Markdown headers → SemanticChunker → fallback recursive
+     * Legal section detection + metadata preservation
+   - Generate embeddings (Google gemini-embedding-001, 768-dim)
    - Create Qdrant collection: case_{case_id}
    - Upsert vectors with metadata
    - Store chunks in PostgreSQL
@@ -861,7 +861,7 @@ Key Components:
 3. Cache Hit? → Return Cached Answer
         ↓ (if miss)
 4. Embed Question
-   - Convert question to 3072-dim vector
+   - Convert question to 768-dim vector
    - Use same embedding model as documents
         ↓
 5. Vector Similarity Search (Qdrant)
@@ -877,7 +877,7 @@ Key Components:
    - Validate total ≤ 12,800 tokens
    - Format as context string with metadata
         ↓
-7. LLM Answer Generation (OpenAI GPT-4o)
+7. LLM Answer Generation (Google Gemini 2.5 Flash Lite)
    System Prompt: "You are a legal assistant..."
    Context: [4 chunks with page numbers]
    Query: "What are the plaintiff's key arguments?"
@@ -969,7 +969,7 @@ If Non-Retryable:
 
 **Query Processing Failure - Multi-Path Recovery:**
 
-**Scenario 1: Query Embedding Fails (OpenAI API timeout/error)**
+**Scenario 1: Query Embedding Fails (Google AI API timeout/error)**
 ```
 POST /cases/{case_id}/ask request received
     ↓
@@ -977,7 +977,7 @@ Check Redis cache for previous answer
     ↓
 Cache miss? → Attempt embedding
     ↓
-OpenAI API error occurs:
+Google AI API error occurs:
     - Timeout (>30 seconds)
     - Rate limit (429)
     - Service error (500+)
@@ -1022,11 +1022,11 @@ Error handling:
     - Return 503 with error message
 ```
 
-**Scenario 3: Both Qdrant AND OpenAI Fail Simultaneously**
+**Scenario 3: Both Qdrant AND Google AI Fail Simultaneously**
 ```
 User asks question on case
     ↓
-Query embedding fails (OpenAI timeout)
+Query embedding fails (Google AI timeout)
     ↓
 Fallback to cache check
     ↓
@@ -1196,7 +1196,7 @@ FastAPI (main.py)
 │   └── LangChain RecursiveCharacterTextSplitter
 ├── Embeddings Service
 │   ├── Config
-│   ├── OpenAI API
+│   ├── Google AI API
 │   └── Embedding Cache Manager
 ├── Vector Store Service
 │   ├── Qdrant API
@@ -1204,7 +1204,7 @@ FastAPI (main.py)
 ├── RAG Query Engine
 │   ├── Embeddings Service
 │   ├── Vector Store Service
-│   ├── OpenAI API (GPT-4o)
+│   ├── Google AI API (Gemini)
 │   └── Database Models
 ├── Job Processor
 │   ├── Storage Service
@@ -1232,7 +1232,7 @@ FastAPI (main.py)
 - Job Processor → Vector Store Service
 
 **External APIs:**
-- Any Service → OpenAI (embeddings, LLM)
+- Any Service → Google AI (embeddings, LLM)
 - Any Service → Azure Blob Storage
 - Any Service → Qdrant (vector DB)
 - Cache Manager → Redis
@@ -1455,7 +1455,7 @@ Database:
   MAX_OVERFLOW: 10
 
 External Services:
-  OPENAI_API_KEY: sk-... (development key)
+  GOOGLE_API_KEY: AIza-... (development key)
   QDRANT_URL: http://localhost:6333
   AZURE_STORAGE_CONNECTION: DefaultEndpointsProtocol=http;...
 
@@ -1484,7 +1484,7 @@ Database:
   SSL_MODE: require
 
 External Services:
-  OPENAI_API_KEY: sk-... (staging key with lower limits)
+  GOOGLE_API_KEY: AIza-... (staging key with lower limits)
   QDRANT_URL: https://staging-qdrant.example.com
   AZURE_STORAGE_CONNECTION: <staging connection string>
 
@@ -1517,7 +1517,7 @@ Database:
   IDLE_IN_TRANSACTION_SESSION_TIMEOUT: 60000ms
 
 External Services:
-  OPENAI_API_KEY: sk-... (production key)
+  GOOGLE_API_KEY: AIza-... (production key)
   QDRANT_URL: https://prod-qdrant.example.com
   AZURE_STORAGE_CONNECTION: <production connection string>
 
@@ -1589,7 +1589,7 @@ Security Groups:
     - To PostgreSQL: Port 5432
     - To Redis: Port 6379
     - To Qdrant: Port 6333
-    - To OpenAI: Port 443
+    - To Google AI: Port 443
     - To Azure: Port 443
 
 VPC Configuration:
@@ -1676,7 +1676,7 @@ Egress Rules from Backend Pods:
   - To PostgreSQL: 5432 (required)
   - To Redis: 6379 (required)
   - To Qdrant: 6333 (required)
-  - To OpenAI: 443 (required)
+  - To Google AI: 443 (required)
   - To Azure Blob: 443 (required)
   - DNS: 53 (required)
   - Deny all other outbound traffic
@@ -1769,7 +1769,7 @@ Database Connection Limits:
   - Connection timeout: 5 seconds
   - Max retries: 3
 
-OpenAI API Rate Limiting:
+Google AI API Rate Limiting:
   - Batch size: max 20 chunks per embedding request
   - Retry strategy: exponential backoff
   - Max tokens per minute: governed by API plan
@@ -2092,9 +2092,9 @@ Database Metrics:
   - lexintel_db_transaction_errors_total (counter)
 
 External Service Metrics:
-  - lexintel_openai_api_calls_total{service} (counter)
-  - lexintel_openai_api_cost_usd_total (counter)
-  - lexintel_openai_tokens_total{type} (counter)
+  - lexintel_google_ai_api_calls_total{service} (counter)
+  - lexintel_google_ai_api_cost_usd_total (counter)
+  - lexintel_google_ai_tokens_total{type} (counter)
   - lexintel_qdrant_search_duration_seconds (histogram)
   - lexintel_qdrant_upsert_duration_seconds (histogram)
 
@@ -2160,14 +2160,14 @@ FastAPI Request Handler
   ↓ Create root span
 RAG Query Engine
   ↓ Create child span (embedding)
-  Embeddings Service (API call to OpenAI)
-    ↓ Create child span (OpenAI embedding)
+  Embeddings Service (API call to Google AI)
+    ↓ Create child span (Google AI embedding)
   ↓ Create child span (search)
 Vector Store Service (API call to Qdrant)
     ↓ Create child span (Qdrant search)
   ↓ Create child span (LLM)
-  OpenAI LLM call
-    ↓ Create child span (OpenAI LLM)
+  Google AI LLM call
+    ↓ Create child span (Google AI LLM)
   ↓ Create child span (database)
 Database transaction
     ↓ Create child span (PostgreSQL)
@@ -2210,7 +2210,7 @@ Metric: Database Availability
   Action: Page on-call immediately
 
 Metric: External Service Failures
-  Threshold: OpenAI API unavailable OR Qdrant unavailable
+  Threshold: Google AI API unavailable OR Qdrant unavailable
   Duration: 1 minute
   Action: Page on-call immediately
 
@@ -2244,7 +2244,7 @@ Metric: API Response Time
   Action: Send email alert
 
 Metric: Cost Overruns
-  Threshold: OpenAI costs > 150% of daily budget
+  Threshold: Google AI costs > 150% of daily budget
   Duration: immediate
   Action: Send email alert
 
@@ -2266,7 +2266,7 @@ GET /health
       "database": "healthy",
       "cache": "healthy",
       "qdrant": "degraded",
-      "openai": "healthy"
+      "google_ai": "healthy"
     },
     "checks": {
       "database_connection": {
@@ -2294,13 +2294,13 @@ GET /health
 
 | Constant | Value | Purpose | Tuning Notes |
 |----------|-------|---------|--------------|
-| CHUNK_SIZE | 800 | Characters per chunk | Larger = more context but less precision |
-| CHUNK_OVERLAP | 150 | Overlap between chunks | Prevents mid-argument splits |
+| CHUNKING_STRATEGY | Hybrid semantic | Chunking approach | markdown headers → SemanticChunker → fallback |
+| MIN_CHUNK_SIZE | 50 | Minimum chunk chars | Prevents overly small fragments |
 | MIN_QUERY_LENGTH | 3 | Minimum question characters | Prevents trivial queries |
 | MAX_QUERY_LENGTH | 5000 | Maximum question characters | API limit safety |
 | RETRIEVAL_TOP_K | 10 | Initial chunks retrieved | More = slower but better recall |
 | FINAL_CHUNK_COUNT | 4 | Chunks in context window | Balanced for quality & cost |
-| CONTEXT_TOKEN_BUDGET | 12800 | Max tokens for context | ~50% of GPT-4o context window |
+| CONTEXT_TOKEN_BUDGET | 12800 | Max tokens for context | ~50% of Gemini context window |
 | MIN_CONFIDENCE_SCORE | 0.6 | Minimum similarity (0-1) | Lower = more results, higher = precision |
 | TEMPERATURE | 0.2 | LLM sampling (0-1) | Lower = more deterministic for legal |
 
@@ -2308,10 +2308,10 @@ GET /health
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
-| EMBEDDING_MODEL | text-embedding-3-large | OpenAI embedding model |
-| EMBEDDING_DIMENSIONS | 3072 | Vector dimensions |
-| EMBEDDING_BATCH_SIZE | 20 | Chunks per API call |
-| EMBEDDING_COST_PER_MTK | 0.02 | Cost in USD per million tokens |
+| EMBEDDING_MODEL | gemini-embedding-001 | Google AI embedding model |
+| EMBEDDING_DIMENSIONS | 768 | Vector dimensions |
+| EMBEDDING_BATCH_SIZE | 100 | Chunks per API call |
+| EMBEDDING_COST_PER_MTK | Free tier | Google AI free tier available |
 
 **Job Processing Configuration:**
 
@@ -2354,7 +2354,7 @@ GET /health
 
 | Service | Timeout | Retries | Purpose |
 |---------|---------|---------|---------|
-| OpenAI API | 30s | 3 | Embedding/LLM calls |
+| Google AI API | 30s | 3 | Embedding/LLM calls |
 | Qdrant Vector DB | 15s | 3 | Search operations |
 | Azure Blob Storage | 30s | 3 | Upload/download |
 | PostgreSQL | 5s | 2 | Database queries |
@@ -2373,13 +2373,13 @@ GET /health
 - **Failure Handling:** Retry with exponential backoff
 - **Integration Point:** `backend/services/storage.py`
 
-**2. OpenAI APIs**
-- **Embeddings:** text-embedding-3-large (3072 dims)
+**2. Google AI APIs**
+- **Embeddings:** gemini-embedding-001 (768 dims) via langchain-google-genai
   - Purpose: Convert text → vectors
-  - Cost: $0.02 per 1M tokens
-  - Batching: 20 chunks per request
+  - Cost: Free tier available
+  - Batching: 100 chunks per request
   - Integration: `backend/services/embeddings.py`
-- **LLM:** GPT-4o for answer generation
+- **LLM:** Gemini 2.5 Flash Lite for answer generation
   - Purpose: Generate contextual answers
   - Temperature: 0.2 (legal precision)
   - Context: ~12.8K tokens
@@ -2509,8 +2509,10 @@ backend/
 ├── services/
 │   ├── storage.py             # Azure Blob Storage
 │   ├── chunking.py            # Document chunking
-│   ├── embeddings.py          # OpenAI embeddings
+│   ├── embeddings.py          # Google AI embeddings
 │   ├── embedding_cache.py     # Embedding cache
+│   ├── section_detector.py   # Legal section boundary detection
+│   ├── progress.py           # Real-time progress via Redis pub/sub
 │   ├── vector_store.py        # Qdrant integration
 │   ├── rag_engine.py          # RAG pipeline
 │   ├── job_processor.py       # Background jobs
@@ -2539,8 +2541,8 @@ Document Chunking:
 Embedding Generation:
   - Avg: 100ms per chunk (batched: 20 chunks per request)
   - Batch request: ~2 seconds for 40 chunks
-  - Includes: API call, network latency, OpenAI processing
-  - Cost: $0.02 per 1M tokens
+  - Includes: API call, network latency, Google AI processing
+  - Cost: Free tier available (Google AI)
 
 Vector Storage (Qdrant Upsert):
   - Avg: 50-100ms per upsert batch (20 vectors)
@@ -2573,7 +2575,7 @@ Context Window Assembly:
 LLM Answer Generation:
   - Avg: 1-3 seconds for legal document analysis
   - Range: 0.5-5 seconds (depends on answer complexity)
-  - Includes: OpenAI API call, streaming response
+  - Includes: Google AI API call, streaming response
   - Tokens generated: 100-300 (avg 150)
 
 Citation Extraction:
@@ -2668,7 +2670,7 @@ Cache (Redis):
 ✅ **Legal-Grade:** Compliance-focused, audit trails, data retention
 ✅ **RAG-Optimized:** Semantic chunking, intelligent retrieval, citation validation
 
-The system successfully combines FastAPI backend, PostgreSQL database, Qdrant vector store, and OpenAI APIs to provide intelligent legal document analysis with proper source attribution and comprehensive audit trails.
+The system successfully combines FastAPI backend, PostgreSQL database, Qdrant vector store, and Google AI APIs to provide intelligent legal document analysis with proper source attribution and comprehensive audit trails.
 
 ---
 

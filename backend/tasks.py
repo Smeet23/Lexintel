@@ -1,7 +1,7 @@
 """Celery tasks for document processing"""
 import logging
 from datetime import datetime, timezone
-from uuid import UUID
+from uuid import UUID, uuid4
 from celery import shared_task
 
 # Handle both module import styles
@@ -33,6 +33,11 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def _embed_batch(batch):
+    """Embed a batch of chunks. Retry logic is handled inside embed_chunks()."""
+    return embed_chunks(batch)
+
+
 @shared_task(
     bind=True,
     max_retries=3,
@@ -43,6 +48,11 @@ logger = logging.getLogger(__name__)
 def process_document_task(self, case_id: str):
     """
     Process a case document: chunk, embed, and store in vector DB.
+
+    CRITICAL FIX: Stores chunks in PostgreSQL FIRST to get UUIDs,
+    then passes those UUIDs to Qdrant. This fixes the chunk ID type
+    mismatch that caused RAG queries to use 200-char previews instead
+    of full chunk content.
 
     Args:
         case_id: UUID of the case to process
@@ -77,25 +87,49 @@ def process_document_task(self, case_id: str):
         logger.info(f"[Task {self.request.id}] Chunking {file_type.upper()}")
         publish_chunking(case_id, progress=0)
         chunks = chunk_document_from_blob(document_content, file_type=file_type)
+        del document_content  # Free raw file bytes early
         publish_chunking(case_id, progress=100, current=len(chunks), total=len(chunks))
         logger.info(f"[Task {self.request.id}] Created {len(chunks)} chunks")
 
         if not chunks:
-            raise ValueError("No chunks extracted from PDF")
+            raise ValueError("No chunks extracted from document")
 
-        # 3. Extract content for embeddings
+        # 3. Store chunk metadata in PostgreSQL FIRST with client-side UUIDs
+        # Client-side UUIDs enable bulk insert (single SQL statement) and
+        # ensure Qdrant point IDs match PostgreSQL before commit.
+        logger.info(f"[Task {self.request.id}] Storing {len(chunks)} chunks in database")
+        publish_storing(case_id)
+        chunk_mappings = []
+        for idx, chunk in enumerate(chunks):
+            chunk_id = uuid4()
+            chunk["id"] = str(chunk_id)
+            chunk["chunk_sequence"] = idx
+            chunk_mappings.append({
+                "id": chunk_id,
+                "case_id": UUID(case_id),
+                "page_num": chunk.get("page_num"),
+                "section_name": chunk.get("section_name"),
+                "section_type": chunk.get("section_type"),
+                "content": chunk.get("content"),
+                "chunk_sequence": idx,
+            })
+
+        db.bulk_insert_mappings(Chunk, chunk_mappings)
+        db.flush()
+        del chunk_mappings  # Free mapping dicts after DB insert
+
+        # 5. Extract content for embeddings
         chunk_contents = [chunk["content"] for chunk in chunks]
 
-        # 4. Generate embeddings (with progress updates)
+        # 6. Generate embeddings (with progress updates and per-batch retry)
         logger.info(f"[Task {self.request.id}] Generating embeddings for {len(chunks)} chunks")
         publish_embedding(case_id, progress=0, current=0, total=len(chunks))
 
-        # Process embeddings in batches for progress reporting
         embeddings = []
-        batch_size = 20
+        batch_size = 100  # 100 balances throughput and error blast radius
         for i in range(0, len(chunk_contents), batch_size):
             batch = chunk_contents[i:i + batch_size]
-            batch_embeddings = embed_chunks(batch)
+            batch_embeddings = _embed_batch(batch)
             embeddings.extend(batch_embeddings)
 
             # Update progress
@@ -103,57 +137,44 @@ def process_document_task(self, case_id: str):
             progress = int((processed / len(chunk_contents)) * 100)
             publish_embedding(case_id, progress=progress, current=processed, total=len(chunks))
 
-        # 5. Create Qdrant collection
+        del chunk_contents  # Free duplicated text strings
+
+        # 7. Create Qdrant collection
         logger.info(f"[Task {self.request.id}] Creating vector collection")
         publish_indexing(case_id, progress=0, detail="Creating collection...")
         create_collection(case_id)
         publish_indexing(case_id, progress=30, detail="Collection created")
 
-        # 6. Add IDs to chunks
-        chunks_with_ids = []
-        for idx, chunk in enumerate(chunks):
-            chunk["id"] = f"{case_id}:{idx}"
-            chunks_with_ids.append(chunk)
-
-        # 7. Store vectors in Qdrant
+        # 8. Store vectors in Qdrant (chunks now have UUID IDs from DB)
         logger.info(f"[Task {self.request.id}] Upserting vectors to Qdrant")
         publish_indexing(case_id, progress=50, detail="Upserting vectors...")
         upsert_vectors(
             case_id=case_id,
-            chunks=chunks_with_ids,
+            chunks=chunks,
             embeddings=embeddings
         )
-        publish_indexing(case_id, progress=100, detail=f"{len(chunks)} vectors indexed")
+        del embeddings  # Free embedding vectors (~37MB+ for 1500 chunks)
+        num_chunks = len(chunks)
+        del chunks  # Free chunk dicts
+        publish_indexing(case_id, progress=100, detail=f"{num_chunks} vectors indexed")
 
-        # 8. Store chunk metadata in PostgreSQL
-        logger.info(f"[Task {self.request.id}] Storing chunks in database")
-        publish_storing(case_id)
-        for idx, chunk in enumerate(chunks):
-            db_chunk = Chunk(
-                case_id=UUID(case_id),
-                page_num=chunk.get("page_num"),
-                section_name=chunk.get("section_name"),
-                content=chunk.get("content"),
-                chunk_sequence=idx
-            )
-            db.add(db_chunk)
-
-        # 9. Update case status to ready
+        # 9. Update case status to ready and commit everything
         case.status = "ready"
         case.updated_at = datetime.now(timezone.utc)
         db.commit()
 
         # Publish ready event
-        publish_ready(case_id, len(chunks))
+        publish_ready(case_id, num_chunks)
 
         logger.info(f"[Task {self.request.id}] Successfully processed case {case_id}")
         return {
             "status": "success",
             "case_id": case_id,
-            "chunks_processed": len(chunks)
+            "chunks_processed": num_chunks
         }
 
     except Exception as exc:
+        db.rollback()
         logger.error(f"[Task {self.request.id}] Error processing case {case_id}: {str(exc)}", exc_info=True)
 
         retry_count = self.request.retries
