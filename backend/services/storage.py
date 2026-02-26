@@ -1,9 +1,6 @@
 """Azure Blob Storage operations"""
 import logging
 import os
-import asyncio
-import sys
-from pathlib import Path
 from azure.storage.blob import BlobServiceClient
 from azure.core.exceptions import AzureError
 
@@ -15,19 +12,18 @@ except ImportError:
     try:
         from exceptions import BlobUploadException, BlobDownloadException, BlobDeleteException
     except ImportError:
-        from .exceptions import BlobUploadException, BlobDownloadException, BlobDeleteException
+        from ..exceptions import BlobUploadException, BlobDownloadException, BlobDeleteException
 
 def get_settings():
     """Get settings - lazy import to avoid circular dependencies"""
     try:
-        from config import get_settings as gs
+        from backend.config import get_settings as gs
         return gs()
     except ImportError:
         try:
-            sys.path.insert(0, '/app')
             from config import get_settings as gs
             return gs()
-        except Exception:
+        except ImportError:
             # Return a mock settings object for testing
             class MockSettings:
                 azure_storage_connection_string = os.environ.get('AZURE_STORAGE_CONNECTION_STRING', '')
@@ -60,20 +56,6 @@ def validate_file_format(file_content: bytes, file_type: str) -> bool:
         except UnicodeDecodeError:
             return False
     return False
-
-
-def validate_pdf(file_content: bytes) -> bool:
-    """
-    Deprecated: Use validate_file_format() instead.
-    Validate that file content is actually a PDF by checking magic bytes.
-
-    Args:
-        file_content: Raw file bytes
-
-    Returns:
-        True if file starts with PDF magic bytes
-    """
-    return file_content.startswith(PDF_MAGIC_BYTES)
 
 
 def get_blob_client():
@@ -142,10 +124,6 @@ async def upload_document_to_blob(file_content: bytes, matter_id: str, filename:
             "Unexpected error during file upload",
             detail=str(e)
         ) from e
-
-
-# Backward compatibility alias
-upload_pdf_to_blob = upload_document_to_blob
 
 
 def download_document_from_blob(blob_path: str) -> bytes:
@@ -218,7 +196,3 @@ def delete_blob(blob_path: str) -> bool:
             "Unexpected error during blob deletion",
             detail=str(e)
         ) from e
-
-
-# Backward compatibility alias
-download_pdf_from_blob = download_document_from_blob

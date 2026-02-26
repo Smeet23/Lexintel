@@ -103,3 +103,118 @@ export interface DashboardStats {
   pendingReviews: number
   recentQueries: number
 }
+
+// ============================================
+// Backend API Response Types
+// ============================================
+
+export interface CaseResponse {
+  id: string
+  name: string
+  status: "processing" | "ready" | "error"
+  file_type: string
+  created_at: string
+  updated_at: string | null
+}
+
+export interface CreateCaseResponse {
+  id: string
+  name: string
+  status: string
+  file_type: string
+  blob_storage_path: string
+  task_id: string
+  created_at: string
+}
+
+export interface CaseStatusResponse {
+  id: string
+  name: string
+  status: "processing" | "ready" | "error"
+  file_type?: string
+  created_at: string
+}
+
+export interface RAGSource {
+  chunk_id: string
+  page_num: string
+  relevance_score: number
+  content: string
+}
+
+export interface RAGResponse {
+  answer: string | null
+  sources: RAGSource[]
+  case_id: string
+  query: string
+  model: string
+  tokens_used: number
+  confidence: {
+    level: string
+    score: number
+    factors: Record<string, unknown>
+  }
+  error: string | null
+}
+
+export interface ProgressEvent {
+  stage: string
+  progress: number
+  current?: number
+  total?: number
+  detail?: string
+}
+
+export interface ChunkResponse {
+  id: string
+  page_num: string
+  section_name: string
+  section_type: string
+  content: string
+  chunk_sequence: number
+}
+
+// ============================================
+// Adapter Functions: Backend → Frontend
+// ============================================
+
+export function caseToMatter(c: CaseResponse): Matter {
+  const statusMap: Record<string, Matter["status"]> = {
+    processing: "review",
+    ready: "active",
+    error: "closed",
+  }
+  return {
+    id: c.id,
+    title: c.name,
+    jurisdiction: "",
+    status: statusMap[c.status] || "active",
+    team: [],
+    documentsCount: 1,
+    queriesCount: 0,
+    tokenUsage: 0,
+    budget: 0,
+    lastActivity: c.updated_at || c.created_at,
+    createdAt: c.created_at,
+  }
+}
+
+export function ragSourceToCitation(source: RAGSource, caseName: string): Citation {
+  return {
+    documentName: caseName,
+    pageNumber: parseInt(source.page_num, 10) || 0,
+    excerpt: source.content.slice(0, 200),
+    relevanceScore: source.relevance_score,
+  }
+}
+
+export function ragResponseToMessage(response: RAGResponse, caseName: string): QueryMessage {
+  return {
+    id: `msg-${Date.now()}`,
+    role: "assistant",
+    content: response.answer || "I could not generate an answer. Please try again.",
+    citations: response.sources.map((s) => ragSourceToCitation(s, caseName)),
+    confidenceScore: Math.round(response.confidence.score * 100),
+    timestamp: new Date().toISOString(),
+  }
+}

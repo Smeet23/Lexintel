@@ -8,7 +8,8 @@ env/
 venv/
 .env
 .env.local
-
+backend/.env
+backend/.venv
 # Node
 node_modules/
 .next/

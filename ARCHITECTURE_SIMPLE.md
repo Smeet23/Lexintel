@@ -11,19 +11,19 @@ graph TB
     Worker["<b style='font-size:18px'>⚙️ CELERY</b><br/>Worker"]
     Qdrant["<b style='font-size:18px'>🔍 QDRANT</b><br/>Vectors"]
     Blob["<b style='font-size:18px'>☁️ AZURE BLOB</b><br/>Storage"]
-    OpenAI["<b style='font-size:18px'>🤖 OPENAI</b><br/>API"]
+    GoogleAI["<b style='font-size:18px'>🤖 GOOGLE AI</b><br/>API"]
 
     Client -->|REST API| API
     API --> DB
     API --> Queue
     API --> Qdrant
-    API --> OpenAI
+    API --> GoogleAI
 
     Queue --> Worker
     Worker --> DB
     Worker --> Blob
     Worker --> Qdrant
-    Worker --> OpenAI
+    Worker --> GoogleAI
 
     style Client fill:#e3f2fd,stroke:#1976d2,stroke-width:3px,padding:20px
     style API fill:#bbdefb,stroke:#1976d2,stroke-width:3px,padding:20px
@@ -32,7 +32,7 @@ graph TB
     style Worker fill:#e8f5e9,stroke:#388e3c,stroke-width:3px,padding:20px
     style Qdrant fill:#c8e6c9,stroke:#388e3c,stroke-width:3px,padding:20px
     style Blob fill:#f1f8e9,stroke:#689f38,stroke-width:3px,padding:20px
-    style OpenAI fill:#fce4ec,stroke:#c2185b,stroke-width:3px,padding:20px
+    style GoogleAI fill:#fce4ec,stroke:#c2185b,stroke-width:3px,padding:20px
 ```
 
 ---
@@ -222,7 +222,7 @@ graph TB
 1. **Question** → Embed to vector
 2. **Search** → Find similar chunks in Qdrant
 3. **Context** → Format with page numbers
-4. **Generate** → Ask GPT-4o
+4. **Generate** → Ask Gemini 2.5 Flash Lite
 5. **Return** → Answer with citations
 
 ### Security
@@ -239,8 +239,8 @@ graph TB
 | Database | PostgreSQL |
 | Vectors | Qdrant |
 | Storage | Azure Blob |
-| LLM | OpenAI (GPT-4o) |
-| Embeddings | OpenAI text-embedding-3-large |
+| LLM | Google Gemini |
+| Embeddings | Google gemini-embedding-001 |
 | Queue | Redis + Celery |
 | Auth | JWT + Bcrypt |
 

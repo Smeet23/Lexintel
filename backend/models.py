@@ -1,10 +1,13 @@
 """SQLAlchemy ORM models for legal RAG app"""
+import enum
 from sqlalchemy import Column, String, DateTime, Boolean, ForeignKey, Text, JSON, Integer, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, declarative_base
 from datetime import datetime, timezone
 import uuid
-import enum
+
+# Demo user UUID (seeded in migration 2)
+DEMO_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 
 # Create Base for model definitions
 Base = declarative_base()
@@ -17,24 +20,29 @@ class MatterStatus(str, enum.Enum):
     ERROR = "error"
 
 
-class FileType(str, enum.Enum):
-    """Supported document file types"""
-    PDF = "pdf"
-    DOCX = "docx"
-    TXT = "txt"
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email = Column(String(255), nullable=False, unique=True, index=True)
+    password_hash = Column(String(255), nullable=False)
+    is_deleted = Column(Boolean, default=False, nullable=False, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
 
 class Matter(Base):
     __tablename__ = "matters"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, default=DEMO_USER_ID, index=True)
     name = Column(String(255), nullable=False)
     blob_storage_path = Column(String(500), nullable=False)
     file_type = Column(String(10), nullable=False, default="pdf")
     status = Column(String(50), default="processing", nullable=False, index=True)
     is_deleted = Column(Boolean, default=False, nullable=False, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     # Relationships
     chunks = relationship("Chunk", back_populates="matter")
@@ -51,10 +59,11 @@ class Chunk(Base):
     matter_id = Column(UUID(as_uuid=True), ForeignKey("matters.id"), nullable=False, index=True)
     page_num = Column(String(50), nullable=True)
     section_name = Column(String(255), nullable=True)
+    section_type = Column(String(100), nullable=True)  # Legal section type (article, exhibit, etc.)
     content = Column(Text, nullable=False)
     embedding_hash = Column(String(255), nullable=True)  # SHA256 hash for deduplication
     chunk_sequence = Column(Integer, nullable=True)  # Order within matter
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     # Relationships
     matter = relationship("Matter", back_populates="chunks")
@@ -75,7 +84,7 @@ class Query(Base):
     question = Column(Text, nullable=False)
     answer = Column(Text, nullable=False)
     citations = Column(JSON, nullable=True, default=list)  # List of citation dicts
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
 
     # Relationships
     matter = relationship("Matter", back_populates="queries")

@@ -36,20 +36,20 @@ LexIntel is a legal document Retrieval-Augmented Generation (RAG) system built w
 
 | Technology | Version | Purpose | Details |
 |-----------|---------|---------|---------|
-| **LangChain** | 0.1.20 | RAG Orchestration | Framework for building LLM-powered applications |
-| **LangChain-community** | 0.0.38 | Community Integrations | Community-contributed integrations for LangChain |
-| **LangChain-openai** | 0.0.8 | OpenAI Integration | LangChain binding for OpenAI models |
-| **OpenAI** | 1.12.0 | LLM API | GPT-4o for generation, text-embedding-3-large for embeddings |
-| **Sentence-transformers** | 2.2.2 | Embeddings | Alternative embedding model support |
-| **Tiktoken** | 0.5.2 | Token Counting | OpenAI token counting for rate limiting |
+| **LangChain** | >=0.3.0 | RAG Orchestration | Framework for building LLM-powered applications |
+| **LangChain-google-genai** | >=2.0.0 | Google Embeddings | Google gemini-embedding-001 (768-dim) via LangChain |
+| **LangChain-huggingface** | >=0.1.0 | Local Embeddings | all-MiniLM-L6-v2 for SemanticChunker |
+| **LangChain-experimental** | >=0.3.0 | SemanticChunker | Semantic chunking for legal documents |
+| **google-generativeai** | >=0.8.0 | Gemini LLM | Gemini 2.5 Flash Lite for answer generation |
+| **Sentence-transformers** | 2.2.2 | Cross-Encoder | cross-encoder/qnli-distilroberta-base for reranking |
+| **Tenacity** | >=8.2.0 | Retry Logic | Robust retry with exponential backoff |
 
 ### Document Processing
 
 | Technology | Version | Purpose | Details |
 |-----------|---------|---------|---------|
-| **PyMuPDF** | 1.24.0 | PDF Processing | PDF text extraction and manipulation |
+| **pymupdf4llm** | >=0.0.10 | PDF Processing | Structured markdown extraction from PDFs |
 | **Python-docx** | 1.1.0 | DOCX Processing | Microsoft Word document parsing |
-| **Docling** | Not included | Multi-format Support | Recommended for production (Python 3.10+); currently uses PyMuPDF + python-docx |
 
 ### Cloud Storage
 
@@ -290,12 +290,12 @@ POSTGRES_PASSWORD=secure_password
 POSTGRES_DB=legal_rag
 ```
 
-#### OpenAI API Configuration
+#### Google AI (Gemini) Configuration
 ```
-OPENAI_API_KEY=sk-xxx
+GOOGLE_API_KEY=AIza-xxx
 ```
 
-**Note:** Required for embeddings and LLM generation
+**Note:** Required for embeddings (gemini-embedding-001) and LLM generation (gemini-2.5-flash-lite)
 
 #### Vector Database Configuration
 ```
@@ -369,8 +369,8 @@ class Settings(BaseSettings):
     # Database
     database_url: str
 
-    # OpenAI
-    openai_api_key: str
+    # Google AI
+    google_api_key: str
 
     # Qdrant
     qdrant_url: str = "http://localhost:6333"
@@ -406,18 +406,18 @@ class Settings(BaseSettings):
 
 | Service | Purpose | Endpoints | Authentication | Response Format |
 |---------|---------|-----------|-----------------|-----------------|
-| **OpenAI** | LLM & Embeddings | https://api.openai.com/v1 | API Key (Bearer) | JSON |
+| **Google AI** | LLM & Embeddings | https://generativelanguage.googleapis.com | API Key | JSON |
 | **Azure Blob Storage** | Document Storage | https://{account}.blob.core.windows.net | Connection String | Binary/Metadata |
 | **Qdrant** | Vector Search | http://qdrant:6333 | None (internal) | JSON |
 | **PostgreSQL** | Data Storage | localhost:5432 | Connection String | SQL Protocol |
 | **Redis** | Caching/Messaging | redis:6379 | None (internal) | RESP Protocol |
 
-### OpenAI Models & Endpoints
+### Google AI Models & Endpoints
 
 | Endpoint | Model | Purpose | Input | Output |
 |----------|-------|---------|-------|--------|
-| `/v1/embeddings` | text-embedding-3-large | Document & query embeddings | Text | Vector (3072 dims) |
-| `/v1/chat/completions` | gpt-4o | Legal analysis and generation | Text/Context | Text |
+| Embeddings | gemini-embedding-001 | Document & query embeddings | Text | Vector (768 dims) |
+| Generation | gemini-2.5-flash-lite | Legal analysis and generation | Text/Context | Text |
 
 ### Backend API Endpoints
 
@@ -520,7 +520,7 @@ GET    /redoc                          - ReDoc API documentation
 - **FastAPI 0.109.0** requires Python 3.7+ but tested with 3.11
 - **SQLAlchemy 2.0.23** uses SQLAlchemy 2.0 style (no legacy mode)
 - **Pydantic 2.5.3** requires Python 3.7+ and breaks compatibility with v1
-- **LangChain 0.1.20** compatible with OpenAI 1.x
+- **LangChain >=0.3.0** compatible with langchain-google-genai >=2.0.0
 - **Next.js 14.0.0** uses React 18+ and requires Node 16.8+
 
 ---
@@ -536,7 +536,7 @@ GET    /redoc                          - ReDoc API documentation
 | **Create Case** | 50-100ms | Single DB insert | Basic metadata only |
 | **Document Upload** | 500ms - 5s | Size dependent | PDF: < 50MB, includes validation |
 | **Document Indexing** | 5-30s | Per document | Depends on pages, async task |
-| **Embedding Generation** | 2-10s | Per document | OpenAI API latency |
+| **Embedding Generation** | 1-5s | Per document | Google API latency, with caching |
 | **Vector Search** | 50-200ms | Qdrant query | Depends on collection size |
 | **RAG Query** | 3-15s | End-to-end | Embedding + search + generation |
 | **Cache Hit Response** | 10-50ms | Cached result | Redis lookup |
@@ -548,8 +548,8 @@ GET    /redoc                          - ReDoc API documentation
 | **Concurrent Users** | 50+ | Development (4-core machine, 8GB RAM) | Limited by resources |
 | **Requests/sec** | 100+ | Simple queries | Depends on endpoint |
 | **Documents/case** | 100+ | Unlimited in design | Storage limited |
-| **Queries/day** | Unlimited | Rate limited by OpenAI quota | Batch processing supported |
-| **Token Budget** | Depends on plan | OpenAI account | GPT-4o input: ~$0.005/1K tokens |
+| **Queries/day** | Unlimited | Rate limited by Google AI quota | Batch processing supported |
+| **Token Budget** | Depends on plan | Google AI account | Gemini: free tier available |
 | **Embedding Reuse** | Up to 24hrs | Cache TTL | Saves API calls |
 
 ### Storage Metrics
@@ -557,7 +557,7 @@ GET    /redoc                          - ReDoc API documentation
 | Component | Storage Per Unit | Growth Rate | Notes |
 |-----------|------------------|-------------|-------|
 | **PostgreSQL** | ~50KB per case | Linear with cases | Indexed metadata |
-| **Qdrant Vectors** | ~24KB per document | Linear with docs | 3072 dims × 8 bytes (float32) |
+| **Qdrant Vectors** | ~6KB per document | Linear with docs | 768 dims × 8 bytes (float32) |
 | **Blob Storage** | 100% of file size | Linear with docs | PDF, DOCX, TXT support |
 | **Redis Cache** | Variable | TTL-based eviction | 24hr default TTL |
 | **Vector Index** | 2-3x of vectors | Index overhead | Depends on similarity metric |
@@ -583,7 +583,7 @@ GET    /redoc                          - ReDoc API documentation
 - Docker Desktop (with Docker Compose)
 - Python 3.11+ (for local testing without Docker)
 - Node.js 18+
-- OpenAI API key
+- Google AI API key
 
 # Start all services
 docker-compose up --build
@@ -694,7 +694,7 @@ ENVIRONMENT=production
 SECRET_KEY=<strong-random-key>
 ALLOWED_ORIGINS=https://yourdomain.com
 AZURE_STORAGE_CONNECTION_STRING=<production-account>
-OPENAI_API_KEY=<production-key>
+GOOGLE_API_KEY=<production-key>
 POSTGRES_PASSWORD=<strong-password>
 DATABASE_URL=<managed-service-url>
 ```
@@ -839,7 +839,7 @@ npm update --save
 **Critical (must pin exact):**
 - FastAPI: 0.109.0
 - SQLAlchemy: 2.0.23
-- OpenAI: 1.12.0
+- google-generativeai: >=0.8.0
 - Pydantic: 2.5.3
 - React: 18.2.0
 - Next.js: 14.0.0
@@ -868,7 +868,7 @@ npm update --save
 ✓ Python 3.11 + FastAPI 0.109.0 + SQLAlchemy 2.0.23
 ✓ Node 18 + Next.js 14.0.0 + React 18.2.0 + Tailwind 4.1.18
 ✓ PostgreSQL 16 + Qdrant 1.7.0 + Redis 7
-✓ OpenAI API v1 + LangChain 0.1.20
+✓ Google AI (Gemini) + LangChain >=0.3.0 + langchain-google-genai >=2.0.0
 ```
 
 ---

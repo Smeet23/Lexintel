@@ -1,26 +1,29 @@
 """Qdrant vector store service for semantic search and similarity matching"""
 import logging
 import hashlib
-import requests
 from functools import lru_cache
 from typing import List, Dict
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct
+from qdrant_client.models import (
+    Distance, VectorParams, PointStruct,
+    HnswConfigDiff, PayloadSchemaType
+)
 
 try:
     from backend.config import get_settings
 except ImportError:
-    from config import get_settings
+    try:
+        from config import get_settings
+    except ImportError:
+        from ..config import get_settings
 
 # Exception handling
 try:
     from qdrant_client.http.exceptions import UnexpectedResponse, ResponseHandlingException
 except ImportError:
-    # Fallback for different Qdrant versions
     try:
         from qdrant_client.http import UnexpectedResponse, ResponseHandlingException
     except ImportError:
-        # If specific exceptions not available, create dummy ones
         class UnexpectedResponse(Exception):
             pass
         class ResponseHandlingException(Exception):
@@ -32,14 +35,14 @@ except ImportError:
     try:
         from exceptions import VectorStoreException
     except ImportError:
-        from .exceptions import VectorStoreException
+        from ..exceptions import VectorStoreException
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
 # Vector store configuration
-VECTOR_SIZE = 3072  # Matches text-embedding-3-large output dimensions
-DISTANCE_METRIC = "Cosine"  # Cosine similarity for semantic search
+VECTOR_SIZE = 768  # Matches Google gemini-embedding-001 output dimensions
+UPSERT_BATCH_SIZE = 100  # Qdrant recommended batch size
 
 
 @lru_cache(maxsize=1)
@@ -61,7 +64,8 @@ def get_qdrant_client() -> QdrantClient:
 
     return QdrantClient(
         url=settings.qdrant_url,
-        timeout=30
+        timeout=30,
+        check_compatibility=False
     )
 
 
@@ -101,13 +105,16 @@ def _generate_point_id(chunk_id: str, matter_id: str) -> int:
 
 def create_collection(matter_id: str) -> bool:
     """
-    Create a new collection for storing vectors of a matter.
+    Create a collection for storing vectors of a matter (safe — won't drop existing).
+
+    Uses HNSW config optimized for high-dimensional vectors (768-dim).
+    Creates payload indexes on page_num and section_name for filtered search.
 
     Args:
         matter_id: Unique matter identifier
 
     Returns:
-        True if collection created successfully
+        True if collection created or already exists
 
     Raises:
         VectorStoreException: If collection creation fails
@@ -116,15 +123,37 @@ def create_collection(matter_id: str) -> bool:
         client = get_qdrant_client()
         collection_name = _get_collection_name(matter_id)
 
-        logger.info(f"Creating collection for matter: {matter_id}")
+        logger.info(f"Ensuring collection exists for matter: {matter_id}")
 
-        # Recreate collection (drops if exists, creates new)
-        client.recreate_collection(
+        # Check if collection already exists
+        existing = [c.name for c in client.get_collections().collections]
+        if collection_name in existing:
+            logger.info(f"Collection already exists: {collection_name}")
+            return True
+
+        # Create new collection with HNSW config for high-dim vectors
+        client.create_collection(
             collection_name=collection_name,
             vectors_config=VectorParams(
                 size=VECTOR_SIZE,
                 distance=Distance.COSINE
+            ),
+            hnsw_config=HnswConfigDiff(
+                m=16,
+                ef_construct=200
             )
+        )
+
+        # Create payload indexes for filtered search
+        client.create_payload_index(
+            collection_name=collection_name,
+            field_name="page_num",
+            field_schema=PayloadSchemaType.KEYWORD
+        )
+        client.create_payload_index(
+            collection_name=collection_name,
+            field_name="section_name",
+            field_schema=PayloadSchemaType.KEYWORD
         )
 
         logger.info(f"Successfully created collection: {collection_name}")
@@ -151,18 +180,19 @@ def upsert_vectors(
 ) -> int:
     """
     Insert or update vectors with metadata for a matter's chunks.
+    Uses batched upserts (batch_size=100) for reliability.
 
     Args:
         matter_id: Unique matter identifier
-        chunks: List of chunk dicts with keys: id, content, page_num, section_name
-        embeddings: List of 3072-dimensional vectors from embeddings service
+        chunks: List of chunk dicts with keys: id, content, page_num, section_name, chunk_sequence
+        embeddings: List of 768-dimensional vectors from embeddings service
 
     Returns:
         Number of vectors successfully upserted
 
     Raises:
         ValueError: If inputs are invalid or mismatched
-        Exception: If upsert operation fails
+        VectorStoreException: If upsert operation fails
     """
     if not chunks or not embeddings:
         raise ValueError("Chunks and embeddings lists cannot be empty")
@@ -179,7 +209,7 @@ def upsert_vectors(
 
         logger.info(f"Upserting {len(chunks)} vectors for matter: {matter_id}")
 
-        # Prepare points for upsert
+        # Prepare all points
         points = []
         for chunk, embedding in zip(chunks, embeddings):
             # Validate embedding dimension
@@ -191,18 +221,18 @@ def upsert_vectors(
 
             chunk_id = str(chunk.get("id", "unknown"))
 
-            # Create metadata from chunk
+            # Create metadata from chunk — store full content for RAG quality
             metadata = {
                 "chunk_id": chunk_id,
+                "chunk_sequence": chunk.get("chunk_sequence", 0),
                 "page_num": str(chunk.get("page_num", "")),
                 "section_name": str(chunk.get("section_name", "")),
-                "content_preview": chunk.get("content", "")[:200],  # Store first 200 chars
+                "content": chunk.get("content", ""),
             }
 
             # Generate deterministic point ID for idempotency
             point_id = _generate_point_id(chunk_id, matter_id)
 
-            # Create point with vector and metadata
             point = PointStruct(
                 id=point_id,
                 vector=embedding,
@@ -210,14 +240,19 @@ def upsert_vectors(
             )
             points.append(point)
 
-        # Upsert all points
-        client.upsert(
-            collection_name=collection_name,
-            points=points
-        )
+        # Batch upsert
+        total_upserted = 0
+        for i in range(0, len(points), UPSERT_BATCH_SIZE):
+            batch = points[i:i + UPSERT_BATCH_SIZE]
+            client.upsert(
+                collection_name=collection_name,
+                points=batch
+            )
+            total_upserted += len(batch)
+            logger.debug(f"Upserted batch {i // UPSERT_BATCH_SIZE + 1}: {len(batch)} points")
 
-        logger.info(f"Successfully upserted {len(points)} vectors")
-        return len(points)
+        logger.info(f"Successfully upserted {total_upserted} vectors")
+        return total_upserted
 
     except ValueError:
         raise
@@ -241,19 +276,20 @@ def search_vectors(
     limit: int = 5
 ) -> List[Dict]:
     """
-    Search for semantically similar chunks using vector similarity.
+    Search for semantically similar chunks using the Qdrant Python client.
 
     Args:
         matter_id: Unique matter identifier
-        query_embedding: 3072-dimensional query vector from embeddings service
+        query_embedding: 768-dimensional query vector from embeddings service
         limit: Maximum number of results to return (default: 5)
 
     Returns:
-        List of dicts with keys: chunk_id, page_num, content_preview, section_name, score
+        List of dicts with keys: chunk_id, chunk_sequence, page_num,
+        section_name, score, content
 
     Raises:
         ValueError: If query embedding dimension is incorrect
-        Exception: If search operation fails
+        VectorStoreException: If search operation fails
     """
     if len(query_embedding) != VECTOR_SIZE:
         raise ValueError(
@@ -262,35 +298,35 @@ def search_vectors(
         )
 
     try:
+        client = get_qdrant_client()
         collection_name = _get_collection_name(matter_id)
 
         logger.debug(f"Searching vectors in collection: {collection_name}, limit: {limit}")
 
-        # Use REST API directly for compatibility with Qdrant 1.7.0
-        # (query_points API is not available in older versions)
-        qdrant_url = settings.qdrant_url.rstrip('/')
-        search_url = f"{qdrant_url}/collections/{collection_name}/points/search"
+        response = client.query_points(
+            collection_name=collection_name,
+            query=query_embedding,
+            limit=limit,
+            with_payload=True
+        )
+        hits = response.points
 
-        payload = {
-            "vector": query_embedding,
-            "limit": limit,
-            "with_payload": True
-        }
-
-        response = requests.post(search_url, json=payload, timeout=30)
-        response.raise_for_status()
-
-        search_data = response.json()
-        if not search_data.get("result"):
+        if not hits:
             return []
 
         # Convert results to dict format
         results = []
-        for hit in search_data["result"]:
+        for hit in hits:
+            payload = hit.payload or {}
+            # Full content stored in payload; fall back to legacy content_preview field
+            full_content = payload.get("content", "") or payload.get("content_preview", "")
             result_dict = {
-                "score": hit.get("score", 0),
-                **hit.get("payload", {}),  # Unpack metadata (chunk_id, page_num, content_preview, section_name)
-                "content": hit.get("payload", {}).get("content_preview", "")  # Map content_preview to content for RAG
+                "score": hit.score,
+                "chunk_id": payload.get("chunk_id", ""),
+                "chunk_sequence": payload.get("chunk_sequence", 0),
+                "page_num": payload.get("page_num", ""),
+                "section_name": payload.get("section_name", ""),
+                "content": full_content,
             }
             results.append(result_dict)
 
@@ -304,12 +340,6 @@ def search_vectors(
         raise VectorStoreException(
             "Failed to search vectors",
             detail=f"Qdrant error: {str(e)}"
-        ) from e
-    except requests.RequestException as e:
-        logger.error(f"HTTP request error searching vectors for matter {matter_id}: {str(e)}")
-        raise VectorStoreException(
-            "Failed to reach vector store service",
-            detail=f"HTTP error: {str(e)}"
         ) from e
     except Exception as e:
         logger.error(f"Unexpected error searching vectors in matter {matter_id}: {str(e)}")

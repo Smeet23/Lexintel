@@ -19,12 +19,12 @@ graph TB
     end
 
     subgraph "Vector & Storage"
-        Qdrant["🔍 Qdrant<br/>Vector Database<br/>3072-d embeddings"]
+        Qdrant["🔍 Qdrant<br/>Vector Database<br/>768-d embeddings"]
         Blob["☁️ Azure Blob<br/>PDF Storage"]
     end
 
     subgraph "External Services"
-        OpenAI["🤖 OpenAI API<br/>- Embeddings<br/>- GPT-4o"]
+        GoogleAI["🤖 Google AI API<br/>- Embeddings<br/>- Gemini 2.5 Flash Lite"]
     end
 
     subgraph "Background Processing"
@@ -46,10 +46,10 @@ graph TB
     Worker -->|Store Chunks| PG
     Worker -->|Store Vectors| Qdrant
     Worker -->|Download/Upload| Blob
-    Worker -->|Embed Chunks| OpenAI
+    Worker -->|Embed Chunks| GoogleAI
 
     RAG -->|Semantic Search| Qdrant
-    RAG -->|Generate Answer| OpenAI
+    RAG -->|Generate Answer| GoogleAI
 
     style Client fill:#e1f5ff
     style Auth fill:#fff3e0
@@ -60,7 +60,7 @@ graph TB
     style Redis fill:#ffccbc
     style Qdrant fill:#c8e6c9
     style Blob fill:#b3e5fc
-    style OpenAI fill:#f8bbd0
+    style GoogleAI fill:#f8bbd0
     style Worker fill:#d1c4e9
 ```
 
@@ -83,7 +83,7 @@ graph LR
     subgraph Worker["🔄 Background Worker"]
         Download["Download PDF<br/>from Blob"]
         Chunk["Chunk PDF<br/>1500 chars<br/>300 overlap"]
-        Embed["Generate Embeddings<br/>OpenAI text-embedding-3-large"]
+        Embed["Generate Embeddings<br/>Google AI gemini-embedding-001"]
         StorePG["Store Chunks<br/>in PostgreSQL"]
         CreateQdrant["Create Qdrant<br/>Collection"]
         Upsert["Upsert Vectors<br/>with Metadata"]
@@ -150,7 +150,7 @@ graph TD
 
     Validate["1️⃣ Validate Query<br/>Length: 1-5000 chars<br/>Case ownership"]
 
-    QueryEmbed["2️⃣ Embed Query<br/>OpenAI text-embedding-3-large<br/>→ 3072-d vector"]
+    QueryEmbed["2️⃣ Embed Query<br/>Google AI gemini-embedding-001<br/>→ 768-d vector"]
 
     VectorSearch["3️⃣ Vector Search<br/>Qdrant semantic similarity<br/>→ Top 10 results"]
 
@@ -166,7 +166,7 @@ graph TD
 
     ErrorToken["⚠️ Error: Context<br/>Too Large"]
 
-    GenerateAnswer["7️⃣ Generate Answer<br/>OpenAI gpt-4o<br/>Temperature: 0.2<br/>Timeout: 30s"]
+    GenerateAnswer["7️⃣ Generate Answer<br/>Google AI gemini-2.5-flash-lite<br/>Temperature: 0.2<br/>Timeout: 30s"]
 
     ExtractCite["8️⃣ Extract Citations<br/>Parse [Page X]<br/>Match to sources<br/>Flag hallucinations"]
 
@@ -362,7 +362,7 @@ graph TD
     subgraph Processing["📦 Process Job"]
         Download["Download PDF<br/>from Azure Blob"]
         Chunk["Chunk PDF<br/>1500 chars, 300 overlap"]
-        Embed["Embed chunks<br/>OpenAI API"]
+        Embed["Embed chunks<br/>Google AI API"]
         CreateColl["Create Qdrant<br/>Collection"]
         UpsertVec["Upsert Vectors<br/>with metadata"]
         StoreMeta["Store Chunks<br/>PostgreSQL"]
@@ -454,7 +454,7 @@ sequenceDiagram
     participant Queue as Redis Queue
     participant Worker as Celery Worker
     participant Blob as Azure Blob
-    participant OpenAI as OpenAI API
+    participant GoogleAI as Google AI API
     participant Qdrant as Qdrant VectorDB
 
     Client->>API: POST /auth/register
@@ -486,8 +486,8 @@ sequenceDiagram
     Worker->>Blob: download_pdf_from_blob()
     Blob-->>Worker: PDF bytes
     Worker->>Worker: chunk_pdf()
-    Worker->>OpenAI: embed_text() [batch]
-    OpenAI-->>Worker: 3072-d vectors
+    Worker->>GoogleAI: embed_text() [batch]
+    GoogleAI-->>Worker: 768-d vectors
     Worker->>DB: Create Chunk records
     DB-->>Worker: ✅ Stored
     Worker->>Qdrant: create_collection()
@@ -505,13 +505,13 @@ sequenceDiagram
     API-->>Client: Processing complete
 
     Client->>API: POST /cases/{case_id}/ask (with question)
-    API->>OpenAI: embed_query()
-    OpenAI-->>API: Query vector
+    API->>GoogleAI: embed_query()
+    GoogleAI-->>API: Query vector
     API->>Qdrant: search_vectors()
     Qdrant-->>API: Top 10 chunks
     API->>API: Filter + Format context
-    API->>OpenAI: generate_answer(context, question)
-    OpenAI-->>API: Answer + tokens
+    API->>GoogleAI: generate_answer(context, question)
+    GoogleAI-->>API: Answer + tokens
     API->>API: extract_citations()
     API->>DB: Create Query record
     DB-->>API: ✅ Stored
@@ -549,7 +549,7 @@ graph TD
 
     ErrorBudget["❌ Error: Context<br/>Too Large<br/>Return empty response"]
 
-    LLMCall["Call OpenAI GPT-4o<br/>with context<br/>Max output: 2000 tokens"]
+    LLMCall["Call Google AI Gemini 2.5 Flash Lite<br/>with context<br/>Max output: 2000 tokens"]
 
     FinalTotal["Final tokens used =<br/>input + output"]
 

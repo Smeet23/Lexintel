@@ -6,7 +6,7 @@ This guide will help you get the core RAG system running: **upload PDF → chunk
 
 - Docker and Docker Compose
 - Python 3.11+
-- OpenAI API key
+- Google AI API key (from https://aistudio.google.com/apikey)
 - Azure Storage connection string (or use Azurite for local development)
 
 ## Setup
@@ -29,7 +29,7 @@ Edit `.env`:
 ```
 DATABASE_URL=postgresql://legal_user:secure_password@localhost:5432/legal_rag
 QDRANT_URL=http://localhost:6333
-OPENAI_API_KEY=sk-your-key-here
+GOOGLE_API_KEY=your-google-api-key-here
 AZURE_STORAGE_CONNECTION_STRING=UseDevelopmentStorage=true
 SECRET_KEY=your-secret-key
 DEBUG=True
@@ -197,7 +197,7 @@ Response:
     }
   ],
   "case_id": "case-uuid",
-  "model": "gpt-4o",
+  "model": "gemini-2.5-flash-lite",
   "tokens_used": 234,
   "confidence": "high",
   "error": null
@@ -216,8 +216,8 @@ Response:
    - Celery worker(s) listen to Redis queue
    - When task arrives:
      - Downloads PDF from Blob Storage
-     - **Chunks** PDF using LangChain (800 chars/chunk, 150 overlap)
-     - **Embeds** chunks using OpenAI `text-embedding-3-large`
+     - **Chunks** document using hybrid semantic chunking (markdown headers → SemanticChunker → fallback)
+     - **Embeds** chunks using Google `gemini-embedding-001` (768-dim)
      - **Stores** vectors in Qdrant + metadata in PostgreSQL
      - Updates case `status: ready`
    - On error:
@@ -230,7 +230,7 @@ Response:
    - **Embeds** question with same model
    - **Searches** Qdrant for top-10 similar chunks
    - **Filters** by confidence (≥0.7 similarity score)
-   - **Generates** answer using GPT-4o with legal prompt
+   - **Generates** answer using Gemini 2.5 Flash Lite with legal prompt
    - **Extracts** citations from answer
    - Stores query in database
    - Returns answer + sources
@@ -281,10 +281,10 @@ If you see "Qdrant not available":
 curl http://localhost:6333/health
 ```
 
-If you see "OpenAI API key" error:
+If you see "Google API key" error:
 ```bash
 # Verify .env file
-cat .env | grep OPENAI_API_KEY
+cat .env | grep GOOGLE_API_KEY
 ```
 
 ### Chunking Issues
@@ -322,16 +322,16 @@ Once the core workflow is working:
 ## Performance Notes
 
 - **Upload**: < 1 second
-- **Chunking**: 1-3 seconds (depends on PDF size)
-- **Embedding**: 2-10 seconds (OpenAI API + batch size)
-- **Query**: 2-5 seconds (Qdrant search + GPT-4o generation)
+- **Chunking**: 1-3 seconds (hybrid semantic, depends on document size)
+- **Embedding**: 1-5 seconds (Google API + batch size, with caching)
+- **Query**: 2-5 seconds (Qdrant search + Gemini generation)
 - **Total**: ~10-20 seconds from upload to first query
 
 ## Cost Estimates
 
-Using OpenAI + Qdrant:
-- Upload (100 page PDF): ~$0.01 (embeddings)
-- Query: ~$0.001 per query (GPT-4o tokens)
+Using Google Gemini + Qdrant:
+- Upload (100 page PDF): minimal cost (Google embeddings)
+- Query: minimal cost per query (Gemini 2.5 Flash Lite)
 - Storage: ~$10/month (Qdrant Pro)
 
 ## Common Issues
@@ -340,13 +340,13 @@ Using OpenAI + Qdrant:
 **Cause**: Processing hasn't completed yet
 **Fix**: Wait for case status to show "ready"
 
-### Issue: Empty answer from GPT-4o
+### Issue: Empty answer from Gemini
 **Cause**: No relevant chunks found (low similarity scores)
 **Fix**: Try different search terms or verify PDF has searchable text
 
 ### Issue: Worker crashes on embedding
-**Cause**: OpenAI API key invalid
-**Fix**: Check `.env` file and verify API key is active
+**Cause**: Google API key invalid
+**Fix**: Check `.env` file and verify GOOGLE_API_KEY is active
 
 ---
 

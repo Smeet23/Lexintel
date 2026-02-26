@@ -1,17 +1,78 @@
 """Multi-format text extraction service for PDFs, DOCX, and TXT files
 
-Supports PyMuPDF for PDFs and python-docx for Word files.
-Note: Docling (https://github.com/DS4SD/docling) is recommended for production
-      with Python 3.10+, as it provides superior table/figure extraction.
+Supports:
+- pymupdf4llm for structured PDF extraction (markdown with headers)
+- python-docx with heading detection for DOCX files
+- Basic extraction for TXT files
 """
 import logging
 import tempfile
 import os
 from typing import List, Dict
+import pymupdf.layout  # Must import BEFORE pymupdf4llm to enable layout analysis
 import fitz  # PyMuPDF
 from docx import Document as DocxDocument
 
 logger = logging.getLogger(__name__)
+
+
+def extract_pdf_text_structured(file_bytes: bytes) -> List[Dict[str, str]]:
+    """
+    Extract structured text from PDF using pymupdf4llm.
+
+    Produces markdown-formatted output with headers detected from font sizes.
+    Falls back to basic extraction on failure.
+
+    Args:
+        file_bytes: Raw PDF bytes
+
+    Returns:
+        List of dicts with keys: content, location, location_type, format
+    """
+    if not file_bytes:
+        raise ValueError("PDF content is empty")
+
+    try:
+        import pymupdf4llm
+
+        logger.info(f"Extracting structured text from PDF ({len(file_bytes)} bytes)")
+        doc = fitz.open(stream=file_bytes, filetype="pdf")
+
+        # Use pymupdf4llm for markdown extraction with page chunks
+        # header=False, footer=False: ML-based running header/footer removal (via pymupdf-layout)
+        page_chunks = pymupdf4llm.to_markdown(
+            doc,
+            page_chunks=True,
+            header=False,
+            footer=False
+        )
+
+        if not page_chunks:
+            logger.warning("pymupdf4llm returned empty result, falling back")
+            doc.close()
+            return extract_pdf_text(file_bytes)
+
+        sections = []
+        for i, chunk in enumerate(page_chunks):
+            text = chunk.get("text", "") if isinstance(chunk, dict) else str(chunk)
+            if text.strip():
+                sections.append({
+                    "content": text,
+                    "location": str(i + 1),
+                    "location_type": "page",
+                    "format": "markdown"
+                })
+
+        doc.close()
+        logger.info(f"Extracted {len(sections)} structured pages from PDF")
+        return sections
+
+    except ImportError:
+        logger.warning("pymupdf4llm not available, falling back to basic extraction")
+        return extract_pdf_text(file_bytes)
+    except Exception as e:
+        logger.warning(f"Structured PDF extraction failed ({str(e)}), falling back to basic")
+        return extract_pdf_text(file_bytes)
 
 
 def extract_pdf_text(file_bytes: bytes) -> List[Dict[str, str]]:
@@ -31,15 +92,9 @@ def extract_pdf_text(file_bytes: bytes) -> List[Dict[str, str]]:
     if not file_bytes:
         raise ValueError("PDF content is empty")
 
-    temp_file = None
     try:
-        # Write to temporary file for PyMuPDF processing
-        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-            tmp.write(file_bytes)
-            temp_file = tmp.name
-
         logger.info(f"Extracting text from PDF ({len(file_bytes)} bytes)")
-        pdf_document = fitz.open(temp_file)
+        pdf_document = fitz.open(stream=file_bytes, filetype="pdf")
 
         if pdf_document.page_count == 0:
             raise ValueError("PDF contains no pages or failed to load")
@@ -65,14 +120,106 @@ def extract_pdf_text(file_bytes: bytes) -> List[Dict[str, str]]:
     except Exception as e:
         logger.error(f"Error extracting PDF text: {str(e)}")
         raise
+
+
+def extract_docx_text_structured(file_bytes: bytes) -> List[Dict[str, str]]:
+    """
+    Extract heading-aware text from DOCX using python-docx.
+
+    Detects Word heading styles and converts to markdown-formatted output.
+    Falls back to basic extraction on failure.
+
+    Args:
+        file_bytes: Raw DOCX bytes
+
+    Returns:
+        List of dicts with keys: content, location, location_type, format
+    """
+    if not file_bytes:
+        raise ValueError("DOCX content is empty")
+
+    temp_file = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
+            tmp.write(file_bytes)
+            temp_file = tmp.name
+
+        logger.info(f"Extracting structured text from DOCX ({len(file_bytes)} bytes)")
+        doc = DocxDocument(temp_file)
+
+        if not doc.paragraphs:
+            raise ValueError("DOCX contains no paragraphs or failed to load")
+
+        # Build markdown output grouping by headings
+        sections = []
+        current_section_lines = []
+        para_counter = 0
+
+        for para in doc.paragraphs:
+            para_text = para.text.strip()
+            if not para_text:
+                continue
+
+            para_counter += 1
+            style_name = para.style.name if para.style else ""
+
+            # Detect heading levels
+            if style_name.startswith("Heading"):
+                # Flush current section
+                if current_section_lines:
+                    sections.append({
+                        "content": "\n".join(current_section_lines),
+                        "location": f"para {para_counter}",
+                        "location_type": "paragraph",
+                        "format": "markdown"
+                    })
+                    current_section_lines = []
+
+                # Determine heading level
+                try:
+                    level = int(style_name.replace("Heading", "").strip())
+                except ValueError:
+                    level = 1
+                md_prefix = "#" * min(level, 6)
+                current_section_lines.append(f"{md_prefix} {para_text}")
+            elif style_name == "Title":
+                if current_section_lines:
+                    sections.append({
+                        "content": "\n".join(current_section_lines),
+                        "location": f"para {para_counter}",
+                        "location_type": "paragraph",
+                        "format": "markdown"
+                    })
+                    current_section_lines = []
+                current_section_lines.append(f"# {para_text}")
+            else:
+                current_section_lines.append(para_text)
+
+        # Flush remaining
+        if current_section_lines:
+            sections.append({
+                "content": "\n".join(current_section_lines),
+                "location": f"para {para_counter}",
+                "location_type": "paragraph",
+                "format": "markdown"
+            })
+
+        if not sections:
+            logger.warning("No structured sections found in DOCX, falling back")
+            return extract_docx_text(file_bytes)
+
+        logger.info(f"Extracted {len(sections)} structured sections from DOCX")
+        return sections
+
+    except Exception as e:
+        logger.warning(f"Structured DOCX extraction failed ({str(e)}), falling back to basic")
+        return extract_docx_text(file_bytes)
     finally:
-        # Clean up temporary file
         if temp_file and os.path.exists(temp_file):
             try:
                 os.unlink(temp_file)
-                logger.debug(f"Cleaned up temporary file: {temp_file}")
-            except OSError as e:
-                logger.warning(f"Failed to delete temp file {temp_file}: {str(e)}")
+            except OSError:
+                pass
 
 
 def extract_docx_text(file_bytes: bytes) -> List[Dict[str, str]]:
@@ -142,8 +289,6 @@ def extract_txt_text(file_bytes: bytes, lines_per_section: int = 50) -> List[Dic
     """
     Extract text from TXT file.
 
-    Note: Docling doesn't handle plain text files, so we use basic extraction.
-
     Args:
         file_bytes: Raw TXT bytes
         lines_per_section: Number of lines per section (default 50)
@@ -197,8 +342,8 @@ def extract_text(file_bytes: bytes, file_type: str) -> List[Dict[str, str]]:
     """
     Route text extraction to appropriate handler based on file type.
 
-    Uses Docling for PDFs and DOCX files for better structure understanding.
-    Uses basic extraction for TXT files (Docling doesn't support plain text).
+    Uses structured extraction (pymupdf4llm / heading-aware DOCX) by default
+    with automatic fallback to basic extraction.
 
     Args:
         file_bytes: Raw file bytes
@@ -215,9 +360,9 @@ def extract_text(file_bytes: bytes, file_type: str) -> List[Dict[str, str]]:
         raise ValueError("File content is empty")
 
     if file_type == "pdf":
-        return extract_pdf_text(file_bytes)
+        return extract_pdf_text_structured(file_bytes)
     elif file_type == "docx":
-        return extract_docx_text(file_bytes)
+        return extract_docx_text_structured(file_bytes)
     elif file_type == "txt":
         return extract_txt_text(file_bytes)
     else:

@@ -1352,23 +1352,19 @@ async def query_case_streaming(
     # Format context
     context = format_legal_context(chunks, case.name)
 
-    # Stream from OpenAI
-    client = AsyncOpenAI(api_key=settings.openai_api_key)
+    # Stream from Google AI
+    client = google.generativeai.GenerativeModel("gemini-2.5-flash-lite")
 
-    stream = await client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": LEGAL_SYSTEM_PROMPT},
-            {"role": "user", "content": f"{context}\n\nQuestion: {query}"}
-        ],
+    stream = await client.generate_content_async(
+        contents=f"{LEGAL_SYSTEM_PROMPT}\n\n{context}\n\nQuestion: {query}",
         stream=True,
-        temperature=0.1
+        generation_config={"temperature": 0.1}
     )
 
     answer_text = ""
     async for chunk in stream:
-        if chunk.choices[0].delta.content:
-            token = chunk.choices[0].delta.content
+        if chunk.text:
+            token = chunk.text
             answer_text += token
             yield json.dumps({"type": "token", "content": token}) + "\n"
 
@@ -1440,7 +1436,7 @@ async function askStreaming(caseId, query) {
 
 **Effort**: Medium (4-5 hours)
 
-**Dependencies**: OpenAI async streaming, FastAPI StreamingResponse
+**Dependencies**: Google AI async streaming, FastAPI StreamingResponse
 
 **Integration Point**: New endpoint alongside existing `/cases/{id}/ask`
 

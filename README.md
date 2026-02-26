@@ -9,7 +9,7 @@ LexIntel is a comprehensive legal document analysis platform that:
 - **Uploads & Processes** legal documents (PDFs) with semantic understanding
 - **Chunks & Embeds** documents into vector space for semantic search
 - **Retrieves** relevant document excerpts for queries using vector similarity
-- **Generates** contextual answers using GPT-4o with proper source attribution
+- **Generates** contextual answers using Google Gemini with proper source attribution
 - **Manages** cases with background job processing for async document handling
 
 ### Architecture
@@ -20,16 +20,16 @@ User Upload (PDF)
 Azure Blob Storage
     ↓
 Background Job Processor
-    ├→ PDF Chunking (LangChain)
-    ├→ Embeddings (OpenAI text-embedding-3-large)
+    ├→ Hybrid Semantic Chunking (markdown headers + SemanticChunker)
+    ├→ Embeddings (Google gemini-embedding-001, 768-dim)
     ├→ Vector Storage (Qdrant)
     └→ Database (PostgreSQL)
     ↓
 RAG Query Engine
     ├→ Query Embedding
-    ├→ Vector Similarity Search
+    ├→ Vector Similarity Search + Cross-Encoder Reranking
     ├→ Context Formatting
-    └→ LLM Answer Generation (GPT-4o)
+    └→ LLM Answer Generation (Gemini 2.5 Flash Lite)
     ↓
 Citations & Source Attribution
 ```
@@ -64,22 +64,22 @@ Citations & Source Attribution
 **Location:** `backend/services/storage.py`, `tests/test_upload.py`
 
 #### Task 8: Document Chunking Service
-- PDF text extraction using PyMuPDF (fitz)
-- Semantic chunking with RecursiveCharacterTextSplitter
-- Configurable chunk size (800 chars) and overlap (150 chars)
-- Metadata preservation (page numbers, section names)
-- Token estimation for cost tracking
-- Support for both file-based and blob-based chunking
+- Structured text extraction using pymupdf4llm (markdown output)
+- Hybrid semantic chunking: markdown headers → SemanticChunker (local all-MiniLM-L6-v2) → fallback recursive
+- Legal section detection across multiple jurisdictions (UK, EU, US, CA, SG, UN)
+- Metadata preservation (page numbers, section names, section types)
+- Post-processing: markdown cleanup + small chunk merging (min 50 chars)
+- Support for PDF, DOCX, and TXT documents
 
 **Location:** `backend/services/chunking.py`, `tests/test_chunking.py`
 
-#### Task 9: OpenAI Embeddings Service
-- Integration with OpenAI text-embedding-3-large model
-- 3072-dimensional vector embeddings
-- Batch embedding support for efficiency
-- Cost estimation ($0.02 per 1M tokens)
-- Embedding caching to prevent redundant API calls
-- Comprehensive error handling and validation
+#### Task 9: Google Embeddings Service
+- Integration with Google gemini-embedding-001 model via langchain-google-genai
+- 768-dimensional vector embeddings
+- Batch embedding support with configurable batch size (100)
+- In-memory LRU embedding cache with SHA-256 keys and numpy float32 storage
+- Singleton pattern for embedding client initialization
+- Comprehensive error handling with tenacity retry logic
 
 **Location:** `backend/services/embeddings.py`, `tests/test_embeddings.py`
 
@@ -97,7 +97,7 @@ Citations & Source Attribution
 - Complete RAG orchestration pipeline
 - Query embedding and semantic search
 - Intelligent context window management (~12.8K tokens)
-- GPT-4o answer generation with legal assistant system prompt
+- Gemini 2.5 Flash Lite answer generation with legal assistant system prompt
 - Citation extraction and source attribution
 - Temperature control (0.2 for legal precision)
 - Multi-mode error handling with graceful degradation
@@ -137,11 +137,12 @@ Citations & Source Attribution
 - **Framework:** FastAPI (async Python web framework)
 - **ORM:** SQLAlchemy 2.0 with async support
 - **Database:** PostgreSQL with sqlalchemy-utils
-- **Document Processing:** PyMuPDF (fitz), LangChain
-- **Embeddings:** OpenAI text-embedding-3-large (3072 dims)
-- **Vector Database:** Qdrant
+- **Document Processing:** pymupdf4llm (structured markdown), python-docx, LangChain
+- **Embeddings:** Google gemini-embedding-001 (768 dims) via langchain-google-genai
+- **Vector Database:** Qdrant (HNSW m=16, ef_construct=200)
 - **Storage:** Azure Blob Storage
-- **LLM:** OpenAI GPT-4o for answer generation
+- **LLM:** Google Gemini 2.5 Flash Lite via google-generativeai
+- **Local NLP:** all-MiniLM-L6-v2 (SemanticChunker), cross-encoder/qnli-distilroberta-base (reranking)
 - **Authentication:** JWT with bcrypt hashing
 - **Testing:** pytest with AsyncIO support
 
@@ -174,7 +175,7 @@ All tests use proper mocking to avoid API costs and external dependencies.
 - PostgreSQL 14+
 - Qdrant (vector database)
 - Docker & Docker Compose (optional)
-- OpenAI API key
+- Google AI API key (from https://aistudio.google.com/apikey)
 - Azure Storage account (for blob storage)
 
 ### Installation
@@ -205,9 +206,9 @@ cp .env.example .env
 
    Edit `.env` and configure the following:
 
-   - **OPENAI_API_KEY** (REQUIRED)
-     - Get from: https://platform.openai.com/api-keys
-     - Must start with `sk-proj-`
+   - **GOOGLE_API_KEY** (REQUIRED)
+     - Get from: https://aistudio.google.com/apikey
+     - Must start with `AIza`
      - Never commit to version control
 
    - **AZURE_STORAGE_CONNECTION_STRING** (REQUIRED)
@@ -285,8 +286,8 @@ This starts:
 # Database
 DATABASE_URL=postgresql://user:password@localhost:5432/lexintel
 
-# OpenAI
-OPENAI_API_KEY=sk-...
+# Google AI (Gemini)
+GOOGLE_API_KEY=AIza...
 
 # Azure Storage
 AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;...
@@ -305,7 +306,7 @@ DEBUG=False
 
 - **Password Hashing:** bcrypt with salt
 - **JWT Tokens:** HS256 signing with 1440-minute expiry
-- **API Key Protection:** Validated before OpenAI calls
+- **API Key Protection:** Validated before Google AI calls
 - **PDF Validation:** Magic byte verification (prevents file spoofing)
 - **Error Masking:** Sensitive details logged privately, generic messages to users
 - **SQL Injection Prevention:** ORM parameterized queries
@@ -343,10 +344,14 @@ LexIntel/
 │   ├── auth.py                # JWT and password utilities
 │   ├── services/
 │   │   ├── storage.py         # Azure Blob Storage integration
-│   │   ├── chunking.py        # PDF chunking service
-│   │   ├── embeddings.py      # OpenAI embeddings service
+│   │   ├── chunking.py        # Hybrid semantic chunking service
+│   │   ├── section_detector.py # Legal section boundary detection
+│   │   ├── text_extraction.py # pymupdf4llm text extraction
+│   │   ├── embeddings.py      # Google gemini-embedding-001 service
+│   │   ├── embedding_cache.py # In-memory LRU embedding cache
 │   │   ├── vector_store.py    # Qdrant vector store service
 │   │   ├── rag_engine.py      # RAG query orchestration
+│   │   ├── progress.py        # Real-time progress via Redis pub/sub
 │   │   └── job_processor.py   # Background job processing
 │   └── requirements.txt        # Python dependencies
 ├── tests/
@@ -378,8 +383,8 @@ LexIntel/
    ↓
 6. Pipeline execution:
    - Download PDF from blob storage
-   - Chunk PDF into semantic pieces (800 chars, 150 char overlap)
-   - Generate embeddings for each chunk (OpenAI)
+   - Hybrid semantic chunking (markdown headers → SemanticChunker → fallback)
+   - Generate embeddings for each chunk (Google gemini-embedding-001)
    - Create Qdrant collection for case
    - Upsert vectors with metadata
    - Store chunks in PostgreSQL
@@ -399,7 +404,7 @@ LexIntel/
 ```
 1. User asks question about case
    ↓
-2. Query embedded using OpenAI
+2. Query embedded using Google gemini-embedding-001
 3. Vector similarity search in Qdrant (top 10, filter ≥0.7)
    ↓
 4. Context formatting:
@@ -407,7 +412,7 @@ LexIntel/
    - Format with metadata (pages, scores)
    - Token budget validation (~12.8K tokens)
    ↓
-5. GPT-4o answer generation:
+5. Gemini answer generation:
    - System prompt: legal assistant role
    - Context + query sent to LLM
    - Temperature: 0.2 (high precision)
@@ -418,24 +423,25 @@ LexIntel/
 
 ## 📈 Performance Characteristics
 
-- **Document Chunking:** ~2-3s for average legal document
-- **Embedding Generation:** ~100ms per chunk (batched)
+- **Document Chunking:** ~2-3s for average legal document (hybrid semantic)
+- **Embedding Generation:** ~8.5 chunks/sec (Google API), sub-0.1ms for cache hits
 - **Vector Search:** <100ms for top-K retrieval
-- **LLM Answer Generation:** 1-3s depending on answer length
+- **LLM Answer Generation:** ~1.5s (Gemini 2.5 Flash Lite)
 - **Total Query Latency:** ~3-5 seconds end-to-end
 
 ## 🎓 Design Decisions
 
 ### Chunking Strategy
-- **Size:** 800 characters (balances context with specificity)
-- **Overlap:** 150 characters (preserves argument continuity)
-- **Separators:** Hierarchical (paragraph → sentence → word)
-- **Rationale:** Legal documents require complete context; pure relevance ordering breaks narrative
+- **Strategy:** Hybrid semantic — markdown headers → SemanticChunker (local all-MiniLM-L6-v2) → fallback recursive
+- **Section Detection:** Legal boundary patterns across UK, EU, US, CA, SG, UN jurisdictions
+- **Post-Processing:** Markdown artifact cleanup + small chunk merging (min 50 chars)
+- **Rationale:** Legal documents have structured sections; semantic splitting preserves argument boundaries better than fixed-size chunks
 
 ### Embedding Model
-- **Model:** text-embedding-3-large (3072 dimensions)
-- **Rationale:** Best legal document understanding, high accuracy
-- **Cost:** $0.02 per 1M tokens (negligible)
+- **Model:** Google gemini-embedding-001 (768 dimensions) via langchain-google-genai
+- **Local Chunking Model:** all-MiniLM-L6-v2 (384-dim, HuggingFace) for SemanticChunker — no API key needed
+- **Rationale:** Google embeddings provide strong legal document understanding; local model avoids API costs for chunking
+- **Cache:** In-memory LRU with SHA-256 keys, numpy float32 storage
 
 ### Retrieval Strategy
 - **Initial Retrieval:** Top 10 by score
@@ -482,5 +488,5 @@ For issues, questions, or contributions, please refer to the project repository.
 
 ---
 
-**Last Updated:** January 2026
+**Last Updated:** February 2026
 **Version:** 0.1.0 (MVP - Production Ready)

@@ -1,22 +1,16 @@
 "use client"
 
-import React, { useState, useCallback, useRef } from "react"
+import React, { useState, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
 import {
   ArrowLeft,
   MessageSquare,
-  FileText,
   Shield,
   PenLine,
   ClipboardList,
-  Upload,
   Loader2,
-  CheckCircle2,
   AlertTriangle,
-  Clock,
   Download,
-  Eye,
-  Trash2,
 } from "lucide-react"
 import { motion } from "framer-motion"
 import AppLayout from "@/layouts/AppLayout"
@@ -25,7 +19,6 @@ import CitationPanel from "@/components/CitationPanel"
 import DataTable from "@/components/DataTable"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Progress } from "@/components/ui/progress"
@@ -50,6 +43,7 @@ export default function MatterWorkspacePage() {
   const params = useParams()
   const router = useRouter()
   const matterId = params.id as string
+
   const [messages, setMessages] = useState<QueryMessage[]>([])
   const [selectedCitations, setSelectedCitations] = useState<Citation[]>([])
   const [draftType, setDraftType] = useState("")

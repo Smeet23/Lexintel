@@ -7,7 +7,10 @@ from typing import Optional
 try:
     from backend.config import get_settings
 except ImportError:
-    from config import get_settings
+    try:
+        from config import get_settings
+    except ImportError:
+        from ..config import get_settings
 
 logger = logging.getLogger(__name__)
 settings = get_settings()

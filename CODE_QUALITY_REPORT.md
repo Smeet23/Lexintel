@@ -26,7 +26,7 @@
 ### 1. **No Rate Limiting** (SECURITY)
 **Severity:** 🔴 CRITICAL
 **File:** `backend/main.py`
-**Impact:** Anyone can spam API calls, overwhelm OpenAI API
+**Impact:** Anyone can spam API calls, overwhelm Google AI API
 
 **Quick Fix:**
 ```bash
