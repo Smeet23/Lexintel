@@ -1,4 +1,5 @@
 """SQLAlchemy ORM models for legal RAG app"""
+import enum
 from sqlalchemy import Column, String, DateTime, Boolean, ForeignKey, Text, JSON, Integer, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, declarative_base
@@ -12,6 +13,13 @@ DEMO_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 Base = declarative_base()
 
 
+class MatterStatus(str, enum.Enum):
+    """Matter processing status"""
+    PROCESSING = "processing"
+    READY = "ready"
+    ERROR = "error"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -23,8 +31,8 @@ class User(Base):
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
 
-class Case(Base):
-    __tablename__ = "cases"
+class Matter(Base):
+    __tablename__ = "matters"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, default=DEMO_USER_ID, index=True)
@@ -37,65 +45,64 @@ class Case(Base):
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     # Relationships
-    chunks = relationship("Chunk", back_populates="case")
-    queries = relationship("Query", back_populates="case")
+    chunks = relationship("Chunk", back_populates="matter")
+    queries = relationship("Query", back_populates="matter")
 
     def __repr__(self):
-        return f"<Case(id={self.id}, name={self.name}, status={self.status})>"
+        return f"<Matter(id={self.id}, name={self.name}, status={self.status})>"
 
 
 class Chunk(Base):
     __tablename__ = "chunks"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    case_id = Column(UUID(as_uuid=True), ForeignKey("cases.id"), nullable=False, index=True)
+    matter_id = Column(UUID(as_uuid=True), ForeignKey("matters.id"), nullable=False, index=True)
     page_num = Column(String(50), nullable=True)
     section_name = Column(String(255), nullable=True)
     section_type = Column(String(100), nullable=True)  # Legal section type (article, exhibit, etc.)
     content = Column(Text, nullable=False)
     embedding_hash = Column(String(255), nullable=True)  # SHA256 hash for deduplication
-    chunk_sequence = Column(Integer, nullable=True)  # Order within case
+    chunk_sequence = Column(Integer, nullable=True)  # Order within matter
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     # Relationships
-    case = relationship("Case", back_populates="chunks")
+    matter = relationship("Matter", back_populates="chunks")
 
     __table_args__ = (
-        Index('idx_case_id_sequence', 'case_id', 'chunk_sequence'),
+        Index('idx_matter_id_sequence', 'matter_id', 'chunk_sequence'),
     )
 
     def __repr__(self):
-        return f"<Chunk(id={self.id}, case_id={self.case_id}, page={self.page_num})>"
+        return f"<Chunk(id={self.id}, matter_id={self.matter_id}, page={self.page_num})>"
 
 
 class Query(Base):
     __tablename__ = "queries"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    case_id = Column(UUID(as_uuid=True), ForeignKey("cases.id"), nullable=False, index=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, default=DEMO_USER_ID, index=True)
+    matter_id = Column(UUID(as_uuid=True), ForeignKey("matters.id"), nullable=False, index=True)
     question = Column(Text, nullable=False)
     answer = Column(Text, nullable=False)
     citations = Column(JSON, nullable=True, default=list)  # List of citation dicts
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
 
     # Relationships
-    case = relationship("Case", back_populates="queries")
+    matter = relationship("Matter", back_populates="queries")
 
     __table_args__ = (
-        Index('idx_case_id_created', 'case_id', 'created_at'),
+        Index('idx_matter_id_created', 'matter_id', 'created_at'),
     )
 
     def __repr__(self):
-        return f"<Query(id={self.id}, case_id={self.case_id})>"
+        return f"<Query(id={self.id}, matter_id={self.matter_id})>"
 
 
 class ProcessingJob(Base):
-    """Background processing job for case document analysis"""
+    """Background processing job for matter document analysis"""
     __tablename__ = "processing_jobs"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    case_id = Column(UUID(as_uuid=True), ForeignKey("cases.id"), nullable=False, index=True)
+    matter_id = Column(UUID(as_uuid=True), ForeignKey("matters.id"), nullable=False, index=True)
     status = Column(String(50), default="pending")  # pending, processing, completed, failed
     error_message = Column(String(500), nullable=True)
     attempts = Column(Integer, default=0)
@@ -106,4 +113,4 @@ class ProcessingJob(Base):
     next_retry_at = Column(DateTime, nullable=True)
 
     def __repr__(self):
-        return f"<ProcessingJob(id={self.id}, case_id={self.case_id}, status={self.status})>"
+        return f"<ProcessingJob(id={self.id}, matter_id={self.matter_id}, status={self.status})>"

@@ -113,18 +113,18 @@ def validate_file_type(content_type: str, filename: str) -> str:
         raise ValueError(f"Unsupported file type for file: {filename}")
 
 
-def validate_case_name(name: str) -> str:
+def validate_matter_name(name: str) -> str:
     """
-    Validate case name for constraints
+    Validate matter name for constraints
 
     - Min 1 character
     - Max 255 characters
 
     Args:
-        name: The case name to validate
+        name: The matter name to validate
 
     Returns:
-        The validated case name
+        The validated matter name
 
     Raises:
         HTTPException: If validation fails
@@ -132,13 +132,13 @@ def validate_case_name(name: str) -> str:
     if not name or not name.strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Case name is required"
+            detail="Matter name is required"
         )
 
     if len(name) > 255:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Case name must not exceed 255 characters"
+            detail="Matter name must not exceed 255 characters"
         )
 
     return name.strip()

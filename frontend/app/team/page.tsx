@@ -66,7 +66,7 @@ export default function TeamPage() {
       header: "Member",
       render: (item: TeamMember) => (
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-accent/10 text-accent font-medium text-sm">
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-foreground text-white font-medium text-sm">
             {item.name.split(" ").map((n) => n[0]).join("")}
           </div>
           <div>
@@ -143,13 +143,13 @@ export default function TeamPage() {
       />
 
       {/* Role Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
         {[
           { role: "Partners", count: mockTeam.filter((m) => m.role === "Partner").length, desc: "Full access to all matters and settings" },
           { role: "Associates", count: mockTeam.filter((m) => m.role === "Associate").length, desc: "Access to assigned matters" },
           { role: "Paralegals", count: mockTeam.filter((m) => m.role === "Paralegal").length, desc: "Document upload and basic queries" },
         ].map((r) => (
-          <div key={r.role} className="bg-white rounded-xl border border-border p-5 shadow-sm">
+          <div key={r.role} className="bg-white rounded-xl border border-border p-6 shadow-elevated">
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium text-muted">{r.role}</p>
               <span className="text-2xl font-bold text-foreground">{r.count}</span>
@@ -160,7 +160,7 @@ export default function TeamPage() {
       </div>
 
       {/* Team Table */}
-      <div className="bg-white rounded-xl border border-border shadow-sm">
+      <div className="bg-white rounded-xl border border-border shadow-elevated">
         <DataTable columns={columns} data={mockTeam} />
       </div>
 
@@ -170,7 +170,7 @@ export default function TeamPage() {
           <DialogHeader>
             <DialogTitle>Invite Team Member</DialogTitle>
             <DialogDescription>
-              Send an invitation to join your Veritas AI workspace.
+              Send an invitation to join your LexIntel workspace.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 mt-4">

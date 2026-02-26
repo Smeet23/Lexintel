@@ -32,7 +32,7 @@ export default function DataTable({
               <th
                 key={col.key}
                 className={cn(
-                  "py-3 px-4 text-xs font-semibold uppercase tracking-wider text-muted",
+                  "py-3.5 px-5 text-[11px] font-medium uppercase tracking-[0.06em] text-muted bg-surface/30",
                   col.className
                 )}
               >
@@ -46,7 +46,7 @@ export default function DataTable({
             <tr>
               <td
                 colSpan={columns.length}
-                className="py-12 text-center text-sm text-muted"
+                className="py-16 text-center text-sm text-muted"
               >
                 {emptyMessage}
               </td>
@@ -57,12 +57,12 @@ export default function DataTable({
                 key={idx}
                 onClick={() => onRowClick?.(item)}
                 className={cn(
-                  "border-b border-border last:border-0 transition-colors",
-                  onRowClick && "cursor-pointer hover:bg-surface-hover"
+                  "border-b border-border last:border-0 transition-colors duration-150",
+                  onRowClick && "cursor-pointer hover:bg-surface/50"
                 )}
               >
                 {columns.map((col) => (
-                  <td key={col.key} className={cn("py-3.5 px-4 text-sm", col.className)}>
+                  <td key={col.key} className={cn("py-4 px-5 text-sm", col.className)}>
                     {col.render
                       ? col.render(item)
                       : (item[col.key] as React.ReactNode)}

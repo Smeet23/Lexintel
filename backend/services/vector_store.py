@@ -69,33 +69,33 @@ def get_qdrant_client() -> QdrantClient:
     )
 
 
-def _get_collection_name(case_id: str) -> str:
+def _get_collection_name(matter_id: str) -> str:
     """
-    Generate collection name from case ID.
+    Generate collection name from matter ID.
 
     Args:
-        case_id: Unique case identifier
+        matter_id: Unique matter identifier
 
     Returns:
         Formatted collection name
     """
-    return f"case_{case_id}"
+    return f"matter_{matter_id}"
 
 
-def _generate_point_id(chunk_id: str, case_id: str) -> int:
+def _generate_point_id(chunk_id: str, matter_id: str) -> int:
     """
-    Generate a deterministic point ID from chunk_id and case_id.
+    Generate a deterministic point ID from chunk_id and matter_id.
     Ensures the same chunk always gets the same ID (for idempotency).
 
     Args:
         chunk_id: Unique chunk identifier
-        case_id: Unique case identifier
+        matter_id: Unique matter identifier
 
     Returns:
         Integer point ID (positive)
     """
-    # Create deterministic hash from chunk_id and case_id
-    combined = f"{case_id}:{chunk_id}"
+    # Create deterministic hash from chunk_id and matter_id
+    combined = f"{matter_id}:{chunk_id}"
     # MD5 used here only for deterministic ID generation, not for security
     hash_value = hashlib.md5(combined.encode()).digest()
     # Convert first 8 bytes to unsigned int (Qdrant requires positive IDs)
@@ -103,15 +103,15 @@ def _generate_point_id(chunk_id: str, case_id: str) -> int:
     return point_id
 
 
-def create_collection(case_id: str) -> bool:
+def create_collection(matter_id: str) -> bool:
     """
-    Create a collection for storing vectors of a case (safe — won't drop existing).
+    Create a collection for storing vectors of a matter (safe — won't drop existing).
 
     Uses HNSW config optimized for high-dimensional vectors (768-dim).
     Creates payload indexes on page_num and section_name for filtered search.
 
     Args:
-        case_id: Unique case identifier
+        matter_id: Unique matter identifier
 
     Returns:
         True if collection created or already exists
@@ -121,9 +121,9 @@ def create_collection(case_id: str) -> bool:
     """
     try:
         client = get_qdrant_client()
-        collection_name = _get_collection_name(case_id)
+        collection_name = _get_collection_name(matter_id)
 
-        logger.info(f"Ensuring collection exists for case: {case_id}")
+        logger.info(f"Ensuring collection exists for matter: {matter_id}")
 
         # Check if collection already exists
         existing = [c.name for c in client.get_collections().collections]
@@ -160,13 +160,13 @@ def create_collection(case_id: str) -> bool:
         return True
 
     except (UnexpectedResponse, ResponseHandlingException) as e:
-        logger.error(f"Qdrant API error creating collection for case {case_id}: {str(e)}")
+        logger.error(f"Qdrant API error creating collection for matter {matter_id}: {str(e)}")
         raise VectorStoreException(
             "Failed to create vector collection",
             detail=f"Qdrant error: {str(e)}"
         ) from e
     except Exception as e:
-        logger.error(f"Unexpected error creating collection for case {case_id}: {str(e)}")
+        logger.error(f"Unexpected error creating collection for matter {matter_id}: {str(e)}")
         raise VectorStoreException(
             "Unexpected error during collection creation",
             detail=str(e)
@@ -174,16 +174,16 @@ def create_collection(case_id: str) -> bool:
 
 
 def upsert_vectors(
-    case_id: str,
+    matter_id: str,
     chunks: List[Dict],
     embeddings: List[List[float]]
 ) -> int:
     """
-    Insert or update vectors with metadata for a case's chunks.
+    Insert or update vectors with metadata for a matter's chunks.
     Uses batched upserts (batch_size=100) for reliability.
 
     Args:
-        case_id: Unique case identifier
+        matter_id: Unique matter identifier
         chunks: List of chunk dicts with keys: id, content, page_num, section_name, chunk_sequence
         embeddings: List of 768-dimensional vectors from embeddings service
 
@@ -205,9 +205,9 @@ def upsert_vectors(
 
     try:
         client = get_qdrant_client()
-        collection_name = _get_collection_name(case_id)
+        collection_name = _get_collection_name(matter_id)
 
-        logger.info(f"Upserting {len(chunks)} vectors for case: {case_id}")
+        logger.info(f"Upserting {len(chunks)} vectors for matter: {matter_id}")
 
         # Prepare all points
         points = []
@@ -231,7 +231,7 @@ def upsert_vectors(
             }
 
             # Generate deterministic point ID for idempotency
-            point_id = _generate_point_id(chunk_id, case_id)
+            point_id = _generate_point_id(chunk_id, matter_id)
 
             point = PointStruct(
                 id=point_id,
@@ -257,13 +257,13 @@ def upsert_vectors(
     except ValueError:
         raise
     except (UnexpectedResponse, ResponseHandlingException) as e:
-        logger.error(f"Qdrant API error upserting vectors for case {case_id}: {str(e)}")
+        logger.error(f"Qdrant API error upserting vectors for matter {matter_id}: {str(e)}")
         raise VectorStoreException(
             "Failed to upsert vectors",
             detail=f"Qdrant error: {str(e)}"
         ) from e
     except Exception as e:
-        logger.error(f"Unexpected error upserting vectors for case {case_id}: {str(e)}")
+        logger.error(f"Unexpected error upserting vectors for matter {matter_id}: {str(e)}")
         raise VectorStoreException(
             "Unexpected error during vector upsert",
             detail=str(e)
@@ -271,7 +271,7 @@ def upsert_vectors(
 
 
 def search_vectors(
-    case_id: str,
+    matter_id: str,
     query_embedding: List[float],
     limit: int = 5
 ) -> List[Dict]:
@@ -279,7 +279,7 @@ def search_vectors(
     Search for semantically similar chunks using the Qdrant Python client.
 
     Args:
-        case_id: Unique case identifier
+        matter_id: Unique matter identifier
         query_embedding: 768-dimensional query vector from embeddings service
         limit: Maximum number of results to return (default: 5)
 
@@ -299,7 +299,7 @@ def search_vectors(
 
     try:
         client = get_qdrant_client()
-        collection_name = _get_collection_name(case_id)
+        collection_name = _get_collection_name(matter_id)
 
         logger.debug(f"Searching vectors in collection: {collection_name}, limit: {limit}")
 
@@ -336,25 +336,25 @@ def search_vectors(
     except ValueError:
         raise
     except (UnexpectedResponse, ResponseHandlingException) as e:
-        logger.error(f"Qdrant API error searching vectors in case {case_id}: {str(e)}")
+        logger.error(f"Qdrant API error searching vectors in matter {matter_id}: {str(e)}")
         raise VectorStoreException(
             "Failed to search vectors",
             detail=f"Qdrant error: {str(e)}"
         ) from e
     except Exception as e:
-        logger.error(f"Unexpected error searching vectors in case {case_id}: {str(e)}")
+        logger.error(f"Unexpected error searching vectors in matter {matter_id}: {str(e)}")
         raise VectorStoreException(
             "Unexpected error during vector search",
             detail=str(e)
         ) from e
 
 
-def delete_collection(case_id: str) -> bool:
+def delete_collection(matter_id: str) -> bool:
     """
-    Delete a collection and all its vectors for a case.
+    Delete a collection and all its vectors for a matter.
 
     Args:
-        case_id: Unique case identifier
+        matter_id: Unique matter identifier
 
     Returns:
         True if collection deleted successfully
@@ -364,9 +364,9 @@ def delete_collection(case_id: str) -> bool:
     """
     try:
         client = get_qdrant_client()
-        collection_name = _get_collection_name(case_id)
+        collection_name = _get_collection_name(matter_id)
 
-        logger.info(f"Deleting collection for case: {case_id}")
+        logger.info(f"Deleting collection for matter: {matter_id}")
 
         client.delete_collection(collection_name=collection_name)
 
@@ -374,13 +374,13 @@ def delete_collection(case_id: str) -> bool:
         return True
 
     except (UnexpectedResponse, ResponseHandlingException) as e:
-        logger.error(f"Qdrant API error deleting collection for case {case_id}: {str(e)}")
+        logger.error(f"Qdrant API error deleting collection for matter {matter_id}: {str(e)}")
         raise VectorStoreException(
             "Failed to delete vector collection",
             detail=f"Qdrant error: {str(e)}"
         ) from e
     except Exception as e:
-        logger.error(f"Unexpected error deleting collection for case {case_id}: {str(e)}")
+        logger.error(f"Unexpected error deleting collection for matter {matter_id}: {str(e)}")
         raise VectorStoreException(
             "Unexpected error during collection deletion",
             detail=str(e)

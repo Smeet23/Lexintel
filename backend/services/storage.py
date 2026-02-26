@@ -66,7 +66,7 @@ def get_blob_client():
     )
 
 
-async def upload_document_to_blob(file_content: bytes, case_id: str, filename: str) -> str:
+async def upload_document_to_blob(file_content: bytes, matter_id: str, filename: str) -> str:
     """
     Upload document (PDF, DOCX, or TXT) to Azure Blob Storage and return blob path.
 
@@ -75,34 +75,34 @@ async def upload_document_to_blob(file_content: bytes, case_id: str, filename: s
 
     Args:
         file_content: Raw document bytes
-        case_id: UUID of the case
+        matter_id: UUID of the matter
         filename: Original filename from upload
 
     Returns:
-        Blob path (e.g., "case-uuid/filename.pdf")
+        Blob path (e.g., "matter-uuid/filename.pdf")
 
     Raises:
         BlobUploadException: If upload fails
     """
     try:
         blob_client = get_blob_client()
-        container_client = blob_client.get_container_client("cases")
+        container_client = blob_client.get_container_client("matters")
 
         # Create container if it doesn't exist
         try:
             container_client.get_container_properties()
         except AzureError as e:
-            logger.info("Creating 'cases' container")
+            logger.info("Creating 'matters' container")
             try:
-                container_client = blob_client.create_container("cases")
+                container_client = blob_client.create_container("matters")
             except AzureError as create_err:
                 raise BlobUploadException(
                     "Failed to create blob storage container",
                     detail=f"Container creation failed: {str(create_err)}"
                 ) from create_err
 
-        # Upload blob with case_id directory structure
-        blob_name = f"{case_id}/{filename}"
+        # Upload blob with matter_id directory structure
+        blob_name = f"{matter_id}/{filename}"
         blob_client_ref = container_client.get_blob_client(blob_name)
 
         logger.info(f"Uploading blob: {blob_name}")
@@ -131,7 +131,7 @@ def download_document_from_blob(blob_path: str) -> bytes:
     Download document (PDF, DOCX, or TXT) from Azure Blob Storage.
 
     Args:
-        blob_path: Path to blob (e.g., "case-uuid/filename.pdf")
+        blob_path: Path to blob (e.g., "matter-uuid/filename.pdf")
 
     Returns:
         Raw document bytes
@@ -141,7 +141,7 @@ def download_document_from_blob(blob_path: str) -> bytes:
     """
     try:
         blob_client = get_blob_client()
-        blob_client_ref = blob_client.get_blob_client("cases", blob_path)
+        blob_client_ref = blob_client.get_blob_client("matters", blob_path)
 
         logger.info(f"Downloading blob: {blob_path}")
         download_stream = blob_client_ref.download_blob()
@@ -177,7 +177,7 @@ def delete_blob(blob_path: str) -> bool:
     """
     try:
         blob_client = get_blob_client()
-        blob_client_ref = blob_client.get_blob_client("cases", blob_path)
+        blob_client_ref = blob_client.get_blob_client("matters", blob_path)
 
         logger.info(f"Deleting blob: {blob_path}")
         blob_client_ref.delete_blob()

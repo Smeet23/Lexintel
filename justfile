@@ -98,6 +98,15 @@ db-init:
     deactivate
     echo "✓ Database initialized"
 
+# Seed database with demo data
+db-seed:
+    #!/bin/bash
+    echo "🌱 Seeding database..."
+    source backend/venv/bin/activate
+    python scripts/seed.py
+    deactivate
+    echo "✓ Database seeded"
+
 # ============================================
 # DOCKER SETUP
 # ============================================

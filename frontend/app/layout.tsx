@@ -1,10 +1,10 @@
 import type { Metadata } from "next"
-import Providers from "./providers"
+import Providers from "@/lib/providers"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "Veritas AI - Jurisdiction-Aware Legal AI",
-  description: "Legal research assistant with verified citations and audit trails",
+  title: "LexIntel - Legal Intelligence Platform",
+  description: "Jurisdiction-aware legal AI with verified citations and full audit trails",
 }
 
 export default function RootLayout({
@@ -15,8 +15,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+          href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Serif+Display&family=JetBrains+Mono:wght@400;500&display=swap"
           rel="stylesheet"
         />
       </head>

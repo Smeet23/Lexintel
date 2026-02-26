@@ -6,19 +6,20 @@ from uuid import UUID
 
 
 # ============================================
-# CASE SCHEMAS
+# MATTER SCHEMAS
 # ============================================
 
-class CaseCreate(BaseModel):
-    """Create case request"""
+class MatterCreate(BaseModel):
+    """Create matter request"""
     name: str = Field(..., min_length=1, max_length=255)
 
 
-class CaseResponse(BaseModel):
-    """Case response (output)"""
+class MatterResponse(BaseModel):
+    """Matter response (output)"""
     id: UUID
     name: str
     status: str
+    file_type: str
     blob_storage_path: str
     created_at: datetime
     updated_at: datetime
@@ -33,7 +34,7 @@ class CaseResponse(BaseModel):
 class ChunkResponse(BaseModel):
     """Chunk response (output)"""
     id: UUID
-    case_id: UUID
+    matter_id: UUID
     page_num: Optional[str] = None
     section_name: Optional[str] = None
     content: str

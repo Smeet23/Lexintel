@@ -1,4 +1,4 @@
-"""Generate document summaries from case metadata"""
+"""Generate document summaries from matter metadata"""
 import re
 import logging
 from typing import List, Dict, Any
@@ -22,17 +22,17 @@ DOCUMENT_PATTERNS = {
 }
 
 
-def extract_key_concepts(case) -> List[str]:
+def extract_key_concepts(matter) -> List[str]:
     """Extract top legal concepts from chunks.
 
     Args:
-        case: Case object with chunks attribute
+        matter: Matter object with chunks attribute
 
     Returns:
         List of top 7 concepts (or fewer if not found)
     """
     try:
-        chunks = getattr(case, 'chunks', None)
+        chunks = getattr(matter, 'chunks', None)
         if not chunks:
             return []
     except (AttributeError, TypeError):
@@ -67,17 +67,17 @@ def extract_key_concepts(case) -> List[str]:
     return [concept for concept, _ in sorted_concepts[:7]]
 
 
-def classify_legal_document_type(case) -> str:
+def classify_legal_document_type(matter) -> str:
     """Classify document type from content.
 
     Args:
-        case: Case object with chunks
+        matter: Matter object with chunks
 
     Returns:
         Document type string
     """
     try:
-        chunks = getattr(case, 'chunks', None)
+        chunks = getattr(matter, 'chunks', None)
         if not chunks:
             return "Legal Document"
 
@@ -99,17 +99,17 @@ def classify_legal_document_type(case) -> str:
     return "Legal Document"
 
 
-def calculate_page_count(case) -> int:
+def calculate_page_count(matter) -> int:
     """Calculate total pages from chunk metadata.
 
     Args:
-        case: Case object with chunks
+        matter: Matter object with chunks
 
     Returns:
         Estimated page count
     """
     try:
-        chunks = getattr(case, 'chunks', None)
+        chunks = getattr(matter, 'chunks', None)
         if not chunks:
             return 0
     except (AttributeError, TypeError):
@@ -138,20 +138,20 @@ def calculate_page_count(case) -> int:
         return 0
 
 
-def generate_document_summary(case) -> Dict[str, Any]:
+def generate_document_summary(matter) -> Dict[str, Any]:
     """Generate comprehensive document summary.
 
     Args:
-        case: Case object with all metadata and chunks
+        matter: Matter object with all metadata and chunks
 
     Returns:
         Dict with document metadata
     """
     try:
-        name = getattr(case, 'name', 'Unknown')
-        file_type = getattr(case, 'file_type', 'unknown')
-        status = getattr(case, 'status', 'unknown')
-        updated_at = getattr(case, 'updated_at', None)
+        name = getattr(matter, 'name', 'Unknown')
+        file_type = getattr(matter, 'file_type', 'unknown')
+        status = getattr(matter, 'status', 'unknown')
+        updated_at = getattr(matter, 'updated_at', None)
 
         # Handle updated_at if it's a datetime or None
         processed_at = None
@@ -164,9 +164,9 @@ def generate_document_summary(case) -> Dict[str, Any]:
         return {
             "filename": name,
             "file_type": file_type,
-            "key_concepts": extract_key_concepts(case),
-            "legal_significance": classify_legal_document_type(case),
-            "total_pages": calculate_page_count(case),
+            "key_concepts": extract_key_concepts(matter),
+            "legal_significance": classify_legal_document_type(matter),
+            "total_pages": calculate_page_count(matter),
             "processing_status": status,
             "processed_at": processed_at
         }

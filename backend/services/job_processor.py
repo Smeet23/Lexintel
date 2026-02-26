@@ -1,11 +1,11 @@
-"""Background job processor for case document analysis"""
+"""Background job processor for matter document analysis"""
 import logging
 import asyncio
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
-from backend.models import ProcessingJob, Case, Chunk
+from backend.models import ProcessingJob, Matter, Chunk
 from backend.services.storage import download_document_from_blob
 from backend.services.chunking import chunk_document_from_blob
 from backend.services.embeddings import embed_chunks
@@ -27,10 +27,10 @@ def calculate_retry_delay(attempt: int) -> int:
     return delays.get(attempt, 10)
 
 
-def mark_job_complete(case_id: str, db: Session) -> bool:
+def mark_job_complete(matter_id: str, db: Session) -> bool:
     """Mark a job as complete"""
     try:
-        job = db.query(ProcessingJob).filter(ProcessingJob.case_id == case_id).first()
+        job = db.query(ProcessingJob).filter(ProcessingJob.matter_id == matter_id).first()
         if not job:
             return False
         job.status = "completed"
@@ -44,14 +44,14 @@ def mark_job_complete(case_id: str, db: Session) -> bool:
 
 
 def mark_job_failed(
-    case_id: str,
+    matter_id: str,
     db: Session,
     error_message: str,
     next_retry_at: datetime = None
 ) -> bool:
     """Mark a job as failed and schedule retry if attempts remaining"""
     try:
-        job = db.query(ProcessingJob).filter(ProcessingJob.case_id == case_id).first()
+        job = db.query(ProcessingJob).filter(ProcessingJob.matter_id == matter_id).first()
         if not job:
             return False
 
@@ -73,30 +73,30 @@ def mark_job_failed(
         return False
 
 
-async def process_case(case_id: str, db: Session) -> Dict:
+async def process_matter(matter_id: str, db: Session) -> Dict:
     """
-    Process a case: download document, chunk, embed, and store vectors.
+    Process a matter: download document, chunk, embed, and store vectors.
 
     Args:
-        case_id: UUID of the case to process
+        matter_id: UUID of the matter to process
         db: Database session
 
     Returns:
         Dict with keys: success (bool), chunks_created (int), error (str if failed)
     """
     try:
-        # Get case from database
-        case = db.query(Case).filter(Case.id == case_id).first()
-        if not case:
-            raise ValueError(f"Case not found: {case_id}")
+        # Get matter from database
+        matter = db.query(Matter).filter(Matter.id == matter_id).first()
+        if not matter:
+            raise ValueError(f"Matter not found: {matter_id}")
 
-        logger.info(f"Processing case: {case_id}")
+        logger.info(f"Processing matter: {matter_id}")
 
         # Get file type
-        file_type = case.file_type or "pdf"
+        file_type = matter.file_type or "pdf"
 
         # Download document from blob storage
-        document_bytes = await download_document_from_blob(case.blob_storage_path)
+        document_bytes = await download_document_from_blob(matter.blob_storage_path)
         logger.info(f"Downloaded {file_type.upper()} ({len(document_bytes)} bytes)")
 
         # Chunk document
@@ -105,8 +105,8 @@ async def process_case(case_id: str, db: Session) -> Dict:
             raise ValueError(f"No chunks created from {file_type.upper()}")
         logger.info(f"Created {len(chunks_data)} chunks")
 
-        # Delete old chunks for this case (for reprocessing)
-        db.query(Chunk).filter(Chunk.case_id == case_id).delete()
+        # Delete old chunks for this matter (for reprocessing)
+        db.query(Chunk).filter(Chunk.matter_id == matter_id).delete()
         db.commit()
 
         # Embed chunks
@@ -115,16 +115,16 @@ async def process_case(case_id: str, db: Session) -> Dict:
         logger.info(f"Created {len(embeddings)} embeddings")
 
         # Create vector store collection
-        create_collection(str(case_id))
+        create_collection(str(matter_id))
 
         # Upsert vectors
-        vectors_count = upsert_vectors(str(case_id), chunks_data, embeddings)
+        vectors_count = upsert_vectors(str(matter_id), chunks_data, embeddings)
         logger.info(f"Upserted {vectors_count} vectors")
 
         # Create Chunk records in database
         for i, chunk_data in enumerate(chunks_data):
             chunk = Chunk(
-                case_id=case_id,
+                matter_id=matter_id,
                 page_num=chunk_data.get("page_num"),
                 section_name=chunk_data.get("section_name"),
                 content=chunk_data.get("content"),
@@ -132,28 +132,28 @@ async def process_case(case_id: str, db: Session) -> Dict:
             )
             db.add(chunk)
 
-        # Update case status to "ready"
-        case.status = "ready"
+        # Update matter status to "ready"
+        matter.status = "ready"
         db.commit()
 
         # Update job status to "completed"
-        job = db.query(ProcessingJob).filter(ProcessingJob.case_id == case_id).first()
+        job = db.query(ProcessingJob).filter(ProcessingJob.matter_id == matter_id).first()
         if job:
             job.status = "completed"
             job.completed_at = datetime.now(timezone.utc)
             db.commit()
 
-        logger.info(f"Successfully processed case {case_id}")
+        logger.info(f"Successfully processed matter {matter_id}")
         return {"success": True, "chunks_created": len(chunks_data)}
 
     except Exception as e:
-        logger.error(f"Error processing case {case_id}: {str(e)}")
+        logger.error(f"Error processing matter {matter_id}: {str(e)}")
         db.rollback()
 
-        # Update case status to failed
-        case = db.query(Case).filter(Case.id == case_id).first()
-        if case:
-            case.status = "error"
+        # Update matter status to failed
+        matter = db.query(Matter).filter(Matter.id == matter_id).first()
+        if matter:
+            matter.status = "error"
             db.commit()
 
         return {"success": False, "error": str(e)}
@@ -197,15 +197,15 @@ async def run_job_worker(
             # Process each job sequentially
             for job in pending_jobs:
                 try:
-                    logger.info(f"Processing job {job.id} for case {job.case_id}")
+                    logger.info(f"Processing job {job.id} for matter {job.matter_id}")
 
                     # Update job to processing
                     job.status = "processing"
                     job.started_at = datetime.now(timezone.utc)
                     db.commit()
 
-                    # Process the case
-                    result = await process_case(job.case_id, db)
+                    # Process the matter
+                    result = await process_matter(job.matter_id, db)
 
                     if result["success"]:
                         logger.info(f"Job {job.id} completed successfully")
@@ -214,13 +214,13 @@ async def run_job_worker(
                         # Schedule retry
                         delay_seconds = calculate_retry_delay(job.attempts + 1)
                         retry_time = datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)
-                        mark_job_failed(job.case_id, db, result.get("error"), next_retry_at=retry_time)
+                        mark_job_failed(job.matter_id, db, result.get("error"), next_retry_at=retry_time)
 
                 except Exception as e:
                     logger.error(f"Error processing job {job.id}: {str(e)}")
                     delay_seconds = calculate_retry_delay(job.attempts + 1)
                     retry_time = datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)
-                    mark_job_failed(job.case_id, db, str(e), next_retry_at=retry_time)
+                    mark_job_failed(job.matter_id, db, str(e), next_retry_at=retry_time)
 
             # Sleep before next batch
             logger.debug(f"Batch complete, sleeping {sleep_interval} seconds")

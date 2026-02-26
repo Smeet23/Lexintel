@@ -2,6 +2,7 @@
 
 import React, { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
+import { motion } from "framer-motion"
 import {
   Briefcase,
   Plus,
@@ -9,7 +10,7 @@ import {
   Filter,
   MoreHorizontal,
   Loader2,
-  AlertCircle,
+  Upload,
 } from "lucide-react"
 import AppLayout from "@/layouts/AppLayout"
 import PageHeader from "@/components/PageHeader"
@@ -33,9 +34,21 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { formatRelativeTime } from "@/lib/utils"
-import { caseToMatter } from "@/lib/types"
-import type { Matter } from "@/lib/types"
-import { useCases, useCreateCase } from "@/hooks/use-cases"
+import { useMatters, useCreateMatter, useDeleteMatter } from "@/hooks/use-matters"
+import type { MatterResponse } from "@/lib/api-services"
+
+function mapStatus(status: string): "active" | "review" | "closed" {
+  if (status === "ready") return "active"
+  if (status === "processing") return "review"
+  return "closed"
+}
+
+function statusLabel(status: string): string {
+  if (status === "ready") return "Ready"
+  if (status === "processing") return "Processing"
+  if (status === "error") return "Error"
+  return status
+}
 
 export default function MattersPage() {
   const router = useRouter()
@@ -43,74 +56,65 @@ export default function MattersPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [showNewDialog, setShowNewDialog] = useState(false)
   const [newTitle, setNewTitle] = useState("")
-  const [newJurisdiction, setNewJurisdiction] = useState("")
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const { data: cases, isLoading, error } = useCases()
-  const createCase = useCreateCase()
+  const { data: matters, isLoading, error } = useMatters()
+  const createMatter = useCreateMatter()
+  const deleteMatter = useDeleteMatter()
 
-  const matters: Matter[] = (cases || []).map(caseToMatter)
+  const allMatters = matters || []
 
-  const filtered = matters.filter((m) => {
-    const matchSearch = m.title.toLowerCase().includes(search.toLowerCase()) ||
-      m.jurisdiction.toLowerCase().includes(search.toLowerCase())
+  const filtered = allMatters.filter((m) => {
+    const matchSearch = m.name.toLowerCase().includes(search.toLowerCase())
     const matchStatus = statusFilter === "all" || m.status === statusFilter
     return matchSearch && matchStatus
   })
 
-  const handleCreate = () => {
+  const handleCreateMatter = async () => {
     if (!newTitle.trim() || !selectedFile) return
 
-    createCase.mutate(
-      { name: newTitle.trim(), file: selectedFile },
-      {
-        onSuccess: (data) => {
-          setShowNewDialog(false)
-          setNewTitle("")
-          setNewJurisdiction("")
-          setSelectedFile(null)
-          router.push(`/matters/${data.id}`)
-        },
-      }
-    )
+    try {
+      const result = await createMatter.mutateAsync({ name: newTitle.trim(), file: selectedFile })
+      setShowNewDialog(false)
+      setNewTitle("")
+      setSelectedFile(null)
+      router.push(`/matters/${result.id}`)
+    } catch {
+      // Error is available via createMatter.error
+    }
   }
 
   const columns = [
     {
       key: "title",
       header: "Matter",
-      render: (item: Matter) => (
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent/10">
-            <Briefcase className="h-4 w-4 text-accent" />
+      render: (item: MatterResponse) => (
+        <div className="flex items-center gap-4">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-surface">
+            <Briefcase className="h-4 w-4 text-foreground" />
           </div>
           <div>
-            <p className="font-medium text-foreground">{item.title}</p>
-            <p className="text-xs text-muted">{item.documentsCount} docs &middot; {item.queriesCount} queries</p>
+            <p className="font-medium text-foreground text-base">{item.name}</p>
+            <p className="text-sm text-muted mt-0.5">{item.file_type.toUpperCase()}</p>
           </div>
         </div>
       ),
     },
     {
-      key: "jurisdiction",
-      header: "Jurisdiction",
-      render: (item: Matter) => <span className="text-foreground">{item.jurisdiction || "—"}</span>,
-    },
-    {
       key: "status",
       header: "Status",
-      render: (item: Matter) => (
-        <Badge variant={item.status as "active" | "review" | "closed"}>
-          {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+      render: (item: MatterResponse) => (
+        <Badge variant={mapStatus(item.status)}>
+          {statusLabel(item.status)}
         </Badge>
       ),
     },
     {
       key: "lastActivity",
       header: "Last Activity",
-      render: (item: Matter) => (
-        <span className="text-muted">{formatRelativeTime(item.lastActivity)}</span>
+      render: (item: MatterResponse) => (
+        <span className="text-muted text-sm">{item.updated_at ? formatRelativeTime(item.updated_at) : formatRelativeTime(item.created_at)}</span>
       ),
     },
     {
@@ -139,61 +143,67 @@ export default function MattersPage() {
       />
 
       {/* Filters */}
-      <div className="flex items-center gap-3 mb-6">
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.1 }}
+        className="flex items-center gap-4 mb-8"
+      >
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
           <Input
             placeholder="Search matters..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
+            className="pl-9 rounded-lg"
           />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-40 rounded-lg">
             <Filter className="h-4 w-4 mr-2 text-muted" />
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="active">Active</SelectItem>
-            <SelectItem value="review">In Review</SelectItem>
-            <SelectItem value="closed">Closed</SelectItem>
+            <SelectItem value="ready">Ready</SelectItem>
+            <SelectItem value="processing">Processing</SelectItem>
+            <SelectItem value="error">Error</SelectItem>
           </SelectContent>
         </Select>
-      </div>
-
-      {/* Loading / Error States */}
-      {isLoading && (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-6 w-6 animate-spin text-accent" />
-          <span className="ml-2 text-muted">Loading matters...</span>
-        </div>
-      )}
-
-      {error && (
-        <div className="flex items-center justify-center py-20 text-red-600">
-          <AlertCircle className="h-5 w-5 mr-2" />
-          <span>Failed to load matters. Is the backend running?</span>
-        </div>
-      )}
+      </motion.div>
 
       {/* Table */}
-      {!isLoading && !error && (
-        <div className="bg-white rounded-xl border border-border shadow-sm">
-          <DataTable
-            columns={columns}
-            data={filtered}
-            onRowClick={(item) => router.push(`/matters/${item.id}`)}
-            emptyMessage="No matters found"
-          />
-          {filtered.length > 0 && (
-            <div className="border-t border-border px-4 py-3 text-xs text-muted">
-              Showing {filtered.length} of {matters.length} matters
-            </div>
-          )}
-        </div>
-      )}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.15 }}
+        className="bg-white rounded-xl border border-border shadow-elevated"
+      >
+        {isLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="h-5 w-5 animate-spin text-muted" />
+            <span className="ml-2 text-sm text-muted">Loading matters...</span>
+          </div>
+        ) : error ? (
+          <div className="py-16 text-center">
+            <p className="text-sm text-muted">Failed to load matters. Is the backend running?</p>
+          </div>
+        ) : (
+          <>
+            <DataTable
+              columns={columns}
+              data={filtered}
+              onRowClick={(item) => router.push(`/matters/${item.id}`)}
+              emptyMessage="No matters found"
+            />
+            {filtered.length > 0 && (
+              <div className="border-t border-border px-5 py-4 text-sm text-muted">
+                Showing {filtered.length} of {allMatters.length} matters
+              </div>
+            )}
+          </>
+        )}
+      </motion.div>
 
       {/* New Matter Dialog */}
       <Dialog open={showNewDialog} onOpenChange={setShowNewDialog}>
@@ -201,36 +211,21 @@ export default function MattersPage() {
           <DialogHeader>
             <DialogTitle>Create New Matter</DialogTitle>
             <DialogDescription>
-              Set up a new legal matter by uploading a document for analysis.
+              Upload a document to begin analyzing. Supports PDF, DOCX, and TXT files.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 mt-4">
+          <div className="space-y-5 mt-4">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">Matter Title</label>
+              <label className="block text-sm font-medium text-foreground mb-2">Matter Name</label>
               <Input
                 placeholder="e.g., Acme Corp Acquisition Review"
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
+                className="rounded-lg"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">Jurisdiction</label>
-              <Select value={newJurisdiction} onValueChange={setNewJurisdiction}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select jurisdiction" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="us-federal">US - Federal</SelectItem>
-                  <SelectItem value="us-california">US - California</SelectItem>
-                  <SelectItem value="us-new-york">US - New York</SelectItem>
-                  <SelectItem value="us-delaware">US - Delaware</SelectItem>
-                  <SelectItem value="uk">United Kingdom</SelectItem>
-                  <SelectItem value="eu">European Union</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">Document</label>
+              <label className="block text-sm font-medium text-foreground mb-2">Document</label>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -238,31 +233,45 @@ export default function MattersPage() {
                 className="hidden"
                 onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
               />
-              <div
-                className="border-2 border-dashed border-border rounded-lg p-4 text-center cursor-pointer hover:border-accent/50 transition-colors"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                {selectedFile ? (
-                  <p className="text-sm text-foreground">{selectedFile.name}</p>
-                ) : (
-                  <p className="text-sm text-muted">Click to select a PDF, DOCX, or TXT file</p>
-                )}
-              </div>
+              {selectedFile ? (
+                <div className="flex items-center gap-3 rounded-lg border border-border p-3">
+                  <Briefcase className="h-4 w-4 text-muted" />
+                  <span className="text-sm text-foreground flex-1 truncate">{selectedFile.name}</span>
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedFile(null)}>
+                    Remove
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  variant="outline"
+                  className="w-full justify-center gap-2 rounded-lg border-dashed"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload className="h-4 w-4" />
+                  Choose File
+                </Button>
+              )}
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowNewDialog(false)}>
+            <Button variant="outline" onClick={() => { setShowNewDialog(false); setNewTitle(""); setSelectedFile(null) }}>
               Cancel
             </Button>
             <Button
-              onClick={handleCreate}
-              disabled={!newTitle.trim() || !selectedFile || createCase.isPending}
+              onClick={handleCreateMatter}
+              disabled={!newTitle.trim() || !selectedFile || createMatter.isPending}
             >
-              {createCase.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-              {createCase.isPending ? "Creating..." : "Create Matter"}
+              {createMatter.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Create Matter"
+              )}
             </Button>
           </DialogFooter>
-          {createCase.isError && (
+          {createMatter.isError && (
             <p className="text-sm text-red-600 mt-2">
               Failed to create matter. Please try again.
             </p>

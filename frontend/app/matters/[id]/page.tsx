@@ -1,234 +1,112 @@
 "use client"
 
-import React, { useState, useCallback, useRef } from "react"
+import React, { useState, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
 import {
   ArrowLeft,
   MessageSquare,
-  FileText,
   Shield,
   PenLine,
   ClipboardList,
-  Upload,
   Loader2,
-  CheckCircle2,
   AlertTriangle,
-  Clock,
   Download,
-  Eye,
-  Trash2,
 } from "lucide-react"
+import { motion } from "framer-motion"
 import AppLayout from "@/layouts/AppLayout"
 import ChatPanel from "@/components/ChatPanel"
 import CitationPanel from "@/components/CitationPanel"
 import DataTable from "@/components/DataTable"
-import DocumentViewer from "@/components/DocumentViewer"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Progress } from "@/components/ui/progress"
 import { cn, formatRelativeTime } from "@/lib/utils"
-import { ragResponseToMessage } from "@/lib/types"
-import type { QueryMessage, Citation, Document, AuditEntry } from "@/lib/types"
-import { useCaseStatus, useAskQuestion, useCreateCase } from "@/hooks/use-cases"
-import { useCaseProgress } from "@/hooks/use-progress"
+import { useMatter, useAskQuestion } from "@/hooks/use-matters"
+import type { QueryMessage, Citation, AuditEntry } from "@/lib/types"
 
-// Static mock data kept for tabs without backend endpoints
+// Mock audit log (no backend endpoint for this yet)
 const mockAuditLog: (AuditEntry & Record<string, unknown>)[] = [
   { id: "a1", action: "Query", user: "John Smith", details: "Summarize key risks in this contract", sources: ["MSA.pdf - Page 12", "Amendment 3 - Page 4"], timestamp: new Date(Date.now() - 3600000).toISOString() },
-  { id: "a2", action: "Upload", user: "John Smith", details: "Uploaded Exhibit A - Financial Statements.pdf", timestamp: new Date(Date.now() - 7200000).toISOString() },
-  { id: "a3", action: "Query", user: "Sarah Chen", details: "What are the termination provisions?", sources: ["MSA.pdf - Page 28", "MSA.pdf - Page 29"], timestamp: new Date(Date.now() - 86400000).toISOString() },
-  { id: "a4", action: "Export", user: "John Smith", details: "Exported evidence bundle for indemnification analysis", timestamp: new Date(Date.now() - 172800000).toISOString() },
-  { id: "a5", action: "Upload", user: "Sarah Chen", details: "Uploaded Amendment No. 3.docx", timestamp: new Date(Date.now() - 259200000).toISOString() },
+  { id: "a2", action: "Upload", user: "John Smith", details: "Uploaded document", timestamp: new Date(Date.now() - 7200000).toISOString() },
 ]
 
+// Contract review mock (no backend endpoint for this yet)
 const contractRisks = [
   { clause: "Indemnification (Section 8.2)", risk: "high" as const, summary: "Unlimited indemnification exposure for IP infringement claims. No cap or basket provisions." },
   { clause: "Termination for Convenience (Section 12.1)", risk: "medium" as const, summary: "30-day notice period may be insufficient. No wind-down provisions for ongoing work." },
   { clause: "Limitation of Liability (Section 9.1)", risk: "low" as const, summary: "Standard mutual cap at 12 months' fees. Carve-outs are appropriate." },
-  { clause: "Data Protection (Section 14)", risk: "high" as const, summary: "Missing sub-processor notification requirements. GDPR Article 28 compliance gap." },
-  { clause: "Assignment (Section 16.3)", risk: "medium" as const, summary: "Silent on change of control assignment. May allow unwanted counterparty changes." },
 ]
-
-const STAGE_LABELS: Record<string, string> = {
-  uploaded: "Uploaded",
-  downloading: "Downloading",
-  extracting: "Extracting text",
-  chunking: "Chunking",
-  embedding: "Generating embeddings",
-  indexing: "Indexing in vector store",
-  ready: "Ready",
-  error: "Error",
-}
-
-const STAGE_PROGRESS: Record<string, number> = {
-  uploaded: 5,
-  downloading: 15,
-  extracting: 30,
-  chunking: 50,
-  embedding: 70,
-  indexing: 90,
-  ready: 100,
-  error: 0,
-}
 
 export default function MatterWorkspacePage() {
   const params = useParams()
   const router = useRouter()
-  const caseId = params.id as string
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const matterId = params.id as string
 
   const [messages, setMessages] = useState<QueryMessage[]>([])
   const [selectedCitations, setSelectedCitations] = useState<Citation[]>([])
   const [draftType, setDraftType] = useState("")
-  const [viewingDocument, setViewingDocument] = useState(false)
 
-  const { data: caseData, isLoading: caseLoading } = useCaseStatus(caseId)
-  const askQuestion = useAskQuestion(caseId)
-  const createCaseMut = useCreateCase()
-  const { progress } = useCaseProgress(
-    caseData?.status === "processing" ? caseId : undefined
-  )
+  const { data: matter, isLoading, error } = useMatter(matterId)
+  const askQuestion = useAskQuestion(matterId)
 
-  const caseName = caseData?.name || "Loading..."
-  const caseStatus = caseData?.status || "processing"
+  const handleSendMessage = useCallback((content: string) => {
+    const userMsg: QueryMessage = {
+      id: `msg-${Date.now()}`,
+      role: "user",
+      content,
+      timestamp: new Date().toISOString(),
+    }
+    setMessages((prev) => [...prev, userMsg])
 
-  // Compute progress bar value
-  const progressValue = progress
-    ? progress.progress ?? STAGE_PROGRESS[progress.stage] ?? 0
-    : caseStatus === "ready"
-    ? 100
-    : caseStatus === "processing"
-    ? 10
-    : 0
+    askQuestion.mutate(content, {
+      onSuccess: (result) => {
+        if (result.answer) {
+          // Map backend sources to Citation format
+          const citations: Citation[] = (result.sources || []).map((s) => ({
+            documentName: matter?.name || "Document",
+            pageNumber: parseInt(s.page_num) || 0,
+            section: "",
+            excerpt: s.content?.slice(0, 200) || "",
+            relevanceScore: s.relevance_score || 0,
+          }))
 
-  const handleSendMessage = useCallback(
-    (content: string) => {
-      const userMsg: QueryMessage = {
-        id: `msg-${Date.now()}`,
-        role: "user",
-        content,
-        timestamp: new Date().toISOString(),
-      }
-      setMessages((prev) => [...prev, userMsg])
+          const confidenceScore = typeof result.confidence === "object"
+            ? Math.round((result.confidence.score || 0) * 100)
+            : 0
 
-      askQuestion.mutate(content, {
-        onSuccess: (response) => {
-          const aiMsg = ragResponseToMessage(response, caseName)
-          setMessages((prev) => [...prev, aiMsg])
-          setSelectedCitations(aiMsg.citations || [])
-        },
-        onError: () => {
-          const errorMsg: QueryMessage = {
-            id: `msg-${Date.now()}`,
+          const aiMsg: QueryMessage = {
+            id: `msg-${Date.now() + 1}`,
             role: "assistant",
-            content: "Sorry, I was unable to process your question. Please try again.",
+            content: result.answer,
+            citations,
+            confidenceScore,
+            timestamp: new Date().toISOString(),
+          }
+          setMessages((prev) => [...prev, aiMsg])
+          setSelectedCitations(citations)
+        } else {
+          const errorMsg: QueryMessage = {
+            id: `msg-${Date.now() + 1}`,
+            role: "assistant",
+            content: result.error || "Sorry, I couldn't generate an answer. Please try rephrasing your question.",
             timestamp: new Date().toISOString(),
           }
           setMessages((prev) => [...prev, errorMsg])
-        },
-      })
-    },
-    [askQuestion, caseName]
-  )
-
-  const handleFileUpload = (file: File) => {
-    createCaseMut.mutate(
-      { name: file.name.replace(/\.[^/.]+$/, ""), file },
-      {
-        onSuccess: (data) => {
-          router.push(`/matters/${data.id}`)
-        },
-      }
-    )
-  }
-
-  // Build documents list from the current case
-  const documents: (Document & Record<string, unknown>)[] = caseData
-    ? [
-        {
-          id: caseData.id,
-          matterId: caseData.id,
-          name: caseData.name,
-          fileType: "pdf" as const,
-          status: caseData.status === "ready" ? "indexed" : caseData.status === "error" ? "error" : "processing",
-          size: 0,
-          uploadedAt: caseData.created_at,
-          uploadedBy: "You",
-        } as Document & Record<string, unknown>,
-      ]
-    : []
-
-  const statusBadge = caseStatus === "ready" ? "active" : caseStatus === "error" ? "error" : "review"
-  const statusLabel = caseStatus === "ready" ? "Ready" : caseStatus === "error" ? "Error" : "Processing"
-
-  const docColumns = [
-    {
-      key: "name",
-      header: "Document",
-      render: (item: typeof documents[0]) => (
-        <div className="flex items-center gap-3">
-          <div className={cn(
-            "flex h-9 w-9 items-center justify-center rounded-lg",
-            item.fileType === "pdf" ? "bg-red-50" : item.fileType === "docx" ? "bg-blue-50" : "bg-slate-50"
-          )}>
-            <FileText className={cn(
-              "h-4 w-4",
-              item.fileType === "pdf" ? "text-red-500" : item.fileType === "docx" ? "text-blue-500" : "text-slate-500"
-            )} />
-          </div>
-          <div>
-            <p className="font-medium text-foreground text-sm">{item.name}</p>
-            <p className="text-xs text-muted">
-              {item.size > 0 ? `${(item.size / 1024 / 1024).toFixed(1)} MB` : ""}
-            </p>
-          </div>
-        </div>
-      ),
-    },
-    {
-      key: "status",
-      header: "Status",
-      render: (item: typeof documents[0]) => (
-        <Badge variant={item.status as "indexed" | "processing" | "error"}>
-          {item.status === "indexed" && <CheckCircle2 className="h-3 w-3 mr-1" />}
-          {item.status === "processing" && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
-          {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
-        </Badge>
-      ),
-    },
-    {
-      key: "uploadedBy",
-      header: "Uploaded By",
-      render: (item: typeof documents[0]) => <span className="text-muted text-sm">{item.uploadedBy as string}</span>,
-    },
-    {
-      key: "uploadedAt",
-      header: "Date",
-      render: (item: typeof documents[0]) => <span className="text-muted text-sm">{formatRelativeTime(item.uploadedAt)}</span>,
-    },
-    {
-      key: "actions",
-      header: "",
-      className: "w-24",
-      render: () => (
-        <div className="flex gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => setViewingDocument(true)}
-            title="View document"
-          >
-            <Eye className="h-4 w-4 text-muted" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8"><Trash2 className="h-4 w-4 text-muted" /></Button>
-        </div>
-      ),
-    },
-  ]
+        }
+      },
+      onError: () => {
+        const errorMsg: QueryMessage = {
+          id: `msg-${Date.now() + 1}`,
+          role: "assistant",
+          content: "An error occurred while processing your question. Please try again.",
+          timestamp: new Date().toISOString(),
+        }
+        setMessages((prev) => [...prev, errorMsg])
+      },
+    })
+  }, [askQuestion, matter])
 
   const auditColumns = [
     {
@@ -266,24 +144,45 @@ export default function MatterWorkspacePage() {
     },
   ]
 
-  if (caseLoading) {
+  if (isLoading) {
     return (
       <AppLayout title="Loading...">
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-6 w-6 animate-spin text-accent" />
+        <div className="flex items-center justify-center py-24">
+          <Loader2 className="h-6 w-6 animate-spin text-muted" />
           <span className="ml-2 text-muted">Loading matter...</span>
         </div>
       </AppLayout>
     )
   }
 
+  if (error || !matter) {
+    return (
+      <AppLayout title="Error">
+        <div className="py-24 text-center">
+          <p className="text-muted">Matter not found or backend unavailable.</p>
+          <Button variant="outline" className="mt-4" onClick={() => router.push("/matters")}>
+            <ArrowLeft className="h-4 w-4" /> Back to Matters
+          </Button>
+        </div>
+      </AppLayout>
+    )
+  }
+
+  const statusBadgeVariant = matter.status === "ready" ? "active" : matter.status === "processing" ? "review" : "error"
+  const statusLabel = matter.status === "ready" ? "Ready" : matter.status === "processing" ? "Processing" : "Error"
+
   return (
-    <AppLayout title={caseName}>
+    <AppLayout title={matter.name}>
       {/* Breadcrumb + Header */}
-      <div className="mb-6">
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+        className="mb-8"
+      >
         <button
           onClick={() => router.push("/matters")}
-          className="flex items-center gap-1 text-sm text-muted hover:text-foreground transition-colors mb-3 cursor-pointer"
+          className="flex items-center gap-1 text-sm text-muted hover:text-foreground transition-colors mb-4 cursor-pointer"
         >
           <ArrowLeft className="h-4 w-4" /> Back to Matters
         </button>
@@ -291,13 +190,11 @@ export default function MatterWorkspacePage() {
         <div className="flex items-start justify-between">
           <div>
             <div className="flex items-center gap-3">
-              <h2 className="text-2xl font-semibold text-foreground">{caseName}</h2>
-              <Badge variant={statusBadge as "active" | "review" | "error"}>
-                {statusLabel}
-              </Badge>
+              <h2 className="text-2xl font-display font-semibold text-foreground">{matter.name}</h2>
+              <Badge variant={statusBadgeVariant}>{statusLabel}</Badge>
             </div>
-            <p className="text-sm text-muted mt-1">
-              Created {caseData?.created_at ? formatRelativeTime(caseData.created_at) : "—"}
+            <p className="text-sm text-muted mt-1.5">
+              {matter.file_type.toUpperCase()} &middot; {matter.documents_count} chunks &middot; {matter.queries_count} queries &middot; Created {formatRelativeTime(matter.created_at)}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -305,55 +202,27 @@ export default function MatterWorkspacePage() {
               <Download className="h-4 w-4" />
               Export Bundle
             </Button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,.docx,.txt"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0]
-                if (file) handleFileUpload(file)
-              }}
-            />
-            <Button size="sm" onClick={() => fileInputRef.current?.click()}>
-              <Upload className="h-4 w-4" />
-              Upload Document
-            </Button>
           </div>
         </div>
+      </motion.div>
 
-        {/* Processing progress bar */}
-        {caseStatus === "processing" && (
-          <div className="mt-4 bg-white rounded-xl border border-border shadow-sm p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Loader2 className="h-4 w-4 animate-spin text-accent" />
-              <span className="text-sm font-medium text-foreground">
-                {progress ? STAGE_LABELS[progress.stage] || progress.stage : "Processing..."}
-              </span>
-              {progress?.detail && (
-                <span className="text-xs text-muted">— {progress.detail}</span>
-              )}
-            </div>
-            <Progress value={progressValue} />
-            {progress?.current != null && progress?.total != null && (
-              <p className="text-xs text-muted mt-1">
-                {progress.current} / {progress.total}
-              </p>
-            )}
+      {/* Processing indicator */}
+      {matter.status === "processing" && (
+        <div className="mb-6 rounded-xl border border-amber-200/60 bg-amber-50/60 p-4 flex items-center gap-3">
+          <Loader2 className="h-5 w-5 animate-spin text-amber-600" />
+          <div>
+            <p className="text-sm font-medium text-amber-800">Document is being processed</p>
+            <p className="text-xs text-amber-600 mt-0.5">This may take a few minutes. You can ask questions once processing is complete.</p>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Tabs */}
-      <Tabs defaultValue="ask-ai" className="space-y-4">
+      <Tabs defaultValue="ask-ai" className="space-y-6">
         <TabsList>
           <TabsTrigger value="ask-ai">
             <MessageSquare className="h-4 w-4 mr-2" />
             Ask AI
-          </TabsTrigger>
-          <TabsTrigger value="documents">
-            <FileText className="h-4 w-4 mr-2" />
-            Documents
           </TabsTrigger>
           <TabsTrigger value="contract-review">
             <Shield className="h-4 w-4 mr-2" />
@@ -371,71 +240,17 @@ export default function MatterWorkspacePage() {
 
         {/* Ask AI Tab */}
         <TabsContent value="ask-ai">
-          {caseStatus !== "ready" ? (
-            <div className="bg-white rounded-xl border border-border shadow-sm p-8 text-center">
-              {caseStatus === "processing" ? (
-                <>
-                  <Loader2 className="h-8 w-8 animate-spin text-accent mx-auto mb-3" />
-                  <p className="text-sm font-medium text-foreground">Document is still processing</p>
-                  <p className="text-xs text-muted mt-1">You can ask questions once processing is complete.</p>
-                </>
-              ) : (
-                <>
-                  <AlertTriangle className="h-8 w-8 text-red-500 mx-auto mb-3" />
-                  <p className="text-sm font-medium text-foreground">Document processing failed</p>
-                  <p className="text-xs text-muted mt-1">Please re-upload the document to try again.</p>
-                </>
-              )}
+          <div className="flex gap-6 h-[calc(100vh-280px)]">
+            <div className="flex-1 bg-white rounded-xl border border-border shadow-elevated overflow-hidden">
+              <ChatPanel
+                messages={messages}
+                onSend={handleSendMessage}
+                isLoading={askQuestion.isPending}
+                onSelectCitation={setSelectedCitations}
+              />
             </div>
-          ) : (
-            <div className="flex gap-6 h-[calc(100vh-280px)]">
-              <div className="flex-1 bg-white rounded-xl border border-border shadow-sm overflow-hidden">
-                <ChatPanel
-                  messages={messages}
-                  onSend={handleSendMessage}
-                  isLoading={askQuestion.isPending}
-                  onSelectCitation={setSelectedCitations}
-                />
-              </div>
-              <div className="w-80 bg-white rounded-xl border border-border shadow-sm p-5 overflow-y-auto">
-                <CitationPanel citations={selectedCitations} />
-              </div>
-            </div>
-          )}
-        </TabsContent>
-
-        {/* Documents Tab */}
-        <TabsContent value="documents">
-          <div className="space-y-4">
-            {/* Upload zone */}
-            <div
-              className="border-2 border-dashed border-border rounded-xl p-8 text-center hover:border-accent/50 transition-colors bg-white cursor-pointer"
-              onClick={() => fileInputRef.current?.click()}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => {
-                e.preventDefault()
-                const file = e.dataTransfer.files?.[0]
-                if (file) handleFileUpload(file)
-              }}
-            >
-              <Upload className="h-8 w-8 text-muted mx-auto mb-3" />
-              <p className="text-sm font-medium text-foreground">
-                Drag & drop files here, or click to browse
-              </p>
-              <p className="text-xs text-muted mt-1">
-                Supports PDF, DOCX, and TXT files up to 50MB
-              </p>
-            </div>
-
-            {/* Documents list */}
-            <div className="bg-white rounded-xl border border-border shadow-sm">
-              <div className="p-4 border-b border-border flex items-center justify-between">
-                <h3 className="font-semibold text-foreground">Documents ({documents.length})</h3>
-                <div className="flex items-center gap-2">
-                  <Input placeholder="Search documents..." className="w-48 h-8 text-sm" />
-                </div>
-              </div>
-              <DataTable columns={docColumns} data={documents} />
+            <div className="w-80 bg-white rounded-xl border border-border shadow-elevated p-5 overflow-y-auto">
+              <CitationPanel citations={selectedCitations} />
             </div>
           </div>
         </TabsContent>
@@ -444,26 +259,26 @@ export default function MatterWorkspacePage() {
         <TabsContent value="contract-review">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-4">
-              <div className="bg-white rounded-xl border border-border shadow-sm p-6">
-                <h3 className="text-lg font-semibold text-foreground mb-4">Risk Analysis</h3>
+              <div className="bg-white rounded-xl border border-border shadow-elevated p-6">
+                <h3 className="text-lg font-display font-semibold text-foreground mb-4">Risk Analysis</h3>
                 <div className="space-y-3">
                   {contractRisks.map((risk, idx) => (
                     <div
                       key={idx}
                       className={cn(
-                        "rounded-lg border p-4 transition-colors hover:shadow-sm cursor-pointer",
-                        risk.risk === "high" ? "border-red-200 bg-red-50/50" :
-                        risk.risk === "medium" ? "border-amber-200 bg-amber-50/50" :
-                        "border-emerald-200 bg-emerald-50/50"
+                        "rounded-xl border p-4 transition-colors hover:shadow-sm cursor-pointer",
+                        risk.risk === "high" ? "border-red-200 bg-red-50/60" :
+                        risk.risk === "medium" ? "border-amber-200 bg-amber-50/60" :
+                        "border-emerald-200 bg-emerald-50/60"
                       )}
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex items-start gap-3">
                           <AlertTriangle className={cn(
                             "h-5 w-5 mt-0.5 shrink-0",
-                            risk.risk === "high" ? "text-red-500" :
-                            risk.risk === "medium" ? "text-amber-500" :
-                            "text-emerald-500"
+                            risk.risk === "high" ? "text-red-600" :
+                            risk.risk === "medium" ? "text-amber-600" :
+                            "text-emerald-600"
                           )} />
                           <div>
                             <p className="font-medium text-foreground text-sm">{risk.clause}</p>
@@ -481,8 +296,8 @@ export default function MatterWorkspacePage() {
             </div>
 
             <div className="space-y-4">
-              <div className="bg-white rounded-xl border border-border shadow-sm p-6">
-                <h4 className="font-semibold text-foreground mb-4">Summary</h4>
+              <div className="bg-white rounded-xl border border-border shadow-elevated p-6">
+                <h4 className="font-display font-semibold text-foreground mb-4">Summary</h4>
                 <div className="space-y-3">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted">Total Clauses Analyzed</span>
@@ -490,32 +305,32 @@ export default function MatterWorkspacePage() {
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted">High Risk</span>
-                    <span className="font-medium text-red-600">2</span>
+                    <span className="font-medium text-red-700">1</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted">Medium Risk</span>
-                    <span className="font-medium text-amber-600">2</span>
+                    <span className="font-medium text-amber-700">1</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted">Low Risk</span>
-                    <span className="font-medium text-emerald-600">1</span>
+                    <span className="font-medium text-emerald-700">1</span>
                   </div>
                   <div className="border-t border-border pt-3">
                     <div className="flex justify-between text-sm mb-2">
                       <span className="text-muted">Overall Score</span>
-                      <span className="font-bold text-amber-600">62/100</span>
+                      <span className="font-bold text-amber-700">62/100</span>
                     </div>
                     <Progress value={62} />
                   </div>
                 </div>
               </div>
 
-              <div className="bg-white rounded-xl border border-border shadow-sm p-6">
-                <h4 className="font-semibold text-foreground mb-3">Missing Clauses</h4>
+              <div className="bg-white rounded-xl border border-border shadow-elevated p-6">
+                <h4 className="font-display font-semibold text-foreground mb-3">Missing Clauses</h4>
                 <ul className="space-y-2 text-sm">
                   {["Force Majeure", "Non-Compete", "Audit Rights"].map((clause) => (
                     <li key={clause} className="flex items-center gap-2 text-muted">
-                      <div className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                      <div className="h-1.5 w-1.5 rounded-full bg-foreground" />
                       {clause}
                     </li>
                   ))}
@@ -528,15 +343,15 @@ export default function MatterWorkspacePage() {
         {/* Draft Assistant Tab */}
         <TabsContent value="draft-assistant">
           <div className="max-w-3xl">
-            <div className="bg-white rounded-xl border border-border shadow-sm p-6">
-              <h3 className="text-lg font-semibold text-foreground mb-2">Draft Assistant</h3>
+            <div className="bg-white rounded-xl border border-border shadow-elevated p-6">
+              <h3 className="text-lg font-display font-semibold text-foreground mb-2">Draft Assistant</h3>
               <p className="text-sm text-muted mb-6">
                 Generate legal documents with inline source references from your matter documents.
               </p>
 
-              <div className="space-y-4">
+              <div className="space-y-5">
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1.5">Document Type</label>
+                  <label className="block text-sm font-medium text-foreground mb-2">Document Type</label>
                   <Select value={draftType} onValueChange={setDraftType}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select document type" />
@@ -552,10 +367,10 @@ export default function MatterWorkspacePage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1.5">Instructions</label>
+                  <label className="block text-sm font-medium text-foreground mb-2">Instructions</label>
                   <textarea
                     placeholder="Describe what you need drafted. Be specific about the audience, key points to cover, and any constraints..."
-                    className="flex min-h-[120px] w-full rounded-md border border-input bg-white px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent resize-none"
+                    className="flex min-h-[120px] w-full rounded-lg border border-input bg-white px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-foreground/10 focus:border-foreground/20 resize-none"
                   />
                 </div>
 
@@ -570,9 +385,9 @@ export default function MatterWorkspacePage() {
 
         {/* Audit Log Tab */}
         <TabsContent value="audit-log">
-          <div className="bg-white rounded-xl border border-border shadow-sm">
+          <div className="bg-white rounded-xl border border-border shadow-elevated">
             <div className="p-4 border-b border-border flex items-center justify-between">
-              <h3 className="font-semibold text-foreground">Activity Log</h3>
+              <h3 className="font-display font-semibold text-foreground">Activity Log</h3>
               <Button variant="outline" size="sm">
                 <Download className="h-4 w-4" />
                 Export Log
@@ -582,15 +397,6 @@ export default function MatterWorkspacePage() {
           </div>
         </TabsContent>
       </Tabs>
-
-      {/* Document Viewer dialog */}
-      <DocumentViewer
-        open={viewingDocument}
-        onClose={() => setViewingDocument(false)}
-        caseId={caseId}
-        caseName={caseName}
-        fileType={caseData?.file_type}
-      />
     </AppLayout>
   )
 }
