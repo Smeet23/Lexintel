@@ -1,49 +1,50 @@
 # FastAPI & Web Framework
-fastapi==0.109.0
-uvicorn==0.27.0
-python-multipart==0.0.6
+fastapi>=0.109.0,<1.0.0
+uvicorn>=0.27.0
+python-multipart>=0.0.6
 
 # Configuration & Environment
-python-dotenv==1.0.0
+python-dotenv>=1.0.0
 pydantic>=2.7.4,<3.0.0
 pydantic-settings>=2.1.0
 
 # Database & ORM
-sqlalchemy==2.0.23
-psycopg2-binary==2.9.9
-alembic==1.13.0
+sqlalchemy>=2.0.23,<3.0.0
+psycopg2-binary>=2.9.9
+alembic>=1.13.0
 
 # RAG Pipeline
-langchain>=0.3.0
-langchain-community>=0.3.0
-langchain-google-genai>=2.0.0
+langchain>=0.3.0,<0.4.0
+langchain-community>=0.3.0,<0.4.0
+langchain-google-genai>=2.0.0,<3.0.0
 google-generativeai>=0.8.0
-langchain-experimental>=0.3.0
-langchain-huggingface>=0.1.0
-langchain-text-splitters>=0.3.0
-qdrant-client==1.16.1
-pymupdf>=1.24.0
-pymupdf4llm>=0.0.10
-python-docx==1.1.0
+langchain-experimental>=0.3.0,<0.4.0
+langchain-huggingface>=0.1.0,<0.2.0
+langchain-text-splitters>=0.3.0,<0.4.0
+qdrant-client>=1.16.1
+pymupdf>=1.27.0
+pymupdf4llm>=0.3.0
+pymupdf-layout
+python-docx>=1.1.0
 sentence-transformers>=2.2.2
 tenacity>=8.2.0
 
 # Cloud Storage
-azure-storage-blob==12.19.0
+azure-storage-blob>=12.19.0
 
 # Async Support
-aiofiles==23.2.1
-sse-starlette==1.8.2
+aiofiles>=23.2.1
+sse-starlette>=1.8.2
 
 # Background Jobs
-celery==5.3.4
-redis==5.0.1
+celery>=5.3.4,<6.0.0
+redis>=5.0.1
 
-# Testing (included in single file for MVP)
-pytest==7.4.3
-pytest-cov==4.1.0
-pytest-asyncio==0.21.1
-httpx==0.25.2
+# Testing
+pytest>=7.4.3
+pytest-cov>=4.1.0
+pytest-asyncio>=0.21.1
+httpx>=0.25.2
 
 # Type hints & Utilities
-sqlalchemy-utils==0.41.1
+sqlalchemy-utils>=0.41.1

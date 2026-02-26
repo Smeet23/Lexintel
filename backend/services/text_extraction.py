@@ -9,6 +9,7 @@ import logging
 import tempfile
 import os
 from typing import List, Dict
+import pymupdf.layout  # Must import BEFORE pymupdf4llm to enable layout analysis
 import fitz  # PyMuPDF
 from docx import Document as DocxDocument
 
@@ -38,9 +39,12 @@ def extract_pdf_text_structured(file_bytes: bytes) -> List[Dict[str, str]]:
         doc = fitz.open(stream=file_bytes, filetype="pdf")
 
         # Use pymupdf4llm for markdown extraction with page chunks
+        # header=False, footer=False: ML-based running header/footer removal (via pymupdf-layout)
         page_chunks = pymupdf4llm.to_markdown(
             doc,
-            page_chunks=True
+            page_chunks=True,
+            header=False,
+            footer=False
         )
 
         if not page_chunks:

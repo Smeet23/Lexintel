@@ -2,11 +2,9 @@
 
 Strategy (structure-first, then semantics):
 1. If markdown content (from pymupdf4llm/DOCX): split on headers first
-2. If plain text: use section_detector to find legal boundaries
-3. Within each section: SemanticChunker splits by semantic similarity
-4. Fallback: RecursiveCharacterTextSplitter if SemanticChunker fails
+2. Within each section: SemanticChunker splits by semantic similarity
+3. Fallback: RecursiveCharacterTextSplitter if SemanticChunker fails
 """
-import bisect
 import os
 import re
 import logging
@@ -22,14 +20,6 @@ except ImportError:
         from services.text_extraction import extract_text
     except ImportError:
         from .text_extraction import extract_text
-
-try:
-    from backend.services.section_detector import detect_sections
-except ImportError:
-    try:
-        from services.section_detector import detect_sections
-    except ImportError:
-        from .section_detector import detect_sections
 
 logger = logging.getLogger(__name__)
 
@@ -321,33 +311,23 @@ def _chunk_markdown_content(sections: List[Dict]) -> List[Dict[str, str]]:
                         "section_type": "markdown_header",
                     })
         else:
-            # No markdown headers found — use section detector on the text content
-            # This catches legal headers (ARTICLE, SECTION, etc.) even in markdown format
-            detected = detect_sections(content)
-            for det_section in detected:
-                sec_content = det_section.get("content", "")
-                sec_header = det_section.get("header", "")
-                sec_type = det_section.get("section_type", "body")
-
-                if not sec_content.strip():
-                    continue
-
-                sub_chunks = _split_text_semantic(sec_content, semantic_chunker)
-                for sub_chunk in sub_chunks:
-                    chunk_counter += 1
-                    name = sec_header or _extract_section_label(sub_chunk, location)
-                    all_chunks.append({
-                        "content": sub_chunk,
-                        "page_num": location,
-                        "section_name": name or f"Page {location} chunk {chunk_counter}",
-                        "section_type": sec_type,
-                    })
+            # No markdown headers found — semantic split the page content directly
+            sub_chunks = _split_text_semantic(content, semantic_chunker)
+            for sub_chunk in sub_chunks:
+                chunk_counter += 1
+                name = _extract_section_label(sub_chunk, location)
+                all_chunks.append({
+                    "content": sub_chunk,
+                    "page_num": location,
+                    "section_name": name or f"Page {location} chunk {chunk_counter}",
+                    "section_type": "body",
+                })
 
     return all_chunks
 
 
 def _chunk_plain_text(sections: List[Dict]) -> List[Dict[str, str]]:
-    """Chunk plain-text sections using section detection + semantics.
+    """Chunk plain-text sections using semantic splitting.
 
     Args:
         sections: Extracted sections without markdown formatting
@@ -357,59 +337,25 @@ def _chunk_plain_text(sections: List[Dict]) -> List[Dict[str, str]]:
     """
     semantic_chunker = _get_semantic_chunker()
 
-    # Combine all sections into one text for section detection
-    full_text = "\n\n".join(s.get("content", "") for s in sections if s.get("content", "").strip())
-
-    if not full_text.strip():
-        return []
-
-    # Build a sorted location map for O(log n) bisect lookup
-    location_starts = []
-    location_values = []
-    pos = 0
-    for s in sections:
-        content = s.get("content", "")
-        if content.strip():
-            location_starts.append(pos)
-            location_values.append(s.get("location", ""))
-            pos += len(content) + 2  # +2 for "\n\n" separator
-
-    def _find_location(char_pos: int) -> str:
-        """Find location string for a character position using bisect (O(log n))."""
-        if not location_starts:
-            return ""
-        idx = bisect.bisect_right(location_starts, char_pos) - 1
-        if 0 <= idx < len(location_values):
-            return location_values[idx]
-        return location_values[-1] if location_values else ""
-
-    # Detect legal sections
-    detected = detect_sections(full_text)
-
     all_chunks = []
     chunk_counter = 0
 
-    for det_section in detected:
-        section_content = det_section.get("content", "")
-        section_header = det_section.get("header", "")
-        section_type = det_section.get("section_type", "body")
-        start_pos = det_section.get("start_pos", 0)
+    for section in sections:
+        content = section.get("content", "")
+        location = section.get("location", "")
 
-        if not section_content.strip():
+        if not content.strip():
             continue
 
-        location = _find_location(start_pos)
-
-        # Semantic split within each detected section
-        sub_chunks = _split_text_semantic(section_content, semantic_chunker)
+        sub_chunks = _split_text_semantic(content, semantic_chunker)
         for sub_chunk in sub_chunks:
             chunk_counter += 1
-            name = section_header or _extract_section_label(sub_chunk, location)
+            name = _extract_section_label(sub_chunk, location)
             all_chunks.append({
                 "content": sub_chunk,
                 "page_num": location,
                 "section_name": name or f"Page {location} chunk {chunk_counter}",
-                "section_type": section_type,
+                "section_type": "body",
             })
 
     return all_chunks
@@ -422,7 +368,7 @@ def chunk_document_from_blob(blob_content: bytes, file_type: str = "pdf") -> Lis
     Pipeline:
     1. Extract text (structured where possible)
     2. If markdown format: header split → semantic split
-    3. If plain text: section detect → semantic split
+    3. If plain text: semantic split per section
     4. Fallback: RecursiveCharacterTextSplitter
 
     Args:
