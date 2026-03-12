@@ -6,9 +6,6 @@ from sqlalchemy.orm import relationship, declarative_base
 from datetime import datetime, timezone
 import uuid
 
-# Demo user UUID (seeded in migration 2)
-DEMO_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
-
 # Create Base for model definitions
 Base = declarative_base()
 
@@ -18,33 +15,24 @@ class MatterStatus(str, enum.Enum):
     PROCESSING = "processing"
     READY = "ready"
     ERROR = "error"
-
-
-class User(Base):
-    __tablename__ = "users"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    email = Column(String(255), nullable=False, unique=True, index=True)
-    password_hash = Column(String(255), nullable=False)
-    is_deleted = Column(Boolean, default=False, nullable=False, index=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+    CANCELLED = "cancelled"
 
 
 class Matter(Base):
     __tablename__ = "matters"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, default=DEMO_USER_ID, index=True)
     name = Column(String(255), nullable=False)
     blob_storage_path = Column(String(500), nullable=False)
     file_type = Column(String(10), nullable=False, default="pdf")
     status = Column(String(50), default="processing", nullable=False, index=True)
+    celery_task_id = Column(String(255), nullable=True)  # For cancelling processing
     is_deleted = Column(Boolean, default=False, nullable=False, index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     # Relationships
+    documents = relationship("Document", back_populates="matter")
     chunks = relationship("Chunk", back_populates="matter")
     queries = relationship("Query", back_populates="matter")
 
@@ -52,21 +40,49 @@ class Matter(Base):
         return f"<Matter(id={self.id}, name={self.name}, status={self.status})>"
 
 
+class Document(Base):
+    """A single uploaded file belonging to a matter"""
+    __tablename__ = "documents"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    matter_id = Column(UUID(as_uuid=True), ForeignKey("matters.id"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    blob_storage_path = Column(String(500), nullable=False)
+    file_type = Column(String(10), nullable=False, default="pdf")
+    status = Column(String(50), default="processing", nullable=False, index=True)
+    celery_task_id = Column(String(255), nullable=True)
+    summary = Column(Text, nullable=True)  # Gemini-generated 1-2 sentence summary
+    document_type = Column(String(100), nullable=True)  # statute/contract/judgment/regulation/other
+    jurisdiction = Column(String(100), nullable=True)  # US/UK/EU/AU/CA/SG/IN/UN/other
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+    # Relationships
+    matter = relationship("Matter", back_populates="documents")
+    chunks = relationship("Chunk", back_populates="document")
+
+    def __repr__(self):
+        return f"<Document(id={self.id}, name={self.name}, status={self.status})>"
+
+
 class Chunk(Base):
     __tablename__ = "chunks"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     matter_id = Column(UUID(as_uuid=True), ForeignKey("matters.id"), nullable=False, index=True)
+    document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id"), nullable=False, index=True)
     page_num = Column(String(50), nullable=True)
     section_name = Column(String(255), nullable=True)
     section_type = Column(String(100), nullable=True)  # Legal section type (article, exhibit, etc.)
     content = Column(Text, nullable=False)
     embedding_hash = Column(String(255), nullable=True)  # SHA256 hash for deduplication
-    chunk_sequence = Column(Integer, nullable=True)  # Order within matter
+    concepts = Column(JSON, nullable=True, default=list)  # YAKE-extracted keywords
+    chunk_sequence = Column(Integer, nullable=True)  # Order within document
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     # Relationships
     matter = relationship("Matter", back_populates="chunks")
+    document = relationship("Document", back_populates="chunks")
 
     __table_args__ = (
         Index('idx_matter_id_sequence', 'matter_id', 'chunk_sequence'),

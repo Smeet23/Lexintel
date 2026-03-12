@@ -41,30 +41,18 @@ MARKDOWN_HEADERS = [
 
 
 def _clean_markdown_artifacts(text: str) -> str:
-    """Clean common PDF-to-markdown extraction artifacts.
+    """Clean excessive whitespace from extracted text.
 
-    Fixes bold-separated words like '**P** **ART** **1**' → 'PART 1'
-    and removes excessive whitespace.
+    Only collapses multiple spaces — other regex patterns (bold removal,
+    letter-space fixing, orphan removal) were removed after testing showed
+    they have zero positive effect on pymupdf4llm output and actively
+    corrupt legal text (e.g. "I DECLARE" → "IDECLARE").
     """
     if not text:
         return text
 
-    # Fix bold-separated characters: **P** **ART** **1** → P ART 1 → PART 1
-    # Pattern: **X** **Y** where X and Y are short fragments
-    cleaned = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
-
-    # Fix single-letter-space artifacts from PDF: "P ART" → "PART", "C HAPTER" → "CHAPTER"
-    # Only for ALL-CAPS sequences where a single letter is separated
-    cleaned = re.sub(r'\b([A-Z])\s([A-Z]{2,})\b', r'\1\2', cleaned)
-
-    # Collapse multiple spaces into one
-    cleaned = re.sub(r'  +', ' ', cleaned)
-
-    # Remove orphan single lowercase letters on their own line (OCR artifacts).
-    # Preserve uppercase letters — they may be Roman numerals (I, V, X) or exhibit labels (A, B).
-    cleaned = re.sub(r'\n\s*([a-z])\s*\n', '\n', cleaned)
-
-    return cleaned
+    # Collapse multiple spaces into one (safe, no false positives)
+    return re.sub(r'  +', ' ', text)
 
 
 def _merge_small_chunks(chunks: List[Dict[str, str]]) -> List[Dict[str, str]]:

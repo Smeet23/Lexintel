@@ -9,7 +9,6 @@ import logging
 import tempfile
 import os
 from typing import List, Dict
-import pymupdf.layout  # Must import BEFORE pymupdf4llm to enable layout analysis
 import fitz  # PyMuPDF
 from docx import Document as DocxDocument
 

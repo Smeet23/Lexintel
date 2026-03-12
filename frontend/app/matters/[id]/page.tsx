@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useCallback } from "react"
+import React, { useState, useCallback, useEffect, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import {
   ArrowLeft,
@@ -8,22 +8,32 @@ import {
   Shield,
   PenLine,
   ClipboardList,
+  FileText,
   Loader2,
   AlertTriangle,
   Download,
+  Square,
 } from "lucide-react"
 import { motion } from "framer-motion"
 import AppLayout from "@/layouts/AppLayout"
 import ChatPanel from "@/components/ChatPanel"
 import CitationPanel from "@/components/CitationPanel"
+import DocumentTab from "@/components/DocumentTab"
 import DataTable from "@/components/DataTable"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Progress } from "@/components/ui/progress"
 import { cn, formatRelativeTime } from "@/lib/utils"
-import { useMatter, useAskQuestion } from "@/hooks/use-matters"
+import { useMatter, useAskQuestion, useCancelMatterProcessing, useQueryHistory } from "@/hooks/use-matters"
+import { useMatterProgress } from "@/hooks/use-progress"
 import type { QueryMessage, Citation, AuditEntry } from "@/lib/types"
 
 // Mock audit log (no backend endpoint for this yet)
@@ -46,10 +56,49 @@ export default function MatterWorkspacePage() {
 
   const [messages, setMessages] = useState<QueryMessage[]>([])
   const [selectedCitations, setSelectedCitations] = useState<Citation[]>([])
+  const [chunkPreview, setChunkPreview] = useState<Citation | null>(null)
   const [draftType, setDraftType] = useState("")
 
   const { data: matter, isLoading, error } = useMatter(matterId)
+  const { data: queryHistory } = useQueryHistory(matterId)
   const askQuestion = useAskQuestion(matterId)
+  const cancelProcessing = useCancelMatterProcessing(matterId)
+  const { progress } = useMatterProgress(matterId, matter?.status === "processing")
+  const historyRestoredRef = useRef(false)
+
+  // Load conversation history on mount (runs exactly once when both data are ready)
+  useEffect(() => {
+    if (historyRestoredRef.current || !queryHistory?.length || !matter) return
+    historyRestoredRef.current = true
+
+    const restored: QueryMessage[] = []
+    for (const item of queryHistory) {
+      restored.push({
+        id: `hist-q-${item.id}`,
+        role: "user",
+        content: item.question,
+        timestamp: item.created_at,
+      })
+
+      const citations: Citation[] = (item.citations || []).map((s) => ({
+        documentName: (s as any).document_name || matter.name,
+        pageNumber: parseInt(s.page_num) || 0,
+        section: (s as any).section_name || "",
+        excerpt: s.content?.slice(0, 200) || "",
+        relevanceScore: s.relevance_score || 0,
+        content: s.content ?? undefined,
+      }))
+
+      restored.push({
+        id: `hist-a-${item.id}`,
+        role: "assistant",
+        content: item.answer,
+        citations: citations.length > 0 ? citations : undefined,
+        timestamp: item.created_at,
+      })
+    }
+    setMessages(restored)
+  }, [queryHistory, matter])
 
   const handleSendMessage = useCallback((content: string) => {
     const userMsg: QueryMessage = {
@@ -65,11 +114,12 @@ export default function MatterWorkspacePage() {
         if (result.answer) {
           // Map backend sources to Citation format
           const citations: Citation[] = (result.sources || []).map((s) => ({
-            documentName: matter?.name || "Document",
+            documentName: s.document_name || matter?.name || "Document",
             pageNumber: parseInt(s.page_num) || 0,
-            section: "",
+            section: s.section_name || "",
             excerpt: s.content?.slice(0, 200) || "",
             relevanceScore: s.relevance_score || 0,
+            content: s.content ?? undefined,
           }))
 
           const confidenceScore = typeof result.confidence === "object"
@@ -169,7 +219,7 @@ export default function MatterWorkspacePage() {
   }
 
   const statusBadgeVariant = matter.status === "ready" ? "active" : matter.status === "processing" ? "review" : "error"
-  const statusLabel = matter.status === "ready" ? "Ready" : matter.status === "processing" ? "Processing" : "Error"
+  const statusLabel = matter.status === "ready" ? "Ready" : matter.status === "processing" ? "Processing" : matter.status === "cancelled" ? "Cancelled" : "Error"
 
   return (
     <AppLayout title={matter.name}>
@@ -206,14 +256,58 @@ export default function MatterWorkspacePage() {
         </div>
       </motion.div>
 
-      {/* Processing indicator */}
+      {/* Processing indicator with real-time progress */}
       {matter.status === "processing" && (
-        <div className="mb-6 rounded-xl border border-amber-200/60 bg-amber-50/60 p-4 flex items-center gap-3">
-          <Loader2 className="h-5 w-5 animate-spin text-amber-600" />
-          <div>
-            <p className="text-sm font-medium text-amber-800">Document is being processed</p>
-            <p className="text-xs text-amber-600 mt-0.5">This may take a few minutes. You can ask questions once processing is complete.</p>
+        <div className="mb-6 rounded-xl border border-amber-200/60 bg-amber-50/60 p-4 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <Loader2 className="h-5 w-5 animate-spin text-amber-600 shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-amber-800">
+                  {progress?.message || "Document is being processed"}
+                </p>
+                <p className="text-xs text-amber-600 mt-0.5">
+                  {progress?.detail
+                    ? `${progress.detail} — Step ${progress.step} of ${progress.total_steps}`
+                    : "Connecting to processing pipeline..."}
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0 border-destructive/50 text-destructive hover:bg-destructive/10"
+              onClick={() => cancelProcessing.mutate()}
+              disabled={cancelProcessing.isPending}
+            >
+              {cancelProcessing.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <>
+                  <Square className="h-4 w-4 mr-1.5" />
+                  Cancel
+                </>
+              )}
+            </Button>
           </div>
+
+          {/* Progress bar */}
+          {progress && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs text-amber-700">
+                <span className="capitalize">{progress.stage}</span>
+                <span>{Math.round(((progress.step - 1) / progress.total_steps) * 100 + (progress.progress / progress.total_steps))}%</span>
+              </div>
+              <div className="h-2 w-full rounded-full bg-amber-200/60 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-amber-500 transition-all duration-500 ease-out"
+                  style={{
+                    width: `${Math.round(((progress.step - 1) / progress.total_steps) * 100 + (progress.progress / progress.total_steps))}%`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -223,6 +317,10 @@ export default function MatterWorkspacePage() {
           <TabsTrigger value="ask-ai">
             <MessageSquare className="h-4 w-4 mr-2" />
             Ask AI
+          </TabsTrigger>
+          <TabsTrigger value="documents">
+            <FileText className="h-4 w-4 mr-2" />
+            Documents
           </TabsTrigger>
           <TabsTrigger value="contract-review">
             <Shield className="h-4 w-4 mr-2" />
@@ -247,12 +345,44 @@ export default function MatterWorkspacePage() {
                 onSend={handleSendMessage}
                 isLoading={askQuestion.isPending}
                 onSelectCitation={setSelectedCitations}
+                onCitationClick={setChunkPreview}
               />
             </div>
             <div className="w-80 bg-white rounded-xl border border-border shadow-elevated p-5 overflow-y-auto">
-              <CitationPanel citations={selectedCitations} />
+              <CitationPanel
+                citations={selectedCitations}
+                onCitationClick={setChunkPreview}
+              />
             </div>
           </div>
+
+          {/* Chunk preview dialog (clickable sources) */}
+          <Dialog open={!!chunkPreview} onOpenChange={(open) => !open && setChunkPreview(null)}>
+            <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+              <DialogHeader>
+                <DialogTitle className="text-base">
+                  {chunkPreview?.documentName}
+                  {chunkPreview != null && (
+                    <span className="text-muted-foreground font-normal ml-2">
+                      Page {chunkPreview.pageNumber}
+                      {chunkPreview.section && ` · ${chunkPreview.section}`}
+                      <span className="ml-2 text-[11px] font-mono">
+                        {Math.round((chunkPreview.relevanceScore ?? 0) * 100)}% relevance
+                      </span>
+                    </span>
+                  )}
+                </DialogTitle>
+              </DialogHeader>
+              <div className="overflow-y-auto flex-1 pr-2 text-[13px] leading-relaxed text-foreground whitespace-pre-wrap border border-border rounded-lg p-4 bg-surface/50">
+                {chunkPreview?.content || chunkPreview?.excerpt || "No content."}
+              </div>
+            </DialogContent>
+          </Dialog>
+        </TabsContent>
+
+        {/* Documents Tab */}
+        <TabsContent value="documents">
+          <DocumentTab matterId={matterId} />
         </TabsContent>
 
         {/* Contract Review Tab */}

@@ -1,7 +1,9 @@
+from typing import List
 from fastapi import FastAPI, HTTPException, status, File, UploadFile, Form, Body, Query as QueryParam, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import ProgrammingError
 from datetime import datetime, timezone
 from uuid import UUID
 import uuid
@@ -17,7 +19,7 @@ logger = logging.getLogger(__name__)
 try:
     from backend.config import get_settings
     from backend.database import get_db
-    from backend.models import Matter, Chunk, Query
+    from backend.models import Matter, Chunk, Query, Document
     from backend.services.storage import upload_document_to_blob, download_document_from_blob, validate_file_format
     from backend.services.rag_engine import query_matter
     from backend.validators import validate_filename, validate_matter_name, validate_question, validate_file_type
@@ -27,7 +29,7 @@ except ImportError:
     try:
         from config import get_settings
         from database import get_db
-        from models import Matter, Chunk, Query
+        from models import Matter, Chunk, Query, Document
         from services.storage import upload_document_to_blob, download_document_from_blob, validate_file_format
         from services.rag_engine import query_matter
         from validators import validate_filename, validate_matter_name, validate_question, validate_file_type
@@ -36,7 +38,7 @@ except ImportError:
     except ImportError:
         from .config import get_settings
         from .database import get_db
-        from .models import Matter, Chunk, Query
+        from .models import Matter, Chunk, Query, Document
         from .services.storage import upload_document_to_blob, download_document_from_blob, validate_file_format
         from .services.rag_engine import query_matter
         from .validators import validate_filename, validate_matter_name, validate_question, validate_file_type
@@ -83,7 +85,13 @@ async def list_matters(
     db: Session = Depends(get_db)
 ):
     """List all matters"""
-    matters = db.query(Matter).filter(Matter.is_deleted == False).all()
+    try:
+        matters = db.query(Matter).filter(Matter.is_deleted == False).all()
+    except ProgrammingError as e:
+        if "does not exist" in (str(e.orig) if e.orig else "") or "does not exist" in str(e):
+            logger.warning("Matters table missing. Run: make db-init")
+            return []
+        raise
     return [
         {
             "id": str(matter.id),
@@ -118,14 +126,22 @@ async def get_matter(
             detail="Matter not found"
         )
 
+    from sqlalchemy import func
+    docs_count = db.query(func.count(Document.id)).filter(
+        Document.matter_id == matter_uuid
+    ).scalar()
+    queries_count = db.query(func.count(Query.id)).filter(
+        Query.matter_id == matter_uuid
+    ).scalar()
+
     return {
         "id": str(matter.id),
         "name": matter.name,
         "status": matter.status,
         "file_type": matter.file_type,
         "blob_storage_path": matter.blob_storage_path,
-        "documents_count": len(matter.chunks),
-        "queries_count": len(matter.queries),
+        "documents_count": docs_count,
+        "queries_count": queries_count,
         "created_at": matter.created_at.isoformat(),
         "updated_at": matter.updated_at.isoformat() if matter.updated_at else None
     }
@@ -134,92 +150,107 @@ async def get_matter(
 @app.post("/matters", response_model=dict)
 async def upload_matter(
     name: str = Form(...),
-    file: UploadFile = File(...),
+    files: List[UploadFile] = File(...),
     db: Session = Depends(get_db)
 ):
-    """Upload a matter document (PDF, DOCX, or TXT)"""
-    # Validate MIME type
+    """Create a matter with one or more documents (PDF, DOCX, TXT)"""
     allowed_types = [
         "application/pdf",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "text/plain"
     ]
-    if file.content_type not in allowed_types:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only PDF, DOCX, and TXT files are allowed"
-        )
 
-    # Validate filename using dedicated validator
-    if file.filename:
-        validate_filename(file.filename)
+    # Validate all files upfront
+    for file in files:
+        if file.content_type not in allowed_types:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Only PDF, DOCX, and TXT files are allowed. Got: {file.filename}"
+            )
+        if file.filename:
+            validate_filename(file.filename)
 
-    # Validate matter name using dedicated validator
     validate_matter_name(name)
 
     try:
-        # Read file content early for validation
-        file_content = await file.read()
-
-        # Detect and validate file type
-        try:
-            file_type = validate_file_type(file.content_type, file.filename)
-        except ValueError as e:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=str(e)
-            )
-
-        # Validate file format matches declared type
-        if not validate_file_format(file_content, file_type):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid {file_type.upper()} file format"
-            )
-
-        # Create matter record with status "processing"
+        # Create matter record
         matter_id = uuid.uuid4()
+        first_file_type = validate_file_type(files[0].content_type, files[0].filename)
         matter = Matter(
             id=matter_id,
             name=name,
             blob_storage_path="",
-            file_type=file_type,
+            file_type=first_file_type,
             status="processing"
         )
         db.add(matter)
         db.commit()
 
-        # Upload file to blob storage
-        blob_path = await upload_document_to_blob(file_content, str(matter_id), file.filename)
-
-        # Update matter with blob path
-        matter.blob_storage_path = blob_path
-        db.commit()
-        db.refresh(matter)
-
-        # Publish "uploaded" progress event
-        publish_uploaded(str(matter_id), file.filename or "document")
-
-        # Send document processing task to Celery queue
         try:
             from .celery_app import celery_app
         except ImportError:
             from celery_app import celery_app
 
-        task = celery_app.send_task(
-            'backend.tasks.process_document_task',
-            args=(str(matter_id),),
-            queue='celery'
-        )
-        logger.info(f"Queued document processing task {task.id} for matter {matter_id}")
+        task_ids = []
+
+        # Process each file
+        for file in files:
+            file_content = await file.read()
+
+            try:
+                file_type = validate_file_type(file.content_type, file.filename)
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=str(e)
+                )
+
+            if not validate_file_format(file_content, file_type):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid {file_type.upper()} file: {file.filename}"
+                )
+
+            # Upload to blob storage
+            blob_path = await upload_document_to_blob(file_content, str(matter_id), file.filename)
+
+            # Create document record
+            document_id = uuid.uuid4()
+            document = Document(
+                id=document_id,
+                matter_id=matter_id,
+                name=file.filename or name,
+                blob_storage_path=blob_path,
+                file_type=file_type,
+                status="processing"
+            )
+            db.add(document)
+            db.flush()
+
+            # Queue processing task for this document
+            task = celery_app.send_task(
+                'backend.tasks.process_document_task',
+                args=(str(matter_id), str(document_id)),
+                queue='celery'
+            )
+            document.celery_task_id = task.id
+            task_ids.append(task.id)
+            logger.info(f"Queued processing task {task.id} for document {document_id} ({file.filename})")
+
+        # Update matter blob_storage_path to first document's path
+        matter.blob_storage_path = blob_path
+        db.commit()
+        db.refresh(matter)
+
+        publish_uploaded(str(matter_id), f"{len(files)} document(s)")
 
         return {
             "id": str(matter.id),
             "name": matter.name,
             "status": matter.status,
             "file_type": matter.file_type,
-            "blob_storage_path": matter.blob_storage_path,
-            "task_id": task.id,
+            "documents_count": len(files),
+            "task_ids": task_ids,
             "created_at": matter.created_at.isoformat()
         }
 
@@ -260,7 +291,415 @@ async def delete_matter(
     matter.updated_at = datetime.now(timezone.utc)
     db.commit()
 
+    # Best-effort Qdrant collection cleanup after soft-delete
+    try:
+        from backend.services.vector_store import delete_collection
+    except ImportError:
+        try:
+            from services.vector_store import delete_collection
+        except ImportError:
+            from .services.vector_store import delete_collection
+    try:
+        delete_collection(str(matter_uuid))
+        logger.info(f"Cleaned up Qdrant collection for deleted matter {matter_id}")
+    except Exception as cleanup_err:
+        logger.warning(f"Qdrant cleanup on delete failed (non-fatal): {cleanup_err}")
+
     return {"id": str(matter.id), "deleted": True}
+
+
+@app.post("/matters/{matter_id}/cancel", response_model=dict)
+def cancel_matter_processing(
+    matter_id: str,
+    db: Session = Depends(get_db)
+):
+    """Cancel ongoing document processing for a matter.
+
+    Uses a plain `def` (not async) so FastAPI runs it in a threadpool,
+    avoiding event-loop blocking from the `with_for_update()` row lock.
+    """
+    try:
+        matter_uuid = UUID(matter_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid matter ID format"
+        )
+
+    # Row-level lock prevents race between cancel and task completion
+    matter = db.query(Matter).filter(
+        Matter.id == matter_uuid, Matter.is_deleted == False
+    ).with_for_update().first()
+    if not matter:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Matter not found"
+        )
+
+    if matter.status != "processing":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Matter is not processing"
+        )
+
+    # Revoke Celery tasks for ALL processing documents (not just matter-level task)
+    try:
+        from .celery_app import celery_app
+    except ImportError:
+        from celery_app import celery_app
+
+    processing_docs = db.query(Document).filter(
+        Document.matter_id == matter_uuid,
+        Document.status == "processing"
+    ).all()
+    for doc in processing_docs:
+        if doc.celery_task_id:
+            celery_app.control.revoke(doc.celery_task_id, terminate=True)
+            logger.info(f"Revoked Celery task {doc.celery_task_id} for document {doc.id}")
+        doc.status = "cancelled"
+        doc.celery_task_id = None
+
+    # Update matter status and commit BEFORE network cleanup calls
+    matter.status = "cancelled"
+    matter.celery_task_id = None
+    matter.updated_at = datetime.now(timezone.utc)
+    db.commit()
+
+    # Clean up any partial vectors in Qdrant (best-effort, after commit)
+    try:
+        from backend.services.vector_store import delete_collection
+    except ImportError:
+        try:
+            from services.vector_store import delete_collection
+        except ImportError:
+            from .services.vector_store import delete_collection
+    try:
+        delete_collection(str(matter_uuid))
+        logger.info(f"Cleaned up Qdrant collection for cancelled matter {matter_id}")
+    except Exception as cleanup_err:
+        logger.warning(f"Qdrant cleanup on cancel failed (non-fatal): {cleanup_err}")
+
+    return {"id": str(matter.id), "cancelled": True, "status": "cancelled"}
+
+
+# ============================================
+# DOCUMENT MANAGEMENT ENDPOINTS
+# ============================================
+
+@app.get("/matters/{matter_id}/documents", response_model=list)
+async def list_matter_documents(
+    matter_id: str,
+    db: Session = Depends(get_db)
+):
+    """List all documents for a matter"""
+    try:
+        matter_uuid = UUID(matter_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid matter ID format"
+        )
+
+    matter = db.query(Matter).filter(Matter.id == matter_uuid, Matter.is_deleted == False).first()
+    if not matter:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Matter not found"
+        )
+
+    # Use a subquery to get chunk counts in a single query (avoids N+1)
+    from sqlalchemy import func
+    chunk_counts = (
+        db.query(Chunk.document_id, func.count(Chunk.id).label("chunk_count"))
+        .filter(Chunk.matter_id == matter_uuid)
+        .group_by(Chunk.document_id)
+        .subquery()
+    )
+    documents = (
+        db.query(Document, chunk_counts.c.chunk_count)
+        .outerjoin(chunk_counts, Document.id == chunk_counts.c.document_id)
+        .filter(Document.matter_id == matter_uuid)
+        .order_by(Document.created_at.asc())
+        .all()
+    )
+    return [
+        {
+            "id": str(doc.id),
+            "name": doc.name,
+            "file_type": doc.file_type,
+            "status": doc.status,
+            "chunk_count": count or 0,
+            "summary": doc.summary,
+            "document_type": doc.document_type,
+            "jurisdiction": doc.jurisdiction,
+            "created_at": doc.created_at.isoformat(),
+        }
+        for doc, count in documents
+    ]
+
+
+@app.post("/matters/{matter_id}/documents", response_model=dict)
+async def upload_matter_document(
+    matter_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """Upload an additional document to an existing matter"""
+    try:
+        matter_uuid = UUID(matter_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid matter ID format"
+        )
+
+    matter = db.query(Matter).filter(Matter.id == matter_uuid, Matter.is_deleted == False).first()
+    if not matter:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Matter not found"
+        )
+
+    # Validate MIME type
+    allowed_types = [
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "text/plain"
+    ]
+    if file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only PDF, DOCX, and TXT files are allowed"
+        )
+
+    if file.filename:
+        validate_filename(file.filename)
+
+    try:
+        file_content = await file.read()
+
+        try:
+            file_type = validate_file_type(file.content_type, file.filename)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e)
+            )
+
+        if not validate_file_format(file_content, file_type):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid {file_type.upper()} file format"
+            )
+
+        # Upload to blob storage
+        blob_path = await upload_document_to_blob(file_content, str(matter_uuid), file.filename)
+
+        # Create document record
+        document_id = uuid.uuid4()
+        document = Document(
+            id=document_id,
+            matter_id=matter_uuid,
+            name=file.filename or "document",
+            blob_storage_path=blob_path,
+            file_type=file_type,
+            status="processing"
+        )
+        db.add(document)
+
+        # Set matter back to processing
+        matter.status = "processing"
+        matter.updated_at = datetime.now(timezone.utc)
+        db.commit()
+
+        # Send processing task
+        try:
+            from .celery_app import celery_app
+        except ImportError:
+            from celery_app import celery_app
+
+        task = celery_app.send_task(
+            'backend.tasks.process_document_task',
+            args=(str(matter_uuid), str(document_id)),
+            queue='celery'
+        )
+        document.celery_task_id = task.id
+        db.commit()
+        logger.info(f"Queued processing task {task.id} for document {document_id} in matter {matter_id}")
+
+        return {
+            "id": str(document.id),
+            "matter_id": str(matter_uuid),
+            "name": document.name,
+            "file_type": document.file_type,
+            "status": document.status,
+            "task_id": task.id,
+            "created_at": document.created_at.isoformat()
+        }
+
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.exception(f"Failed to upload document: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upload document. Please try again."
+        )
+
+
+@app.get("/matters/{matter_id}/documents/{document_id}/download")
+async def download_document(
+    matter_id: str,
+    document_id: str,
+    db: Session = Depends(get_db)
+):
+    """Download a specific document file"""
+    try:
+        matter_uuid = UUID(matter_id)
+        doc_uuid = UUID(document_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid ID format"
+        )
+
+    # Verify parent matter is not soft-deleted
+    matter = db.query(Matter).filter(Matter.id == matter_uuid, Matter.is_deleted == False).first()
+    if not matter:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Matter not found")
+
+    document = db.query(Document).filter(
+        Document.id == doc_uuid,
+        Document.matter_id == matter_uuid
+    ).first()
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found"
+        )
+
+    content_type_map = {
+        "pdf": "application/pdf",
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "txt": "text/plain",
+    }
+    media_type = content_type_map.get(document.file_type, "application/octet-stream")
+
+    ext = document.file_type if document.file_type else "bin"
+    name_stem = document.name
+    if name_stem.lower().endswith(f".{ext}"):
+        name_stem = name_stem[: -(len(ext) + 1)]
+    filename = f"{name_stem}.{ext}"
+
+    try:
+        file_bytes = download_document_from_blob(document.blob_storage_path)
+    except BlobDownloadException as e:
+        logger.error(f"Failed to download document {document_id}: {e.message}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve document from storage."
+        )
+
+    return StreamingResponse(
+        io.BytesIO(file_bytes),
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Content-Length": str(len(file_bytes)),
+        }
+    )
+
+
+@app.delete("/matters/{matter_id}/documents/{document_id}", response_model=dict)
+def delete_document(matter_id: str, document_id: str, db: Session = Depends(get_db)):
+    """Delete a document and its chunks from a matter.
+
+    Uses a plain `def` (not async) so FastAPI runs it in a threadpool,
+    avoiding event-loop blocking from the potential Celery revoke call.
+    """
+    try:
+        matter_uuid = UUID(matter_id)
+        doc_uuid = UUID(document_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid ID format"
+        )
+
+    matter = db.query(Matter).filter(Matter.id == matter_uuid, Matter.is_deleted == False).first()
+    if not matter:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Matter not found")
+
+    document = db.query(Document).filter(
+        Document.id == doc_uuid, Document.matter_id == matter_uuid
+    ).first()
+    if not document:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    # If document is processing, revoke its Celery task
+    if document.status == "processing" and document.celery_task_id:
+        try:
+            from .celery_app import celery_app
+        except ImportError:
+            from celery_app import celery_app
+        celery_app.control.revoke(document.celery_task_id, terminate=True)
+        logger.info(f"Revoked Celery task {document.celery_task_id} for document {doc_uuid}")
+
+    # Collect chunk IDs for vector cleanup (before deleting from DB)
+    chunk_rows = db.query(Chunk.id).filter(Chunk.document_id == doc_uuid).all()
+    chunk_ids = [str(row[0]) for row in chunk_rows]
+    blob_path = document.blob_storage_path
+
+    # Delete chunks and document from PostgreSQL FIRST (transactional)
+    db.query(Chunk).filter(Chunk.document_id == doc_uuid).delete()
+    db.delete(document)
+
+    # Re-derive matter status after deletion
+    remaining_statuses = [
+        row[0] for row in db.query(Document.status).filter(
+            Document.matter_id == matter_uuid, Document.id != doc_uuid
+        ).all()
+    ]
+    if not remaining_statuses or all(s == "ready" for s in remaining_statuses):
+        matter.status = "ready"
+    elif any(s == "processing" for s in remaining_statuses):
+        matter.status = "processing"
+    elif any(s == "error" for s in remaining_statuses):
+        matter.status = "error"
+    matter.updated_at = datetime.now(timezone.utc)
+
+    db.commit()
+
+    # Best-effort cleanup AFTER commit: Qdrant vectors + blob storage
+    if chunk_ids:
+        try:
+            from backend.services.vector_store import delete_vectors_by_document
+        except ImportError:
+            try:
+                from services.vector_store import delete_vectors_by_document
+            except ImportError:
+                from .services.vector_store import delete_vectors_by_document
+        try:
+            delete_vectors_by_document(str(matter_uuid), chunk_ids)
+        except Exception as e:
+            logger.warning(f"Qdrant vector cleanup failed (non-fatal): {e}")
+
+    if blob_path:
+        try:
+            from backend.services.storage import delete_blob
+        except ImportError:
+            try:
+                from services.storage import delete_blob
+            except ImportError:
+                from .services.storage import delete_blob
+        try:
+            delete_blob(blob_path)
+        except Exception as e:
+            logger.warning(f"Blob storage cleanup failed (non-fatal): {e}")
+
+    return {"id": str(doc_uuid), "deleted": True}
 
 
 # ============================================
@@ -285,8 +724,8 @@ async def ask_question(
             detail="Invalid matter ID format"
         )
 
-    # Check if matter exists
-    matter = db.query(Matter).filter(Matter.id == matter_uuid).first()
+    # Check if matter exists (exclude soft-deleted)
+    matter = db.query(Matter).filter(Matter.id == matter_uuid, Matter.is_deleted == False).first()
     if not matter:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -304,10 +743,28 @@ async def ask_question(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Matter processing failed. Please re-upload the document."
         )
+    elif matter.status == "cancelled":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Matter processing was cancelled. Please re-upload the document."
+        )
+
+    # Fetch recent conversation history for follow-up context
+    recent_queries = (
+        db.query(Query)
+        .filter(Query.matter_id == matter_uuid)
+        .order_by(Query.created_at.desc())
+        .limit(5)
+        .all()
+    )
+    conversation_history = [
+        {"question": q.question, "answer": q.answer}
+        for q in reversed(recent_queries)
+    ]
 
     # Get RAG response
     try:
-        rag_result = await query_matter(str(matter_uuid), question, db)
+        rag_result = await query_matter(str(matter_uuid), question, db, conversation_history=conversation_history)
 
         # Only store if answer was generated successfully
         if rag_result.get("answer"):
@@ -331,6 +788,45 @@ async def ask_question(
         )
 
 
+@app.get("/matters/{matter_id}/queries", response_model=list)
+async def get_query_history(
+    matter_id: str,
+    limit: int = QueryParam(50, ge=1, le=200),
+    db: Session = Depends(get_db)
+):
+    """Get conversation history for a matter, ordered by created_at ascending."""
+    try:
+        matter_uuid = UUID(matter_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid matter ID format"
+        )
+
+    matter = db.query(Matter).filter(Matter.id == matter_uuid, Matter.is_deleted == False).first()
+    if not matter:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Matter not found")
+
+    queries = (
+        db.query(Query)
+        .filter(Query.matter_id == matter_uuid)
+        .order_by(Query.created_at.asc())
+        .limit(limit)
+        .all()
+    )
+
+    return [
+        {
+            "id": str(q.id),
+            "question": q.question,
+            "answer": q.answer,
+            "citations": q.citations,
+            "created_at": q.created_at.isoformat(),
+        }
+        for q in queries
+    ]
+
+
 @app.get("/matters/{matter_id}/status", response_model=dict)
 async def get_matter_status(
     matter_id: str,
@@ -345,7 +841,7 @@ async def get_matter_status(
             detail="Invalid matter ID format"
         )
 
-    matter = db.query(Matter).filter(Matter.id == matter_uuid).first()
+    matter = db.query(Matter).filter(Matter.id == matter_uuid, Matter.is_deleted == False).first()
     if not matter:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -422,15 +918,14 @@ async def download_matter_document(
 @app.get("/matters/{matter_id}/chunks", response_model=list)
 async def get_matter_chunks(
     matter_id: str,
+    document_id: str = QueryParam(None, description="Filter chunks by document ID"),
     db: Session = Depends(get_db)
 ):
-    """Return all chunks for a matter ordered by chunk_sequence.
+    """Return chunks for a matter ordered by chunk_sequence.
 
-    Queries PostgreSQL directly (not Qdrant) so the document viewer can
-    display chunked content with section names and page numbers without
-    needing a search query.
+    Optionally filter by document_id. Without it, returns all chunks for the matter.
 
-    Response items: {id, page_num, section_name, section_type, content, chunk_sequence}
+    Response items: {id, document_id, page_num, section_name, section_type, content, chunk_sequence}
     """
     try:
         matter_uuid = UUID(matter_id)
@@ -447,20 +942,29 @@ async def get_matter_chunks(
             detail="Matter not found"
         )
 
-    chunks = (
-        db.query(Chunk)
-        .filter(Chunk.matter_id == matter_uuid)
-        .order_by(Chunk.chunk_sequence.asc().nullslast())
-        .all()
-    )
+    query = db.query(Chunk).filter(Chunk.matter_id == matter_uuid)
+
+    if document_id:
+        try:
+            doc_uuid = UUID(document_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid document ID format"
+            )
+        query = query.filter(Chunk.document_id == doc_uuid)
+
+    chunks = query.order_by(Chunk.chunk_sequence.asc().nullslast()).all()
 
     return [
         {
             "id": str(chunk.id),
+            "document_id": str(chunk.document_id) if chunk.document_id else None,
             "page_num": chunk.page_num,
             "section_name": chunk.section_name,
             "section_type": chunk.section_type,
             "content": chunk.content,
+            "concepts": chunk.concepts or [],
             "chunk_sequence": chunk.chunk_sequence,
         }
         for chunk in chunks
@@ -490,8 +994,8 @@ async def matter_progress_stream(
             detail="Invalid matter ID format"
         )
 
-    # Check matter exists
-    matter = db.query(Matter).filter(Matter.id == matter_uuid).first()
+    # Check matter exists (exclude soft-deleted)
+    matter = db.query(Matter).filter(Matter.id == matter_uuid, Matter.is_deleted == False).first()
     if not matter:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -517,9 +1021,30 @@ async def matter_progress_stream(
                 "data": json.dumps({"matter_id": matter_id, "status": "connected"})
             }
 
-            # Listen for messages
-            async for message in pubsub.listen():
-                if message["type"] == "message":
+            # Listen for messages with heartbeat and timeout
+            max_duration = 600  # 10 minutes max connection
+            heartbeat_interval = 15  # seconds
+            import time
+            start_time = time.monotonic()
+
+            while True:
+                # Check max duration
+                if time.monotonic() - start_time > max_duration:
+                    logger.info(f"SSE max duration reached for {channel}")
+                    yield {"event": "timeout", "data": json.dumps({"message": "Connection timeout, please reconnect"})}
+                    break
+
+                try:
+                    message = await asyncio.wait_for(
+                        pubsub.get_message(ignore_subscribe_messages=True),
+                        timeout=heartbeat_interval
+                    )
+                except asyncio.TimeoutError:
+                    # Send heartbeat
+                    yield {"event": "heartbeat", "data": json.dumps({"status": "connected"})}
+                    continue
+
+                if message and message["type"] == "message":
                     data = message["data"]
                     yield {"event": "progress", "data": data}
 

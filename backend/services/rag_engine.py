@@ -15,25 +15,25 @@ except ImportError:
         pass
 
 try:
-    from backend.services.embeddings import embed_text
+    from backend.services.embeddings import embed_text, embed_query as embed_query_fn
     from backend.services.vector_store import search_vectors
     from backend.services.document_summary import generate_document_summary
-    from backend.models import Matter, Query, Chunk
+    from backend.models import Matter, Document, Query, Chunk
     from backend.config import get_settings
     from backend.exceptions import QueryProcessingException, EmbeddingException, VectorStoreException
 except ImportError:
     try:
-        from services.embeddings import embed_text
+        from services.embeddings import embed_text, embed_query as embed_query_fn
         from services.vector_store import search_vectors
         from services.document_summary import generate_document_summary
-        from models import Matter, Query, Chunk
+        from models import Matter, Document, Query, Chunk
         from config import get_settings
         from exceptions import QueryProcessingException, EmbeddingException, VectorStoreException
     except ImportError:
-        from .embeddings import embed_text
+        from .embeddings import embed_text, embed_query as embed_query_fn
         from .vector_store import search_vectors
         from .document_summary import generate_document_summary
-        from ..models import Matter, Query, Chunk
+        from ..models import Matter, Document, Query, Chunk
         from ..config import get_settings
         from ..exceptions import QueryProcessingException, EmbeddingException, VectorStoreException
 
@@ -44,10 +44,10 @@ settings = get_settings()
 _RERANKER_MODEL = None
 
 # Gemini model name
-GEMINI_MODEL = "gemini-2.5-flash-lite"
+GEMINI_MODEL = settings.gemini_model
 
 # Configuration
-CONTEXT_TOKEN_BUDGET = 12_800
+CONTEXT_TOKEN_BUDGET = 50_000
 LEGAL_SYSTEM_PROMPT = """You are an expert legal assistant specialized in analyzing court documents, case law, and legal statutes. Your role is to:
 1. Answer questions ONLY based on the provided document excerpts
 2. Provide precise, factually accurate responses
@@ -59,12 +59,14 @@ LEGAL_SYSTEM_PROMPT = """You are an expert legal assistant specialized in analyz
 4. Distinguish between facts, arguments, and judgments
 5. Flag any ambiguities or gaps in the source material
 6. Never speculate beyond what the documents state
-For each claim, include the location reference. When a named section is available in the excerpt metadata, use [Section "Name"] citations for precise referencing."""
+For each claim, include the location reference. When a named section is available in the excerpt metadata, use [Section "Name"] citations for precise referencing.
+When conversation history is provided, use it to resolve references like "that", "it", "the above", etc. Answer the current question based on the document excerpts, using conversation context only for disambiguation."""
 
 MIN_QUERY_LENGTH = 3
-MIN_CONFIDENCE_SCORE = 0.3  # Require 30% semantic similarity minimum
-RETRIEVAL_TOP_K = 10
-FINAL_CHUNK_COUNT = 4
+MIN_CONFIDENCE_SCORE = 0.45  # Require 45% semantic similarity minimum
+RETRIEVAL_TOP_K = 15
+RETRIEVAL_LIMIT = 30  # Request more from vector store, then take top_k (improves recall)
+FINAL_CHUNK_COUNT = 8
 
 
 def count_tokens_estimate(text: str) -> int:
@@ -87,13 +89,40 @@ def count_tokens_estimate(text: str) -> int:
     return len(text) // 4
 
 
-def format_legal_context(chunks: List[Dict], matter_name: str) -> str:
+def _detect_query_filters(query: str) -> Dict:
+    """Detect optional Qdrant filters from query text.
+
+    Only applies explicit jurisdiction mentions. Returns empty dict
+    if no strong signal is detected (empty dict = no filters applied).
+    """
+    filters = {}
+    query_lower = query.lower()
+
+    jurisdiction_hints = {
+        "UK": ["uk ", "united kingdom", "english law", "british"],
+        "US": ["us ", "united states", "american", "federal law"],
+        "EU": ["eu ", "european union", "gdpr", "directive"],
+        "AU": ["australia", "australian"],
+        "CA": ["canada", "canadian"],
+        "SG": ["singapore", "singaporean"],
+        "IN": ["india", "indian law"],
+    }
+    for code, hints in jurisdiction_hints.items():
+        if any(h in query_lower for h in hints):
+            filters["jurisdiction"] = code
+            break
+
+    return filters
+
+
+def format_legal_context(chunks: List[Dict], matter_name: str, doc_summaries: Dict = None) -> str:
     """
     Format retrieved chunks into structured legal context with metadata.
 
     Args:
         chunks: List of chunk dicts with content, page_num, section_name, score
         matter_name: Name of the matter
+        doc_summaries: Optional dict mapping document_id -> {"name": str, "summary": str}
 
     Returns:
         Formatted context string with metadata
@@ -108,6 +137,13 @@ def format_legal_context(chunks: List[Dict], matter_name: str) -> str:
     sorted_chunks = sorted(chunks, key=lambda x: x.get("score", 0), reverse=True)
 
     context_parts = [f"Matter: {matter_name}\n", "=" * 60, "\n"]
+
+    # Add document summaries as preamble (once per document, not per chunk)
+    if doc_summaries:
+        context_parts.append("Document Summaries:\n")
+        for doc_id, info in doc_summaries.items():
+            context_parts.append(f"  - {info['name']}: {info['summary']}\n")
+        context_parts.append("\n")
 
     for i, chunk in enumerate(sorted_chunks, 1):
         location = chunk.get("page_num", "Unknown")
@@ -127,6 +163,9 @@ def format_legal_context(chunks: List[Dict], matter_name: str) -> str:
         header = f"--- EXCERPT {i} ({location_label}"
         if section:
             header += f", Section: {section}"
+        doc_name = chunk.get("document_name", "")
+        if doc_name:
+            header += f", Document: {doc_name}"
         header += f", Score: {score:.2f}) ---\n"
 
         context_parts.append(header)
@@ -138,22 +177,15 @@ def format_legal_context(chunks: List[Dict], matter_name: str) -> str:
 
 def embed_query(query: str) -> List[float]:
     """
-    Embed user query into vector space.
+    Embed user query into vector space (uses Cohere search_query input type).
 
     Args:
         query: User query string
 
     Returns:
-        768-dimensional embedding vector
-
-    Raises:
-        ValueError: If query is empty
-        Exception: If embedding fails
+        1024-dimensional embedding vector
     """
-    if not query or not query.strip():
-        raise ValueError("Query cannot be empty")
-
-    return embed_text(query)
+    return embed_query_fn(query)
 
 
 def _get_reranker():
@@ -173,7 +205,7 @@ def _get_reranker():
         from sentence_transformers import CrossEncoder
         logger.info("Initializing cross-encoder reranker")
         # Using lightweight distilroberta model for speed
-        _RERANKER_MODEL = CrossEncoder("cross-encoder/qnli-distilroberta-base")
+        _RERANKER_MODEL = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
         return _RERANKER_MODEL
     except ImportError:
         logger.warning(
@@ -220,7 +252,7 @@ def rerank_chunks(
         pairs = []
 
         for chunk in chunks:
-            content = chunk.get("content", "")[:300]  # Limit to 300 chars for efficiency
+            content = chunk.get("content", "")[:512]  # Cross-encoder handles up to ~512 tokens
             pairs.append([query, content])
 
         logger.debug(f"Reranking {len(chunks)} chunks")
@@ -258,7 +290,7 @@ def rerank_chunks(
         return chunks[:top_k]
 
 
-def retrieve_chunks(matter_id: str, query_embedding: List[float], top_k: int = RETRIEVAL_TOP_K) -> List[Dict]:
+def retrieve_chunks(matter_id: str, query_embedding: List[float], top_k: int = RETRIEVAL_TOP_K, query_filter: Dict = None) -> List[Dict]:
     """
     Retrieve similar chunks from vector store.
 
@@ -266,6 +298,7 @@ def retrieve_chunks(matter_id: str, query_embedding: List[float], top_k: int = R
         matter_id: Matter identifier
         query_embedding: Query embedding vector
         top_k: Number of top results to retrieve
+        query_filter: Optional payload filter dict for Qdrant
 
     Returns:
         List of chunk dicts with score, page_num, content, etc.
@@ -279,7 +312,7 @@ def retrieve_chunks(matter_id: str, query_embedding: List[float], top_k: int = R
         raise ValueError(f"top_k must be positive, got {top_k}")
 
     try:
-        results = search_vectors(matter_id, query_embedding, limit=top_k)
+        results = search_vectors(matter_id, query_embedding, limit=top_k, query_filter=query_filter)
         return results
     except VectorStoreException:
         raise
@@ -319,10 +352,17 @@ def extract_citations(answer: str, chunks: List[Dict]) -> Tuple[str, List[Dict],
 
     # Define patterns for all citation types
     citation_patterns = [
-        (r'\[Page\s+(\d+)\]', 'page'),
+        (r'\[Page\s+(\d+)(?:,\s*Section\s+[\d.]+)?\]', 'page'),  # [Page 3] or [Page 3, Section 4.1]
         (r'\[Paragraph\s+(\d+)\]', 'paragraph'),
         (r'\[Lines\s+(\d+-\d+)\]', 'line_range'),
         (r'\[Section\s+"([^"]+)"\]', 'section'),
+    ]
+
+    # Fallback patterns for less structured LLM citations
+    fallback_patterns = [
+        (r'(?:on |see |from |per )page\s+(\d+)', 'page'),
+        (r'(?:in |see |per )section\s+(\d+(?:\.\d+)*)', 'section'),
+        (r'(?:in |see |per )paragraph\s+(\d+)', 'paragraph'),
     ]
 
     # Create location to chunk mapping
@@ -385,6 +425,32 @@ def extract_citations(answer: str, chunks: List[Dict]) -> Tuple[str, List[Dict],
                 valid_matches.append(match)
             else:
                 unmatched_citations.append(match.group(0))
+
+    # Try fallback patterns if no citations found via primary patterns
+    if not citations:
+        for pattern, citation_type in fallback_patterns:
+            matches = list(re.finditer(pattern, answer, re.IGNORECASE))
+            for match in matches:
+                if citation_type == 'page':
+                    location = match.group(1)
+                elif citation_type == 'paragraph':
+                    location = f"para {match.group(1)}"
+                elif citation_type == 'section':
+                    location = match.group(1)
+                else:
+                    continue
+
+                if location in location_to_chunks:
+                    chunk = location_to_chunks[location]
+                    citation = {
+                        "chunk_id": chunk.get("chunk_id", ""),
+                        "location": location,
+                        "citation_type": citation_type,
+                        "relevance_score": chunk.get("score", 0)
+                    }
+                    if citation not in citations:
+                        citations.append(citation)
+                    valid_matches.append(match)
 
     # Remove hallucinated citations from answer
     cleaned_answer = answer
@@ -663,8 +729,11 @@ def calculate_answer_confidence(
     if not sentences:
         return 0.0
 
-    # Count cited sentences (rough heuristic: sentences with [citation] patterns)
-    cited_sentences = sum(1 for s in sentences if "[" in s and "]" in s)
+    # Count sentences with actual citation patterns (not just any brackets)
+    citation_pattern = re.compile(
+        r'\[(?:Page\s+\d+(?:,\s*Section\s+[\d.]+)?|Paragraph\s+\d+|Lines\s+\d+-\d+|Section\s+"[^"]+")\]'
+    )
+    cited_sentences = sum(1 for s in sentences if citation_pattern.search(s))
     citation_coverage = cited_sentences / len(sentences) if sentences else 0
 
     # Average citation relevance
@@ -674,18 +743,19 @@ def calculate_answer_confidence(
         avg_relevance = 0
 
     # Penalize for hallucinations
-    hallucination_penalty = 0.3 if has_hallucinations else 0
+    hallucination_penalty = 0.2 if has_hallucinations else 0
 
-    # Bonus for multiple citations
-    citation_bonus = min(0.1, len(citations) * 0.02)
+    # Bonus for multiple citations (up to 0.15)
+    citation_bonus = min(0.15, len(citations) * 0.03)
 
-    # Weighted confidence score
+    # Recalibrated weights for realistic distribution
+    # avg_relevance typically 0.6-0.8, citation_coverage typically 0.1-0.5
     confidence = (
-        (citation_coverage * 0.3) +
-        (avg_relevance * 0.5) +
-        (citation_bonus) -
-        (hallucination_penalty)
-    )
+        (citation_coverage * 0.25) +
+        (avg_relevance * 0.45) +
+        (citation_bonus) +
+        0.15  # Base score for having any grounded response
+    ) - hallucination_penalty
 
     # Clamp to [0.0, 1.0]
     confidence = max(0.0, min(1.0, confidence))
@@ -735,7 +805,8 @@ def _get_gemini_model():
 async def generate_answer(
     query: str,
     context: str,
-    temperature: float = 0.2
+    temperature: float = 0.2,
+    conversation_history: list = None
 ) -> Tuple[str, int]:
     """
     Generate answer using Google Gemini API.
@@ -744,6 +815,7 @@ async def generate_answer(
         query: User query
         context: Formatted context from retrieval
         temperature: Temperature parameter (0.2 for legal precision)
+        conversation_history: Optional list of previous Q&A turns for follow-up support
 
     Returns:
         Tuple of (answer, tokens_used)
@@ -755,7 +827,19 @@ async def generate_answer(
     try:
         model = _get_gemini_model()
 
-        prompt = f"Context:\n{context}\n\nQuestion: {query}"
+        # Build prompt with conversation history for follow-up support
+        prompt_parts = [f"Context:\n{context}\n"]
+
+        if conversation_history:
+            prompt_parts.append("Previous conversation:")
+            for turn in conversation_history[-5:]:  # Last 5 exchanges max
+                prompt_parts.append(f"User: {turn['question']}")
+                answer_preview = turn['answer'][:500] if turn.get('answer') else ''
+                prompt_parts.append(f"Assistant: {answer_preview}")
+            prompt_parts.append("")
+
+        prompt_parts.append(f"Question: {query}")
+        prompt = "\n".join(prompt_parts)
 
         response = await model.generate_content_async(
             prompt,
@@ -793,7 +877,8 @@ async def query_matter(
     query: str,
     db: Session,
     top_k: int = FINAL_CHUNK_COUNT,
-    temperature: float = 0.2
+    temperature: float = 0.2,
+    conversation_history: list = None
 ) -> Dict:
     """
     Main RAG query orchestration function.
@@ -863,9 +948,22 @@ async def query_matter(
                 detail=str(e)
             ) from e
 
-        # 3. Retrieve chunks
+        # 3. Retrieve chunks (request more than top_k to improve recall, then take best)
+        # Detect optional filters from query text (jurisdiction, doc type)
+        query_filters = _detect_query_filters(query)
         try:
-            retrieved_chunks = retrieve_chunks(matter_id, query_embedding, top_k=RETRIEVAL_TOP_K)
+            retrieved_chunks = retrieve_chunks(
+                matter_id, query_embedding,
+                top_k=RETRIEVAL_LIMIT,
+                query_filter=query_filters if query_filters else None
+            )
+            # Fallback: if filtered search returns too few results, retry unfiltered
+            if query_filters and len(retrieved_chunks) < 3:
+                logger.info(
+                    f"Filtered search returned {len(retrieved_chunks)} results "
+                    f"(filter: {query_filters}), retrying unfiltered"
+                )
+                retrieved_chunks = retrieve_chunks(matter_id, query_embedding, top_k=RETRIEVAL_LIMIT)
         except (VectorStoreException, ValueError) as e:
             logger.error(f"Chunk retrieval failed: {str(e)}")
             error_response["error"] = f"No chunks found for matter"
@@ -886,22 +984,21 @@ async def query_matter(
         scores = [c.get("score", 0) for c in retrieved_chunks]
         logger.info(f"Retrieved {len(retrieved_chunks)} chunks, scores: {[f'{s:.4f}' for s in scores]}")
 
-        # 4. Filter by confidence and select top k
+        # 4. Filter by confidence and select top k; fallback to best available if all below threshold
         high_confidence_chunks = [c for c in retrieved_chunks if c.get("score", 0) >= MIN_CONFIDENCE_SCORE]
+        low_confidence_fallback = False
+        retrieval_avg_score = sum(scores) / len(scores) if scores else 0.0
 
         if not high_confidence_chunks:
-            # All chunks are low confidence
-            error_response["confidence"] = {"level": "low", "score": 0.0, "factors": {}}
-            error_response["error"] = "Retrieved documents have low relevance"
-            # Include scores in response
-            scores = [c.get("score", 0) for c in retrieved_chunks]
-            if scores:
-                avg_score = sum(scores) / len(scores)
-                logger.warning(f"Low confidence retrieval - average score: {avg_score:.2f}")
-            return error_response
-
-        # Use top k chunks (sorted by score)
-        initial_chunks = sorted(high_confidence_chunks, key=lambda x: x.get("score", 0), reverse=True)[:RETRIEVAL_TOP_K]
+            # Use best available chunks and mark as low confidence (still answer the question)
+            low_confidence_fallback = True
+            logger.warning(
+                f"Low confidence retrieval - average score: {retrieval_avg_score:.2f}; "
+                "using top chunks and marking answer as low confidence"
+            )
+            initial_chunks = sorted(retrieved_chunks, key=lambda x: x.get("score", 0), reverse=True)[:RETRIEVAL_TOP_K]
+        else:
+            initial_chunks = sorted(high_confidence_chunks, key=lambda x: x.get("score", 0), reverse=True)[:RETRIEVAL_TOP_K]
 
         # 4.5. Rerank chunks for better relevance
         try:
@@ -913,7 +1010,17 @@ async def query_matter(
 
         # 5. Format context with token budgeting
         try:
-            formatted_context = format_legal_context(final_chunks, matter.name)
+            # Fetch document summaries for retrieved chunks
+            doc_ids = {UUID(c["document_id"]) for c in final_chunks if c.get("document_id")}
+            doc_summaries = {}
+            if doc_ids:
+                docs = db.query(Document).filter(Document.id.in_(doc_ids)).all()
+                doc_summaries = {
+                    str(d.id): {"name": d.name, "summary": d.summary}
+                    for d in docs if d.summary
+                }
+
+            formatted_context = format_legal_context(final_chunks, matter.name, doc_summaries)
 
             # Count tokens in context (estimate)
             context_tokens = count_tokens_estimate(formatted_context)
@@ -924,7 +1031,7 @@ async def query_matter(
             if estimated_total > CONTEXT_TOKEN_BUDGET:
                 # Trim context to fewer chunks
                 final_chunks = final_chunks[:2]
-                formatted_context = format_legal_context(final_chunks, matter.name)
+                formatted_context = format_legal_context(final_chunks, matter.name, doc_summaries)
                 context_tokens = count_tokens_estimate(formatted_context)
                 estimated_total = context_tokens + query_tokens + 500
 
@@ -945,7 +1052,7 @@ async def query_matter(
 
         # 6. Generate answer
         try:
-            answer, tokens_used = await generate_answer(query, formatted_context, temperature)
+            answer, tokens_used = await generate_answer(query, formatted_context, temperature, conversation_history)
         except QueryProcessingException as e:
             logger.error(f"Answer generation failed: {str(e)}")
             error_response["error"] = f"Failed to generate answer: API error"
@@ -969,14 +1076,18 @@ async def query_matter(
             for claim in unsupported_claims:
                 logger.warning(f"  - Unsupported: {claim['location']} ({claim['reason']})")
 
-        # 7.6. Calculate answer confidence score
-        answer_confidence_score = calculate_answer_confidence(
-            cleaned_answer,
-            grounded_citations,
-            final_chunks,
-            has_hallucinations
-        )
-        answer_confidence_level = classify_confidence_level(answer_confidence_score)
+        # 7.6. Calculate answer confidence score (or use retrieval-based score when fallback)
+        if low_confidence_fallback:
+            answer_confidence_score = max(0.0, min(1.0, retrieval_avg_score))
+            answer_confidence_level = "low"
+        else:
+            answer_confidence_score = calculate_answer_confidence(
+                cleaned_answer,
+                grounded_citations,
+                final_chunks,
+                has_hallucinations
+            )
+            answer_confidence_level = classify_confidence_level(answer_confidence_score)
 
         logger.info(
             f"Answer quality: confidence={answer_confidence_level} "
@@ -986,44 +1097,36 @@ async def query_matter(
             f"hallucinations={has_hallucinations}"
         )
 
-        # 8. Prepare sources list with FULL content from database
+        # 8. Prepare sources list with FULL content from database (batch fetch)
         sources = []
+        # Batch-fetch all chunk content in a single query
+        chunk_uuids = []
         for chunk in final_chunks:
             chunk_id = chunk.get("chunk_id", "")
-            chunk_sequence = chunk.get("chunk_sequence", None)
+            if chunk_id:
+                try:
+                    chunk_uuids.append(UUID(chunk_id))
+                except (ValueError, AttributeError):
+                    pass
 
-            # Fetch full content from database (not truncated from vector store)
-            full_content = ""
-            try:
-                db_chunk = None
-                # Try UUID lookup first
-                if chunk_id:
-                    try:
-                        chunk_uuid = UUID(chunk_id)
-                        db_chunk = db.query(Chunk).filter(Chunk.id == chunk_uuid).first()
-                    except (ValueError, AttributeError):
-                        pass
+        db_chunks_map = {}
+        if chunk_uuids:
+            db_chunks = db.query(Chunk).filter(Chunk.id.in_(chunk_uuids)).all()
+            db_chunks_map = {str(c.id): c for c in db_chunks}
 
-                # Fallback: query by (case_id, chunk_sequence) for backward compat
-                if not db_chunk and chunk_sequence is not None:
-                    db_chunk = db.query(Chunk).filter(
-                        Chunk.matter_id == matter.id,
-                        Chunk.chunk_sequence == chunk_sequence
-                    ).first()
-
-                if db_chunk:
-                    full_content = db_chunk.content
-                else:
-                    full_content = chunk.get("content", "")
-            except Exception as e:
-                logger.warning(f"Failed to fetch full chunk content for {chunk_id}: {str(e)}, using preview")
-                full_content = chunk.get("content", "")
+        for chunk in final_chunks:
+            chunk_id = chunk.get("chunk_id", "")
+            db_chunk = db_chunks_map.get(chunk_id)
+            full_content = db_chunk.content if db_chunk else chunk.get("content", "")
 
             source = {
                 "chunk_id": chunk_id,
                 "page_num": chunk.get("page_num", ""),
+                "section_name": chunk.get("section_name", ""),
                 "relevance_score": chunk.get("score", 0),
-                "content": full_content  # Now full content instead of 200-char preview
+                "content": full_content,
+                "document_id": chunk.get("document_id", ""),
+                "document_name": chunk.get("document_name", ""),
             }
             sources.append(source)
 

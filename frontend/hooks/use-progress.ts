@@ -1,16 +1,23 @@
 import { useState, useEffect, useRef } from "react"
-import { subscribeToCaseProgress } from "@/lib/api"
+import { useQueryClient } from "@tanstack/react-query"
+import { subscribeMatterProgress } from "@/lib/api-services"
 import type { ProgressEvent } from "@/lib/types"
 
-export function useCaseProgress(caseId: string | undefined) {
+export function useMatterProgress(matterId: string | undefined, isProcessing: boolean) {
   const [progress, setProgress] = useState<ProgressEvent | null>(null)
   const [connected, setConnected] = useState(false)
   const eventSourceRef = useRef<EventSource | null>(null)
+  const queryClient = useQueryClient()
 
   useEffect(() => {
-    if (!caseId) return
+    // Only connect when the matter is actually processing
+    if (!matterId || !isProcessing) {
+      setProgress(null)
+      setConnected(false)
+      return
+    }
 
-    const es = subscribeToCaseProgress(caseId)
+    const es = subscribeMatterProgress(matterId)
     eventSourceRef.current = es
 
     es.addEventListener("connected", () => {
@@ -25,6 +32,10 @@ export function useCaseProgress(caseId: string | undefined) {
         if (data.stage === "ready" || data.stage === "error") {
           es.close()
           setConnected(false)
+          // Refresh matter data to pick up new status
+          queryClient.invalidateQueries({ queryKey: ["matters", matterId] })
+          queryClient.invalidateQueries({ queryKey: ["matters", matterId, "documents"] })
+          queryClient.invalidateQueries({ queryKey: ["matters"] })
         }
       } catch {
         // ignore malformed events
@@ -40,7 +51,7 @@ export function useCaseProgress(caseId: string | undefined) {
       es.close()
       setConnected(false)
     }
-  }, [caseId])
+  }, [matterId, isProcessing, queryClient])
 
   return { progress, connected }
 }

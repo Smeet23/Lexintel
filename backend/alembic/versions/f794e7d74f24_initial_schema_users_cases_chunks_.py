@@ -1,4 +1,4 @@
-"""Initial schema: users, matters, chunks, queries, processing_jobs
+"""Initial schema: matters, chunks, queries, processing_jobs
 
 Revision ID: f794e7d74f24
 Revises:
@@ -19,19 +19,6 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Users table
-    op.create_table('users',
-        sa.Column('id', sa.UUID(), nullable=False),
-        sa.Column('email', sa.String(length=255), nullable=False),
-        sa.Column('password_hash', sa.String(length=255), nullable=False),
-        sa.Column('is_deleted', sa.Boolean(), nullable=False),
-        sa.Column('created_at', sa.DateTime(), nullable=False),
-        sa.Column('updated_at', sa.DateTime(), nullable=False),
-        sa.PrimaryKeyConstraint('id')
-    )
-    op.create_index(op.f('ix_users_email'), 'users', ['email'], unique=True)
-    op.create_index(op.f('ix_users_is_deleted'), 'users', ['is_deleted'], unique=False)
-
     # Matters table (legal matters / cases)
     op.create_table('matters',
         sa.Column('id', sa.UUID(), nullable=False),
@@ -111,6 +98,3 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_matters_is_deleted'), table_name='matters')
     op.drop_index(op.f('ix_matters_created_at'), table_name='matters')
     op.drop_table('matters')
-    op.drop_index(op.f('ix_users_is_deleted'), table_name='users')
-    op.drop_index(op.f('ix_users_email'), table_name='users')
-    op.drop_table('users')

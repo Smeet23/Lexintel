@@ -6,7 +6,8 @@ from typing import List, Dict
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Distance, VectorParams, PointStruct,
-    HnswConfigDiff, PayloadSchemaType
+    HnswConfigDiff, PayloadSchemaType,
+    Filter, FieldCondition, MatchValue
 )
 
 try:
@@ -41,7 +42,7 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 # Vector store configuration
-VECTOR_SIZE = 768  # Matches Google gemini-embedding-001 output dimensions
+VECTOR_SIZE = 1024  # Cohere embed-english-v3.0 output dimensions
 UPSERT_BATCH_SIZE = 100  # Qdrant recommended batch size
 
 
@@ -64,7 +65,7 @@ def get_qdrant_client() -> QdrantClient:
 
     return QdrantClient(
         url=settings.qdrant_url,
-        timeout=30,
+        timeout=10,
         check_compatibility=False
     )
 
@@ -103,11 +104,35 @@ def _generate_point_id(chunk_id: str, matter_id: str) -> int:
     return point_id
 
 
+def _ensure_payload_indexes(client, collection_name: str):
+    """Create payload indexes if they don't exist. Safe to call on existing collections.
+
+    Qdrant's create_payload_index is idempotent — calling it on an
+    existing index is a no-op.
+    """
+    index_fields = {
+        "page_num": PayloadSchemaType.KEYWORD,
+        "section_name": PayloadSchemaType.KEYWORD,
+        "document_type": PayloadSchemaType.KEYWORD,
+        "jurisdiction": PayloadSchemaType.KEYWORD,
+    }
+    for field, schema in index_fields.items():
+        try:
+            client.create_payload_index(
+                collection_name=collection_name,
+                field_name=field,
+                field_schema=schema,
+            )
+        except Exception:
+            pass  # Index already exists or field not populated yet
+
+
 def create_collection(matter_id: str) -> bool:
     """
     Create a collection for storing vectors of a matter (safe — won't drop existing).
 
-    Uses HNSW config optimized for high-dimensional vectors (768-dim).
+    Uses HNSW config optimized for high-dimensional vectors.
+    Recreates collection if existing dimension mismatches (e.g. embedding model change).
     Creates payload indexes on page_num and section_name for filtered search.
 
     Args:
@@ -126,10 +151,21 @@ def create_collection(matter_id: str) -> bool:
         logger.info(f"Ensuring collection exists for matter: {matter_id}")
 
         # Check if collection already exists
-        existing = [c.name for c in client.get_collections().collections]
-        if collection_name in existing:
-            logger.info(f"Collection already exists: {collection_name}")
-            return True
+        if client.collection_exists(collection_name):
+            # Verify vector dimensions match; recreate if stale
+            info = client.get_collection(collection_name)
+            existing_size = info.config.params.vectors.size if hasattr(info.config.params.vectors, "size") else None
+            if existing_size and existing_size != VECTOR_SIZE:
+                logger.warning(
+                    f"Collection {collection_name} has dimension {existing_size}, "
+                    f"expected {VECTOR_SIZE}. Recreating collection."
+                )
+                client.delete_collection(collection_name=collection_name)
+            else:
+                # Ensure new payload indexes exist on pre-existing collections
+                _ensure_payload_indexes(client, collection_name)
+                logger.info(f"Collection already exists: {collection_name}")
+                return True
 
         # Create new collection with HNSW config for high-dim vectors
         client.create_collection(
@@ -145,16 +181,7 @@ def create_collection(matter_id: str) -> bool:
         )
 
         # Create payload indexes for filtered search
-        client.create_payload_index(
-            collection_name=collection_name,
-            field_name="page_num",
-            field_schema=PayloadSchemaType.KEYWORD
-        )
-        client.create_payload_index(
-            collection_name=collection_name,
-            field_name="section_name",
-            field_schema=PayloadSchemaType.KEYWORD
-        )
+        _ensure_payload_indexes(client, collection_name)
 
         logger.info(f"Successfully created collection: {collection_name}")
         return True
@@ -185,7 +212,7 @@ def upsert_vectors(
     Args:
         matter_id: Unique matter identifier
         chunks: List of chunk dicts with keys: id, content, page_num, section_name, chunk_sequence
-        embeddings: List of 768-dimensional vectors from embeddings service
+        embeddings: List of embedding vectors from embeddings service
 
     Returns:
         Number of vectors successfully upserted
@@ -228,6 +255,11 @@ def upsert_vectors(
                 "page_num": str(chunk.get("page_num", "")),
                 "section_name": str(chunk.get("section_name", "")),
                 "content": chunk.get("content", ""),
+                "document_id": str(chunk.get("document_id", "")),
+                "document_name": str(chunk.get("document_name", "")),
+                "concepts": chunk.get("concepts", []),
+                "document_type": str(chunk.get("document_type", "")),
+                "jurisdiction": str(chunk.get("jurisdiction", "")),
             }
 
             # Generate deterministic point ID for idempotency
@@ -273,15 +305,18 @@ def upsert_vectors(
 def search_vectors(
     matter_id: str,
     query_embedding: List[float],
-    limit: int = 5
+    limit: int = 5,
+    query_filter: Dict = None
 ) -> List[Dict]:
     """
     Search for semantically similar chunks using the Qdrant Python client.
 
     Args:
         matter_id: Unique matter identifier
-        query_embedding: 768-dimensional query vector from embeddings service
+        query_embedding: Query vector from embeddings service
         limit: Maximum number of results to return (default: 5)
+        query_filter: Optional dict of payload field conditions
+            e.g. {"jurisdiction": "UK"} or {"document_type": "statute"}
 
     Returns:
         List of dicts with keys: chunk_id, chunk_sequence, page_num,
@@ -301,11 +336,23 @@ def search_vectors(
         client = get_qdrant_client()
         collection_name = _get_collection_name(matter_id)
 
+        # Build Qdrant filter from query_filter dict
+        qdrant_filter = None
+        if query_filter:
+            conditions = []
+            for field, value in query_filter.items():
+                conditions.append(
+                    FieldCondition(key=field, match=MatchValue(value=value))
+                )
+            qdrant_filter = Filter(must=conditions)
+            logger.debug(f"Applying filter: {query_filter}")
+
         logger.debug(f"Searching vectors in collection: {collection_name}, limit: {limit}")
 
         response = client.query_points(
             collection_name=collection_name,
             query=query_embedding,
+            query_filter=qdrant_filter,
             limit=limit,
             with_payload=True
         )
@@ -327,6 +374,11 @@ def search_vectors(
                 "page_num": payload.get("page_num", ""),
                 "section_name": payload.get("section_name", ""),
                 "content": full_content,
+                "document_id": payload.get("document_id", ""),
+                "document_name": payload.get("document_name", ""),
+                "concepts": payload.get("concepts", []),
+                "document_type": payload.get("document_type", ""),
+                "jurisdiction": payload.get("jurisdiction", ""),
             }
             results.append(result_dict)
 
@@ -345,6 +397,63 @@ def search_vectors(
         logger.error(f"Unexpected error searching vectors in matter {matter_id}: {str(e)}")
         raise VectorStoreException(
             "Unexpected error during vector search",
+            detail=str(e)
+        ) from e
+
+
+DELETE_BATCH_SIZE = 500  # Batch size for Qdrant deletions
+
+
+def delete_vectors_by_document(matter_id: str, chunk_ids: List[str]) -> int:
+    """
+    Delete specific vectors from a matter's collection by chunk IDs.
+    Handles missing collections gracefully (returns 0).
+    Batches deletions to avoid timeout on large documents.
+
+    Args:
+        matter_id: Unique matter identifier
+        chunk_ids: List of chunk ID strings to remove
+
+    Returns:
+        Number of vectors deleted (0 if collection doesn't exist)
+
+    Raises:
+        VectorStoreException: If deletion fails for reasons other than missing collection
+    """
+    try:
+        client = get_qdrant_client()
+        collection_name = _get_collection_name(matter_id)
+
+        # Check if collection exists — skip silently if not
+        if not client.collection_exists(collection_name):
+            logger.info(f"Collection {collection_name} does not exist, skipping vector deletion")
+            return 0
+
+        point_ids = [_generate_point_id(cid, matter_id) for cid in chunk_ids]
+
+        from qdrant_client.models import PointIdsList
+
+        # Batch deletions to avoid timeout on large documents
+        for i in range(0, len(point_ids), DELETE_BATCH_SIZE):
+            batch = point_ids[i:i + DELETE_BATCH_SIZE]
+            client.delete(
+                collection_name=collection_name,
+                points_selector=PointIdsList(points=batch)
+            )
+
+        logger.info(f"Deleted {len(point_ids)} vectors for document chunks in matter {matter_id}")
+        return len(point_ids)
+
+    except (UnexpectedResponse, ResponseHandlingException) as e:
+        logger.error(f"Qdrant API error deleting vectors for matter {matter_id}: {str(e)}")
+        raise VectorStoreException(
+            "Failed to delete document vectors",
+            detail=f"Qdrant error: {str(e)}"
+        ) from e
+    except Exception as e:
+        logger.error(f"Unexpected error deleting vectors for matter {matter_id}: {str(e)}")
+        raise VectorStoreException(
+            "Unexpected error during vector deletion",
             detail=str(e)
         ) from e
 

@@ -24,9 +24,11 @@ function ConfidenceBadge({ score }: { score: number }) {
 function MessageBubble({
   message,
   onViewCitations,
+  onCitationClick,
 }: {
   message: QueryMessage
   onViewCitations?: (citations: Citation[]) => void
+  onCitationClick?: (citation: Citation) => void
 }) {
   const [copied, setCopied] = useState(false)
   const [showSources, setShowSources] = useState(false)
@@ -112,12 +114,17 @@ function MessageBubble({
               className="mt-2 space-y-1 overflow-hidden"
             >
               {message.citations.map((c, i) => (
-                <div key={i} className="flex items-center gap-2 rounded-lg bg-surface px-3 py-2 text-[12px]">
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => onCitationClick?.(c)}
+                  className="w-full flex items-center gap-2 rounded-lg bg-surface px-3 py-2 text-[12px] text-left hover:bg-surface-hover transition-colors cursor-pointer border border-transparent hover:border-border"
+                >
                   <span className="font-medium text-foreground">{c.documentName}</span>
                   <span className="text-muted">p. {c.pageNumber}</span>
                   {c.section && <span className="text-muted">&middot; {c.section}</span>}
                   <span className="ml-auto text-foreground font-mono text-[11px]">{Math.round(c.relevanceScore * 100)}%</span>
-                </div>
+                </button>
               ))}
             </motion.div>
           )}
@@ -132,11 +139,13 @@ export default function ChatPanel({
   onSend,
   isLoading,
   onSelectCitation,
+  onCitationClick,
 }: {
   messages: QueryMessage[]
   onSend: (message: string) => void
   isLoading?: boolean
   onSelectCitation?: (citations: Citation[]) => void
+  onCitationClick?: (citation: Citation) => void
 }) {
   const [input, setInput] = useState("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -175,7 +184,12 @@ export default function ChatPanel({
           </div>
         )}
         {messages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} onViewCitations={onSelectCitation} />
+          <MessageBubble
+            key={msg.id}
+            message={msg}
+            onViewCitations={onSelectCitation}
+            onCitationClick={onCitationClick}
+          />
         ))}
         {isLoading && (
           <motion.div
