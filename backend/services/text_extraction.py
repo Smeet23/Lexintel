@@ -4,6 +4,15 @@ Supports:
 - pymupdf4llm for structured PDF extraction (markdown with headers)
 - python-docx with heading detection for DOCX files
 - Basic extraction for TXT files
+
+TODO: Evaluate replacing pymupdf4llm with Docling (pip install docling)
+https://github.com/docling-project/docling — IBM Research open-source.
+Docling uses DocLayNet (ML layout analysis) to detect headings, paragraphs,
+tables, footnotes as a structured hierarchy. This would provide real heading
+detection instead of relying on markdown header heuristics. Benchmark shows
+97.9% accuracy on complex documents vs pymupdf4llm's basic text extraction.
+Key benefit: eliminates the regex-based _extract_section_label() in chunking.py
+since Docling natively provides heading/paragraph structure.
 """
 import logging
 import tempfile
@@ -38,12 +47,9 @@ def extract_pdf_text_structured(file_bytes: bytes) -> List[Dict[str, str]]:
         doc = fitz.open(stream=file_bytes, filetype="pdf")
 
         # Use pymupdf4llm for markdown extraction with page chunks
-        # header=False, footer=False: ML-based running header/footer removal (via pymupdf-layout)
         page_chunks = pymupdf4llm.to_markdown(
             doc,
             page_chunks=True,
-            header=False,
-            footer=False
         )
 
         if not page_chunks:
