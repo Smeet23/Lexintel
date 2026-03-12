@@ -1,5 +1,5 @@
 .PHONY: help setup setup-backend setup-frontend env \
-       dev backend frontend celery \
+       dev dev-stop backend frontend celery \
        docker-up docker-down docker-logs \
        db-init db-migrate db-reset \
        test test-backend lint \
@@ -37,7 +37,8 @@ help:
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make status         Check which services are running"
-	@echo "  make stop           Kill all dev processes"
+	@echo "  make stop           Kill all dev processes (ports + workers)"
+	@echo "  make dev-stop       Alias for stop"
 	@echo "  make clean          Remove build artifacts"
 	@echo "  make reset          Full reset (clean + reinstall)"
 
@@ -100,15 +101,19 @@ docker-logs:
 backend:
 	@echo "Starting backend on http://localhost:8000"
 	@echo "API docs: http://localhost:8000/docs"
-	@cd backend && ../backend/venv/bin/uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+	@PYTHONPATH=. backend/venv/bin/uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 
 frontend:
 	@echo "Starting frontend on http://localhost:3000"
 	@cd frontend && npm run dev
 
+# On macOS, prefork crashes with "objc initialize in progress when fork() was called". Use solo pool.
+UNAME_S := $(shell uname -s)
+CELERY_POOL := $(if $(filter Darwin,$(UNAME_S)),--pool=solo,)
+
 celery:
 	@echo "Starting Celery worker..."
-	@cd backend && ../backend/venv/bin/celery -A backend.celery_app worker -l info
+	@PYTHONPATH=. backend/venv/bin/celery -A backend.celery_app worker -l info $(CELERY_POOL)
 
 dev:
 	@echo "Starting all services... (Ctrl+C to stop)"
@@ -164,11 +169,18 @@ status:
 	@printf "  Postgres (5432): " && (docker exec lexintel_postgres pg_isready 2>/dev/null | grep -q "accepting" && echo "UP" || echo "DOWN")
 
 stop:
-	@echo "Stopping dev processes..."
-	@-pkill -f "uvicorn backend" 2>/dev/null || true
+	@echo "Stopping all dev processes..."
+	@printf "  Backend (8000):  " && (lsof -ti :8000 | xargs kill -9 2>/dev/null && echo "killed" || echo "not running")
+	@printf "  Frontend (3000): " && (lsof -ti :3000 | xargs kill -9 2>/dev/null && echo "killed" || echo "not running")
+	@-pkill -f "uvicorn backend.main" 2>/dev/null || true
+	@-pkill -f "celery -A backend.celery_app" 2>/dev/null && echo "  Celery worker:   killed" || echo "  Celery worker:   not running"
+	@-pkill -f "next dev" 2>/dev/null || true
 	@-pkill -f "next-router-worker" 2>/dev/null || true
-	@-pkill -f "celery.*backend" 2>/dev/null || true
-	@echo "Stopped."
+	@echo ""
+	@echo "All dev processes stopped. Docker services still running."
+	@echo "  To also stop Docker: make docker-down"
+
+dev-stop: stop
 
 clean:
 	@rm -rf frontend/.next frontend/node_modules/.cache

@@ -1,4 +1,5 @@
 import api from "./api"
+import type { ChunkResponse } from "./types"
 
 // ============================================
 // Types matching backend response shapes
@@ -7,7 +8,7 @@ import api from "./api"
 export interface MatterResponse {
   id: string
   name: string
-  status: "processing" | "ready" | "error"
+  status: "processing" | "ready" | "error" | "cancelled"
   file_type: string
   created_at: string
   updated_at: string | null
@@ -24,8 +25,8 @@ export interface CreateMatterResponse {
   name: string
   status: string
   file_type: string
-  blob_storage_path: string
-  task_id: string
+  documents_count: number
+  task_ids: string[]
   created_at: string
 }
 
@@ -34,8 +35,11 @@ export interface AskResponse {
   sources: {
     chunk_id: string
     page_num: string
+    section_name: string
     relevance_score: number
     content: string
+    document_id: string
+    document_name: string
   }[]
   citations: {
     location: string
@@ -83,19 +87,33 @@ export async function getMatter(id: string): Promise<MatterDetailResponse> {
   return data
 }
 
-export async function createMatter(name: string, file: File): Promise<CreateMatterResponse> {
+export async function createMatter(
+  name: string,
+  files: File[],
+  signal?: AbortSignal
+): Promise<CreateMatterResponse> {
   const formData = new FormData()
   formData.append("name", name)
-  formData.append("file", file)
+  for (const file of files) {
+    formData.append("files", file)
+  }
 
   const { data } = await api.post<CreateMatterResponse>("/matters", formData, {
     headers: { "Content-Type": "multipart/form-data" },
+    signal,
   })
   return data
 }
 
 export async function deleteMatter(id: string): Promise<{ id: string; deleted: boolean }> {
   const { data } = await api.delete(`/matters/${id}`)
+  return data
+}
+
+export async function cancelMatterProcessing(matterId: string): Promise<{ id: string; cancelled: boolean; status: string }> {
+  const { data } = await api.post<{ id: string; cancelled: boolean; status: string }>(
+    `/matters/${matterId}/cancel`
+  )
   return data
 }
 
@@ -107,4 +125,109 @@ export async function askQuestion(matterId: string, question: string): Promise<A
 export async function getMatterStatus(id: string): Promise<MatterStatusResponse> {
   const { data } = await api.get<MatterStatusResponse>(`/matters/${id}/status`)
   return data
+}
+
+// ============================================
+// Document API Functions
+// ============================================
+
+export interface DocumentResponse {
+  id: string
+  name: string
+  file_type: string
+  status: string
+  chunk_count: number
+  summary: string | null
+  document_type: string | null
+  jurisdiction: string | null
+  created_at: string
+}
+
+export interface UploadDocumentResponse {
+  id: string
+  matter_id: string
+  name: string
+  file_type: string
+  status: string
+  task_id: string
+  created_at: string
+}
+
+export async function listMatterDocuments(matterId: string): Promise<DocumentResponse[]> {
+  const { data } = await api.get<DocumentResponse[]>(`/matters/${matterId}/documents`)
+  return data
+}
+
+export async function uploadMatterDocument(
+  matterId: string,
+  file: File,
+  signal?: AbortSignal
+): Promise<UploadDocumentResponse> {
+  const formData = new FormData()
+  formData.append("file", file)
+
+  const { data } = await api.post<UploadDocumentResponse>(
+    `/matters/${matterId}/documents`,
+    formData,
+    { headers: { "Content-Type": "multipart/form-data" }, signal }
+  )
+  return data
+}
+
+export async function fetchMatterChunks(
+  matterId: string,
+  documentId?: string
+): Promise<ChunkResponse[]> {
+  const params = documentId ? { document_id: documentId } : {}
+  const { data } = await api.get<ChunkResponse[]>(`/matters/${matterId}/chunks`, { params })
+  return data
+}
+
+export function getMatterDocumentDownloadUrl(matterId: string, documentId: string): string {
+  const baseUrl = api.defaults.baseURL || ""
+  return `${baseUrl}/matters/${matterId}/documents/${documentId}/download`
+}
+
+// ============================================
+// Query History API Functions
+// ============================================
+
+export interface QueryHistoryItem {
+  id: string
+  question: string
+  answer: string
+  citations: AskResponse["sources"] | null
+  created_at: string
+}
+
+export async function getQueryHistory(
+  matterId: string,
+  limit = 50
+): Promise<QueryHistoryItem[]> {
+  const { data } = await api.get<QueryHistoryItem[]>(
+    `/matters/${matterId}/queries`,
+    { params: { limit } }
+  )
+  return data
+}
+
+// ============================================
+// Document Delete API Function
+// ============================================
+
+export async function deleteDocument(
+  matterId: string,
+  documentId: string
+): Promise<{ id: string; deleted: boolean }> {
+  const { data } = await api.delete(`/matters/${matterId}/documents/${documentId}`)
+  return data
+}
+
+// ============================================
+// SSE Progress Subscription
+// ============================================
+
+export function subscribeMatterProgress(matterId: string): EventSource {
+  const baseURL = api.defaults.baseURL || ""
+  return new EventSource(`${baseURL}/matters/${matterId}/progress`)
 }

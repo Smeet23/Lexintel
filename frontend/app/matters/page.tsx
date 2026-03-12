@@ -11,6 +11,7 @@ import {
   MoreHorizontal,
   Loader2,
   Upload,
+  Square,
 } from "lucide-react"
 import AppLayout from "@/layouts/AppLayout"
 import PageHeader from "@/components/PageHeader"
@@ -47,6 +48,7 @@ function statusLabel(status: string): string {
   if (status === "ready") return "Ready"
   if (status === "processing") return "Processing"
   if (status === "error") return "Error"
+  if (status === "cancelled") return "Cancelled"
   return status
 }
 
@@ -56,8 +58,9 @@ export default function MattersPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [showNewDialog, setShowNewDialog] = useState(false)
   const [newTitle, setNewTitle] = useState("")
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const uploadAbortRef = useRef<AbortController | null>(null)
 
   const { data: matters, isLoading, error } = useMatters()
   const createMatter = useCreateMatter()
@@ -72,17 +75,30 @@ export default function MattersPage() {
   })
 
   const handleCreateMatter = async () => {
-    if (!newTitle.trim() || !selectedFile) return
+    if (!newTitle.trim() || selectedFiles.length === 0) return
+
+    const controller = new AbortController()
+    uploadAbortRef.current = controller
 
     try {
-      const result = await createMatter.mutateAsync({ name: newTitle.trim(), file: selectedFile })
+      const result = await createMatter.mutateAsync({
+        name: newTitle.trim(),
+        files: selectedFiles,
+        signal: controller.signal,
+      })
+      uploadAbortRef.current = null
       setShowNewDialog(false)
       setNewTitle("")
-      setSelectedFile(null)
+      setSelectedFiles([])
       router.push(`/matters/${result.id}`)
     } catch {
-      // Error is available via createMatter.error
+      // Error is available via createMatter.error; abort is expected when stopping
+      uploadAbortRef.current = null
     }
+  }
+
+  const handleStopUpload = () => {
+    uploadAbortRef.current?.abort()
   }
 
   const columns = [
@@ -206,12 +222,22 @@ export default function MattersPage() {
       </motion.div>
 
       {/* New Matter Dialog */}
-      <Dialog open={showNewDialog} onOpenChange={setShowNewDialog}>
+      <Dialog
+        open={showNewDialog}
+        onOpenChange={(open) => {
+          if (!open && createMatter.isPending) handleStopUpload()
+          setShowNewDialog(open)
+          if (!open) {
+            setNewTitle("")
+            setSelectedFiles([])
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Create New Matter</DialogTitle>
             <DialogDescription>
-              Upload a document to begin analyzing. Supports PDF, DOCX, and TXT files.
+              Upload one or more documents to begin analyzing. Supports PDF, DOCX, and TXT files.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-5 mt-4">
@@ -225,20 +251,45 @@ export default function MattersPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-2">Document</label>
+              <label className="block text-sm font-medium text-foreground mb-2">Documents</label>
               <input
                 ref={fileInputRef}
                 type="file"
                 accept=".pdf,.docx,.txt"
+                multiple
                 className="hidden"
-                onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                onChange={(e) => {
+                  const newFiles = Array.from(e.target.files || [])
+                  if (newFiles.length > 0) {
+                    setSelectedFiles((prev) => [...prev, ...newFiles])
+                  }
+                  e.target.value = "" // reset so same file can be re-added
+                }}
               />
-              {selectedFile ? (
-                <div className="flex items-center gap-3 rounded-lg border border-border p-3">
-                  <Briefcase className="h-4 w-4 text-muted" />
-                  <span className="text-sm text-foreground flex-1 truncate">{selectedFile.name}</span>
-                  <Button variant="ghost" size="sm" onClick={() => setSelectedFile(null)}>
-                    Remove
+              {selectedFiles.length > 0 ? (
+                <div className="space-y-2">
+                  {selectedFiles.map((file, idx) => (
+                    <div key={`${file.name}-${idx}`} className="flex items-center gap-3 rounded-lg border border-border p-3">
+                      <Briefcase className="h-4 w-4 text-muted shrink-0" />
+                      <span className="text-sm text-foreground flex-1 truncate">{file.name}</span>
+                      <span className="text-xs text-muted shrink-0">{file.type.split("/").pop()?.toUpperCase()}</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setSelectedFiles((prev) => prev.filter((_, i) => i !== idx))}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  ))}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-center gap-2 rounded-lg border-dashed"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add More Files
                   </Button>
                 </div>
               ) : (
@@ -248,30 +299,40 @@ export default function MattersPage() {
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <Upload className="h-4 w-4" />
-                  Choose File
+                  Choose Files
                 </Button>
               )}
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setShowNewDialog(false); setNewTitle(""); setSelectedFile(null) }}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleCreateMatter}
-              disabled={!newTitle.trim() || !selectedFile || createMatter.isPending}
-            >
-              {createMatter.isPending ? (
-                <>
+            {createMatter.isPending ? (
+              <>
+                <Button variant="outline" onClick={handleStopUpload} className="text-destructive border-destructive/50 hover:bg-destructive/10">
+                  <Square className="h-4 w-4" />
+                  Stop
+                </Button>
+                <Button disabled>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                "Create Matter"
-              )}
-            </Button>
+                  Uploading...
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => { setShowNewDialog(false); setNewTitle(""); setSelectedFiles([]) }}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleCreateMatter}
+                  disabled={!newTitle.trim() || selectedFiles.length === 0}
+                >
+                  Create Matter
+                </Button>
+              </>
+            )}
           </DialogFooter>
-          {createMatter.isError && (
+          {createMatter.isError &&
+            (createMatter.error as { name?: string; code?: string })?.name !== "AbortError" &&
+            (createMatter.error as { name?: string; code?: string })?.code !== "ERR_CANCELED" && (
             <p className="text-sm text-red-600 mt-2">
               Failed to create matter. Please try again.
             </p>

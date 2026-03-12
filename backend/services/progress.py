@@ -153,6 +153,17 @@ def publish_indexing(matter_id: str, progress: int = 0, detail: str = "") -> boo
     )
 
 
+def publish_enriching(matter_id: str, detail: str = "") -> bool:
+    """Publish 'enriching' stage event (summary + classification via Gemini)."""
+    return publish_progress(
+        matter_id=matter_id,
+        stage="enriching",
+        progress=0,
+        message="Analyzing document metadata...",
+        detail=detail
+    )
+
+
 def publish_storing(matter_id: str) -> bool:
     """Publish 'storing' stage event."""
     return publish_progress(

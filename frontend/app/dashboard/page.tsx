@@ -85,7 +85,7 @@ export default function DashboardPage() {
       header: "Status",
       render: (item: MatterResponse) => (
         <Badge variant={mapStatus(item.status)}>
-          {item.status === "ready" ? "Ready" : item.status === "processing" ? "Processing" : item.status === "error" ? "Error" : item.status}
+          {item.status === "ready" ? "Ready" : item.status === "processing" ? "Processing" : item.status === "cancelled" ? "Cancelled" : item.status === "error" ? "Error" : item.status}
         </Badge>
       ),
     },

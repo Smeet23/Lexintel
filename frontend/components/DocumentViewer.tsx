@@ -7,15 +7,15 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { getDocumentUrl } from "@/lib/api"
-import { useCaseChunks } from "@/hooks/use-cases"
+import { getMatterDocumentDownloadUrl } from "@/lib/api-services"
+import { useMatterChunks } from "@/hooks/use-matters"
 import type { ChunkResponse } from "@/lib/types"
 
 // ============================================
 // Section type badge colour mapping
 // ============================================
 
-const SECTION_TYPE_VARIANT: Record<string, "default" | "active" | "review" | "closed" | "error" | "processing" | "indexed"> = {
+export const SECTION_TYPE_VARIANT: Record<string, "default" | "active" | "review" | "closed" | "error" | "processing" | "indexed"> = {
   article: "default",
   section: "default",
   contract_header: "processing",
@@ -35,11 +35,11 @@ const SECTION_TYPE_VARIANT: Record<string, "default" | "active" | "review" | "cl
   numbered_header: "default",
 }
 
-function sectionVariant(type: string) {
+export function sectionVariant(type: string) {
   return SECTION_TYPE_VARIANT[type] ?? "closed"
 }
 
-function humanizeSectionType(type: string): string {
+export function humanizeSectionType(type: string): string {
   return type
     .split("_")
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
@@ -50,12 +50,12 @@ function humanizeSectionType(type: string): string {
 // Chunk grouping helpers
 // ============================================
 
-interface PageGroup {
+export interface PageGroup {
   pageNum: string
   chunks: ChunkResponse[]
 }
 
-function groupChunksByPage(chunks: ChunkResponse[]): PageGroup[] {
+export function groupChunksByPage(chunks: ChunkResponse[]): PageGroup[] {
   const map = new Map<string, ChunkResponse[]>()
   for (const chunk of chunks) {
     const key = chunk.page_num ?? "unknown"
@@ -79,7 +79,7 @@ function groupChunksByPage(chunks: ChunkResponse[]): PageGroup[] {
   }))
 }
 
-function uniqueSections(chunks: ChunkResponse[]): string[] {
+export function uniqueSections(chunks: ChunkResponse[]): string[] {
   const seen = new Set<string>()
   const result: string[] = []
   for (const chunk of chunks) {
@@ -95,12 +95,12 @@ function uniqueSections(chunks: ChunkResponse[]): string[] {
 // Individual chunk card
 // ============================================
 
-interface ChunkCardProps {
+export interface ChunkCardProps {
   chunk: ChunkResponse
   isHighlighted: boolean
 }
 
-function ChunkCard({ chunk, isHighlighted }: ChunkCardProps) {
+export function ChunkCard({ chunk, isHighlighted }: ChunkCardProps) {
   return (
     <div
       id={`chunk-${chunk.id}`}
@@ -133,6 +133,20 @@ function ChunkCard({ chunk, isHighlighted }: ChunkCardProps) {
       <p className="text-sm text-muted leading-relaxed whitespace-pre-wrap">
         {chunk.content}
       </p>
+
+      {/* Concepts */}
+      {chunk.concepts && chunk.concepts.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-2 pt-2 border-t border-border/50">
+          {chunk.concepts.map((concept) => (
+            <span
+              key={concept}
+              className="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-100"
+            >
+              {concept}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -142,11 +156,11 @@ function ChunkCard({ chunk, isHighlighted }: ChunkCardProps) {
 // ============================================
 
 interface ChunksViewProps {
-  caseId: string
+  matterId: string
 }
 
-function ChunksView({ caseId }: ChunksViewProps) {
-  const { data: chunks, isLoading, isError } = useCaseChunks(caseId)
+function ChunksView({ matterId }: ChunksViewProps) {
+  const { data: chunks, isLoading, isError } = useMatterChunks(matterId)
   const [activeSection, setActiveSection] = useState<string | null>(null)
 
   const pageGroups = useMemo(() => groupChunksByPage(chunks ?? []), [chunks])
@@ -269,20 +283,23 @@ function ChunksView({ caseId }: ChunksViewProps) {
 // ============================================
 
 interface OriginalViewProps {
-  caseId: string
-  caseName: string
+  matterId: string
+  matterName: string
+  documentId?: string
   isPdf: boolean
 }
 
-function OriginalView({ caseId, caseName, isPdf }: OriginalViewProps) {
-  const documentUrl = getDocumentUrl(caseId)
+function OriginalView({ matterId, matterName, documentId, isPdf }: OriginalViewProps) {
+  const documentUrl = documentId
+    ? getMatterDocumentDownloadUrl(matterId, documentId)
+    : `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/matters/${matterId}/document`
 
   if (isPdf) {
     return (
       <div className="flex flex-1 flex-col min-h-0">
         {/* Toolbar */}
         <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-white shrink-0">
-          <p className="text-sm font-medium text-foreground truncate">{caseName}</p>
+          <p className="text-sm font-medium text-foreground truncate">{matterName}</p>
           <a
             href={documentUrl}
             download
@@ -295,7 +312,7 @@ function OriginalView({ caseId, caseName, isPdf }: OriginalViewProps) {
         {/* iframe */}
         <iframe
           src={documentUrl}
-          title={caseName}
+          title={matterName}
           className="flex-1 w-full border-0"
           style={{ minHeight: 0 }}
         />
@@ -310,7 +327,7 @@ function OriginalView({ caseId, caseName, isPdf }: OriginalViewProps) {
         <FileText className="h-8 w-8 text-slate-500" />
       </div>
       <div>
-        <p className="font-semibold text-foreground">{caseName}</p>
+        <p className="font-semibold text-foreground">{matterName}</p>
         <p className="text-sm text-muted mt-1">
           Inline preview is not available for this file type.
         </p>
@@ -332,16 +349,18 @@ function OriginalView({ caseId, caseName, isPdf }: OriginalViewProps) {
 interface DocumentViewerProps {
   open: boolean
   onClose: () => void
-  caseId: string
-  caseName: string
+  matterId: string
+  matterName: string
+  documentId?: string
   fileType?: string
 }
 
 export default function DocumentViewer({
   open,
   onClose,
-  caseId,
-  caseName,
+  matterId,
+  matterName,
+  documentId,
   fileType,
 }: DocumentViewerProps) {
   const isPdf = !fileType || fileType.toLowerCase() === "pdf"
@@ -374,7 +393,7 @@ export default function DocumentViewer({
               </div>
               <div className="min-w-0">
                 <DialogPrimitive.Title className="text-base font-semibold text-foreground truncate">
-                  {caseName}
+                  {matterName}
                 </DialogPrimitive.Title>
                 <p className="text-xs text-muted">Document Viewer</p>
               </div>
@@ -409,10 +428,10 @@ export default function DocumentViewer({
           {/* Tab content — fills remaining space */}
           <div className="flex flex-1 min-h-0">
             {activeTab === "original" && (
-              <OriginalView caseId={caseId} caseName={caseName} isPdf={isPdf} />
+              <OriginalView matterId={matterId} matterName={matterName} documentId={documentId} isPdf={isPdf} />
             )}
             {activeTab === "chunks" && (
-              <ChunksView caseId={caseId} />
+              <ChunksView matterId={matterId} />
             )}
           </div>
         </DialogPrimitive.Content>

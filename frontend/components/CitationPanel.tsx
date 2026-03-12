@@ -9,9 +9,10 @@ import type { Citation } from "@/lib/types"
 interface CitationPanelProps {
   citations: Citation[]
   className?: string
+  onCitationClick?: (citation: Citation) => void
 }
 
-export default function CitationPanel({ citations, className }: CitationPanelProps) {
+export default function CitationPanel({ citations, className, onCitationClick }: CitationPanelProps) {
   if (citations.length === 0) {
     return (
       <div className={cn("flex flex-col items-center justify-center py-12 text-center", className)}>
@@ -38,9 +39,11 @@ export default function CitationPanel({ citations, className }: CitationPanelPro
 
       <div className="space-y-2">
         {citations.map((citation, idx) => (
-          <div
+          <button
+            type="button"
             key={idx}
-            className="rounded-xl border border-border bg-white p-3 hover:shadow-elevated hover:border-border-strong transition-all duration-200 cursor-pointer group"
+            onClick={() => onCitationClick?.(citation)}
+            className="w-full text-left rounded-xl border border-border bg-white p-3 hover:shadow-elevated hover:border-border-strong transition-all duration-200 cursor-pointer group"
           >
             <div className="flex items-start gap-2.5">
               <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-surface text-muted group-hover:bg-surface-hover transition-colors">
@@ -72,7 +75,7 @@ export default function CitationPanel({ citations, className }: CitationPanelPro
                 {Math.round(citation.relevanceScore * 100)}%
               </span>
             </div>
-          </div>
+          </button>
         ))}
       </div>
 

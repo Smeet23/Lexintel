@@ -7,8 +7,14 @@ class Settings(BaseSettings):
     # Database
     database_url: str
 
-    # Google AI (Gemini)
+    # Google AI (Gemini) - used for RAG LLM
     google_api_key: str
+
+    # Cohere - used for embeddings (required — no default so app fails fast if missing)
+    cohere_api_key: str
+
+    # Gemini LLM model
+    gemini_model: str = "gemini-2.5-flash-lite"
 
     # Qdrant
     qdrant_url: str = "http://localhost:6333"

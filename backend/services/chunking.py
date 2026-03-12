@@ -2,8 +2,13 @@
 
 Strategy (structure-first, then semantics):
 1. If markdown content (from pymupdf4llm/DOCX): split on headers first
-2. Within each section: SemanticChunker splits by semantic similarity
+2. Within each section: LegalSemanticChunker splits by semantic similarity
 3. Fallback: RecursiveCharacterTextSplitter if SemanticChunker fails
+
+Sentence boundary detection uses NUPunkt (arXiv:2504.04131) — a legal-specific
+tokenizer with 4,000+ abbreviations (s., ss., para., Corp., Inc., Ltd., v.,
+Art., c.). This replaces the default regex ``(?<=[.?!])\\s+`` which mis-splits
+on legal citations like "s. 23(1)" or "Corp. v. Smith".
 """
 import os
 import re
@@ -12,6 +17,7 @@ import threading
 from functools import lru_cache
 from typing import List, Dict, Optional
 from langchain_text_splitters import RecursiveCharacterTextSplitter, MarkdownHeaderTextSplitter
+from nupunkt import sent_tokenize
 
 try:
     from backend.services.text_extraction import extract_text
@@ -41,30 +47,18 @@ MARKDOWN_HEADERS = [
 
 
 def _clean_markdown_artifacts(text: str) -> str:
-    """Clean common PDF-to-markdown extraction artifacts.
+    """Clean excessive whitespace from extracted text.
 
-    Fixes bold-separated words like '**P** **ART** **1**' → 'PART 1'
-    and removes excessive whitespace.
+    Only collapses multiple spaces — other regex patterns (bold removal,
+    letter-space fixing, orphan removal) were removed after testing showed
+    they have zero positive effect on pymupdf4llm output and actively
+    corrupt legal text (e.g. "I DECLARE" → "IDECLARE").
     """
     if not text:
         return text
 
-    # Fix bold-separated characters: **P** **ART** **1** → P ART 1 → PART 1
-    # Pattern: **X** **Y** where X and Y are short fragments
-    cleaned = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
-
-    # Fix single-letter-space artifacts from PDF: "P ART" → "PART", "C HAPTER" → "CHAPTER"
-    # Only for ALL-CAPS sequences where a single letter is separated
-    cleaned = re.sub(r'\b([A-Z])\s([A-Z]{2,})\b', r'\1\2', cleaned)
-
-    # Collapse multiple spaces into one
-    cleaned = re.sub(r'  +', ' ', cleaned)
-
-    # Remove orphan single lowercase letters on their own line (OCR artifacts).
-    # Preserve uppercase letters — they may be Roman numerals (I, V, X) or exhibit labels (A, B).
-    cleaned = re.sub(r'\n\s*([a-z])\s*\n', '\n', cleaned)
-
-    return cleaned
+    # Collapse multiple spaces into one (safe, no false positives)
+    return re.sub(r'  +', ' ', text)
 
 
 def _merge_small_chunks(chunks: List[Dict[str, str]]) -> List[Dict[str, str]]:
@@ -109,37 +103,27 @@ def _merge_small_chunks(chunks: List[Dict[str, str]]) -> List[Dict[str, str]]:
 def _extract_section_label(text: str, page_num: str = "") -> str:
     """Extract a meaningful label from chunk text when no header is available.
 
-    Looks for the first significant line that could serve as a section name:
-    bold markdown, numbered clauses, capitalized phrases, or first sentence.
+    Uses the first non-empty line truncated to 80 chars as label.
+
+    TODO: Replace with Docling (https://github.com/docling-project/docling)
+    for structured PDF parsing. Docling detects headings, paragraphs, tables
+    via DocLayNet layout analysis — eliminates need for regex-based label
+    extraction entirely. Current approach only captures 27% useful labels
+    on UK statutes because it can't distinguish section headers like
+    "23 Right to repair" from subclauses like "(1) The consumer has...".
+    Docling would provide this structure natively.
     """
     if not text:
         return f"Page {page_num}" if page_num else ""
 
-    # Strip markdown formatting for analysis
-    clean = re.sub(r'[#*_`]', '', text).strip()
+    clean = text.replace('#', '').replace('*', '').replace('_', '').replace('`', '').strip()
     lines = [ln.strip() for ln in clean.split('\n') if ln.strip()]
     if not lines:
         return f"Page {page_num}" if page_num else ""
 
     first_line = lines[0]
 
-    # Try to find a meaningful first line (not just noise)
-    # Look for numbered clauses: "1 Short title", "23 Right to reject"
-    m = re.match(r'^(\d+(?:\.\d+)?)\s+([A-Z].*)', first_line)
-    if m:
-        label = first_line[:80]
-        return label
-
-    # Look for capitalized labels: "PART 1", "Consumer Rights Act", etc.
-    if len(first_line) < 100 and first_line[0].isupper():
-        return first_line[:80]
-
-    # Fallback: use first meaningful phrase
     if len(first_line) > 80:
-        # Truncate to first sentence or 80 chars
-        period = first_line.find('. ')
-        if 10 < period < 80:
-            return first_line[:period]
         return first_line[:80]
 
     return first_line if len(first_line) > 5 else f"Page {page_num}" if page_num else ""
@@ -155,10 +139,96 @@ _semantic_chunker_lock = threading.Lock()
 SEMANTIC_EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 
 
+class LegalSemanticChunker:
+    """SemanticChunker wrapper that uses NUPunkt for sentence splitting.
+
+    The base SemanticChunker uses ``re.split(r"(?<=[.?!])\\s+")`` to split text
+    into sentences — this breaks on legal abbreviations like "s. 23(1)",
+    "Corp. v. Smith", "Art. III", "para. 5". This wrapper replaces that
+    regex with NUPunkt's sent_tokenize(), which handles 4,000+ legal
+    abbreviations correctly.
+
+    Delegates all other behavior (embedding, similarity, breakpoints)
+    to the underlying SemanticChunker instance.
+    """
+
+    def __init__(self, semantic_chunker):
+        self._chunker = semantic_chunker
+
+    def split_text(self, text: str) -> List[str]:
+        """Split text using NUPunkt sentences + SemanticChunker similarity."""
+        single_sentences_list = sent_tokenize(text)
+
+        if len(single_sentences_list) == 1:
+            return single_sentences_list
+
+        # gradient mode needs at least 3 sentences for np.gradient
+        if (
+            self._chunker.breakpoint_threshold_type == "gradient"
+            and len(single_sentences_list) == 2
+        ):
+            return single_sentences_list
+
+        # Use SemanticChunker's internal methods for similarity + breakpoints
+        distances, sentences = self._chunker._calculate_sentence_distances(
+            single_sentences_list
+        )
+
+        if self._chunker.number_of_chunks is not None:
+            breakpoint_distance_threshold = self._chunker._threshold_from_clusters(distances)
+            breakpoint_array = distances
+        else:
+            (
+                breakpoint_distance_threshold,
+                breakpoint_array,
+            ) = self._chunker._calculate_breakpoint_threshold(distances)
+
+        indices_above_thresh = [
+            i
+            for i, x in enumerate(breakpoint_array)
+            if x > breakpoint_distance_threshold
+        ]
+
+        chunks = []
+        start_index = 0
+
+        for index in indices_above_thresh:
+            end_index = index
+            group = sentences[start_index : end_index + 1]
+            combined_text = " ".join([d["sentence"] for d in group])
+            if (
+                self._chunker.min_chunk_size is not None
+                and len(combined_text) < self._chunker.min_chunk_size
+            ):
+                continue
+            chunks.append(combined_text)
+            start_index = index + 1
+
+        if start_index < len(sentences):
+            combined_text = " ".join([d["sentence"] for d in sentences[start_index:]])
+            chunks.append(combined_text)
+
+        return chunks
+
+    def create_documents(self, texts, metadatas=None):
+        """Create Documents using NUPunkt-based split_text."""
+        import copy
+        from langchain_core.documents import Document
+
+        _metadatas = metadatas or [{}] * len(texts)
+        documents = []
+        for i, text in enumerate(texts):
+            for chunk in self.split_text(text):
+                metadata = copy.deepcopy(_metadatas[i])
+                documents.append(Document(page_content=chunk, metadata=metadata))
+        return documents
+
+
 def _get_semantic_chunker():
-    """Initialize SemanticChunker with local HuggingFace embeddings.
+    """Initialize LegalSemanticChunker with NUPunkt sentence splitting.
 
     Uses sentence-transformers running locally — no OpenAI API key needed.
+    Wraps SemanticChunker with NUPunkt to handle legal abbreviations.
     The chunker is initialized once per process and reused (singleton).
     PID check ensures a fresh instance after Celery worker fork.
 
@@ -179,16 +249,17 @@ def _get_semantic_chunker():
         from langchain_experimental.text_splitter import SemanticChunker
         from langchain_huggingface import HuggingFaceEmbeddings
 
-        logger.info(f"Initializing SemanticChunker with local model: {SEMANTIC_EMBEDDING_MODEL} (pid={current_pid})")
+        logger.info(f"Initializing LegalSemanticChunker with NUPunkt + {SEMANTIC_EMBEDDING_MODEL} (pid={current_pid})")
         embeddings = HuggingFaceEmbeddings(model_name=SEMANTIC_EMBEDDING_MODEL)
 
-        _semantic_chunker_instance = SemanticChunker(
+        base_chunker = SemanticChunker(
             embeddings=embeddings,
             breakpoint_threshold_type=SEMANTIC_THRESHOLD_TYPE,
             breakpoint_threshold_amount=SEMANTIC_THRESHOLD_AMOUNT,
         )
+        _semantic_chunker_instance = LegalSemanticChunker(base_chunker)
         _semantic_chunker_pid = current_pid
-        logger.info("SemanticChunker initialized successfully (local embeddings)")
+        logger.info("LegalSemanticChunker initialized (NUPunkt + local embeddings)")
         return _semantic_chunker_instance
 
 
@@ -220,9 +291,14 @@ def _split_text_semantic(text: str, semantic_chunker) -> List[str]:
 
     # SemanticChunker (gradient mode) needs at least 3 sentences for np.gradient.
     # For very short text or too few sentences, return as-is.
+    # NUPunkt: legal-specific sentence boundary detection (4,000+ abbreviations)
+    # https://arxiv.org/abs/2504.04131
     stripped = text.strip()
-    sentences = re.split(r'(?<=[.?!])\s+', stripped)
-    if len(stripped) < 100 or len(sentences) < 3:
+    if len(stripped) < 100:
+        return [stripped]
+
+    sentences = sent_tokenize(stripped)
+    if len(sentences) < 3:
         return [stripped]
 
     try:

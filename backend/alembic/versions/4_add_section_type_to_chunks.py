@@ -1,7 +1,7 @@
 """Add section_type column to chunks table
 
 Revision ID: 4
-Revises: 3
+Revises: f794e7d74f24
 Create Date: 2026-02-15 00:00:00.000000
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '4'
-down_revision: Union[str, None] = '3'
+down_revision: Union[str, None] = 'f794e7d74f24'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

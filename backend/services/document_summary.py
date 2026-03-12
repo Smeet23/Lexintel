@@ -1,183 +1,187 @@
-"""Generate document summaries from matter metadata"""
+"""Generate document summaries and enrichment via Gemini."""
 import re
 import logging
-from typing import List, Dict, Any
+from collections import Counter
+from typing import List, Dict, Any, Optional
+
+import google.generativeai as genai
+
+try:
+    from backend.config import get_settings
+except ImportError:
+    try:
+        from config import get_settings
+    except ImportError:
+        from ..config import get_settings
 
 logger = logging.getLogger(__name__)
 
-# Legal terms to track
-LEGAL_TERMS = [
-    "payment", "liability", "warranty", "indemnif", "terminat",
-    "breach", "force majeure", "arbitration", "governing law",
-    "confidential", "intellectual property", "dispute", "amendment"
-]
 
-# Document type patterns
-DOCUMENT_PATTERNS = {
-    "Terms of Service": r"(?:terms\s+(?:and\s+)?conditions|terms\s+of\s+service)",
-    "License Agreement": r"license\s+agreement",
-    "Privacy Policy": r"privacy\s+(?:policy|statement)",
-    "Purchase Agreement": r"(?:purchase|sales?)\s+agreement",
-    "Non-Disclosure Agreement": r"(?:NDA|non.?disclosure)",
-}
+# ------------------------------------------------------------------
+# Ingestion-time enrichment (async, called from tasks.py)
+# ------------------------------------------------------------------
+
+async def generate_doc_summary(extracted_text: str) -> Optional[str]:
+    """Generate a 1-2 sentence document summary using Gemini.
+
+    Called once per document at ingestion time. The summary is stored
+    on the Document model and prepended to chunks for embedding (SAC).
+
+    Args:
+        extracted_text: Full extracted document text
+
+    Returns:
+        Summary string (max 200 chars), or None on failure
+    """
+    settings = get_settings()
+    if not settings.google_api_key:
+        return None
+
+    genai.configure(api_key=settings.google_api_key)
+    model = genai.GenerativeModel(model_name=settings.gemini_model)
+
+    # First ~30k chars covers preamble, TOC, key sections
+    truncated = extracted_text[:30000]
+
+    prompt = (
+        "Summarize this legal document in exactly 1-2 sentences. "
+        "Include the document type, subject matter, and key parties if identifiable. "
+        "Be factual and specific.\n\n"
+        f"{truncated}"
+    )
+
+    try:
+        response = await model.generate_content_async(
+            prompt,
+            generation_config=genai.GenerationConfig(
+                temperature=0.1,
+                max_output_tokens=100,
+            ),
+        )
+        summary = response.text.strip()
+        return summary[:200] if summary else None
+    except Exception as e:
+        logger.warning(f"Summary generation failed (graceful degradation): {e}")
+        return None
+
+
+async def classify_document(extracted_text: str) -> Dict[str, str]:
+    """Classify document type and jurisdiction using Gemini.
+
+    Args:
+        extracted_text: Full extracted document text
+
+    Returns:
+        Dict with keys: document_type, jurisdiction
+    """
+    settings = get_settings()
+    if not settings.google_api_key:
+        return {"document_type": "other", "jurisdiction": "unknown"}
+
+    genai.configure(api_key=settings.google_api_key)
+    model = genai.GenerativeModel(model_name=settings.gemini_model)
+
+    truncated = extracted_text[:10000]
+
+    prompt = (
+        "Classify this legal document. Respond with ONLY two lines:\n"
+        "TYPE: <one of: statute, contract, judgment, regulation, pleading, policy, other>\n"
+        "JURISDICTION: <one of: US, UK, EU, AU, CA, SG, IN, UN, other>\n\n"
+        f"{truncated}"
+    )
+
+    try:
+        response = await model.generate_content_async(
+            prompt,
+            generation_config=genai.GenerationConfig(
+                temperature=0.0,
+                max_output_tokens=50,
+            ),
+        )
+        text = response.text.strip()
+        doc_type = "other"
+        jurisdiction = "unknown"
+        for line in text.split("\n"):
+            if line.upper().startswith("TYPE:"):
+                doc_type = line.split(":", 1)[1].strip().lower()
+            elif line.upper().startswith("JURISDICTION:"):
+                jurisdiction = line.split(":", 1)[1].strip().upper()
+        return {"document_type": doc_type, "jurisdiction": jurisdiction}
+    except Exception as e:
+        logger.warning(f"Document classification failed (graceful degradation): {e}")
+        return {"document_type": "other", "jurisdiction": "unknown"}
+
+
+# ------------------------------------------------------------------
+# Query-time helpers (read pre-computed metadata from DB)
+# ------------------------------------------------------------------
 
 
 def extract_key_concepts(matter) -> List[str]:
-    """Extract top legal concepts from chunks.
+    """Extract top concepts from pre-computed YAKE keywords stored on chunks.
+
+    Aggregates concepts across all documents' chunks in the matter,
+    returning the most frequent terms.
 
     Args:
-        matter: Matter object with chunks attribute
+        matter: Matter object with documents->chunks relationships
 
     Returns:
-        List of top 7 concepts (or fewer if not found)
+        List of top 10 concepts
     """
-    try:
-        chunks = getattr(matter, 'chunks', None)
-        if not chunks:
-            return []
-    except (AttributeError, TypeError):
-        return []
+    concept_counts = Counter()
 
-    concept_counts = {}
+    for doc in matter.documents:
+        for chunk in doc.chunks:
+            for concept in (chunk.concepts or []):
+                concept_counts[concept] += 1
 
-    for chunk in chunks:
-        try:
-            content = getattr(chunk, 'content', '')
-            if not isinstance(content, str):
-                content = str(content)
-            content = content.lower()
-        except (AttributeError, TypeError):
-            continue
-
-        for term in LEGAL_TERMS:
-            try:
-                count = len(re.findall(rf'\b{term}\b', content, re.IGNORECASE))
-                if count > 0:
-                    concept_counts[term] = concept_counts.get(term, 0) + count
-            except (TypeError, re.error):
-                continue
-
-    # Sort by frequency, get top 7
-    sorted_concepts = sorted(
-        concept_counts.items(),
-        key=lambda x: x[1],
-        reverse=True
-    )
-
-    return [concept for concept, _ in sorted_concepts[:7]]
-
-
-def classify_legal_document_type(matter) -> str:
-    """Classify document type from content.
-
-    Args:
-        matter: Matter object with chunks
-
-    Returns:
-        Document type string
-    """
-    try:
-        chunks = getattr(matter, 'chunks', None)
-        if not chunks:
-            return "Legal Document"
-
-        first_chunk = chunks[0]
-        content = getattr(first_chunk, 'content', '')
-        if not isinstance(content, str):
-            content = str(content)
-        first_chunk = content.lower()
-    except (AttributeError, TypeError, IndexError):
-        return "Legal Document"
-
-    try:
-        for doc_type, pattern in DOCUMENT_PATTERNS.items():
-            if re.search(pattern, first_chunk, re.IGNORECASE):
-                return doc_type
-    except (TypeError, re.error):
-        pass
-
-    return "Legal Document"
+    return [c for c, _ in concept_counts.most_common(10)]
 
 
 def calculate_page_count(matter) -> int:
     """Calculate total pages from chunk metadata.
 
     Args:
-        matter: Matter object with chunks
+        matter: Matter object with chunks relationship
 
     Returns:
         Estimated page count
     """
-    try:
-        chunks = getattr(matter, 'chunks', None)
-        if not chunks:
-            return 0
-    except (AttributeError, TypeError):
-        return 0
-
     page_numbers = set()
 
-    for chunk in chunks:
-        try:
-            page_num = getattr(chunk, 'page_num', None)
-            if page_num:
-                # Extract numeric part
-                match = re.search(r'\d+', str(page_num))
-                if match:
-                    page_numbers.add(int(match.group()))
-        except (AttributeError, TypeError, ValueError):
-            continue
+    for chunk in matter.chunks:
+        if chunk.page_num:
+            match = re.search(r'\d+', str(chunk.page_num))
+            if match:
+                page_numbers.add(int(match.group()))
 
-    # Return max page number or estimate
     if page_numbers:
         return max(page_numbers)
 
-    try:
-        return max(1, len(chunks) // 2)
-    except (TypeError, AttributeError):
-        return 0
+    return max(1, len(matter.chunks) // 2)
 
 
 def generate_document_summary(matter) -> Dict[str, Any]:
-    """Generate comprehensive document summary.
+    """Generate comprehensive document summary from pre-computed metadata.
+
+    Reads YAKE-extracted concepts from chunks and Gemini-generated
+    metadata from documents. No regex computation at query time.
 
     Args:
-        matter: Matter object with all metadata and chunks
+        matter: Matter object with all metadata and relationships
 
     Returns:
         Dict with document metadata
     """
-    try:
-        name = getattr(matter, 'name', 'Unknown')
-        file_type = getattr(matter, 'file_type', 'unknown')
-        status = getattr(matter, 'status', 'unknown')
-        updated_at = getattr(matter, 'updated_at', None)
+    primary_doc = matter.documents[0] if matter.documents else None
 
-        # Handle updated_at if it's a datetime or None
-        processed_at = None
-        if updated_at:
-            try:
-                processed_at = updated_at.isoformat() if hasattr(updated_at, 'isoformat') else str(updated_at)
-            except (AttributeError, TypeError):
-                processed_at = None
-
-        return {
-            "filename": name,
-            "file_type": file_type,
-            "key_concepts": extract_key_concepts(matter),
-            "legal_significance": classify_legal_document_type(matter),
-            "total_pages": calculate_page_count(matter),
-            "processing_status": status,
-            "processed_at": processed_at
-        }
-    except Exception as e:
-        logger.warning(f"Error generating document summary: {str(e)}")
-        return {
-            "filename": "Unknown",
-            "file_type": "unknown",
-            "key_concepts": [],
-            "legal_significance": "Legal Document",
-            "total_pages": 0,
-            "processing_status": "unknown",
-            "processed_at": None
-        }
+    return {
+        "filename": matter.name,
+        "file_type": matter.file_type,
+        "key_concepts": extract_key_concepts(matter),
+        "legal_significance": primary_doc.document_type or "Legal Document" if primary_doc else "Legal Document",
+        "total_pages": calculate_page_count(matter),
+        "processing_status": matter.status,
+        "processed_at": matter.updated_at.isoformat() if matter.updated_at else None,
+    }
