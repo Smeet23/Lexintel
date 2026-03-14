@@ -30,16 +30,21 @@ const navigation = [
 interface SidebarProps {
   collapsed?: boolean
   onToggle?: () => void
+  mobileOpen?: boolean
+  onMobileClose?: () => void
 }
 
-export default function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
+export default function Sidebar({ collapsed = false, onToggle, mobileOpen = false, onMobileClose }: SidebarProps) {
   const pathname = usePathname()
 
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 z-40 flex h-screen flex-col bg-surface/80 border-r border-border backdrop-blur-xl transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
-        collapsed ? "w-[68px]" : "w-[260px]"
+        "fixed left-0 top-0 z-50 flex h-screen flex-col bg-surface/80 border-r border-border backdrop-blur-xl transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
+        // Mobile: off-screen by default, slide in when open
+        mobileOpen ? "translate-x-0" : "-translate-x-full",
+        "lg:translate-x-0",
+        collapsed ? "lg:w-[68px] w-[260px]" : "w-[260px]"
       )}
     >
       {/* Logo */}
@@ -82,6 +87,7 @@ export default function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
             <Link
               key={item.name}
               href={item.href}
+              onClick={onMobileClose}
               className={cn(
                 "relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium transition-all duration-200",
                 isActive

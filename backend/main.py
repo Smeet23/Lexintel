@@ -19,7 +19,12 @@ logger = logging.getLogger(__name__)
 try:
     from backend.config import get_settings
     from backend.database import get_db
-    from backend.models import Matter, Chunk, Query, Document
+    from backend.models import Matter, Chunk, Query, Document, ContractReview, Draft, AuditLog, SavedPrecedent
+    from backend.services.contract_review import analyze_contract
+    from backend.services.draft_service import generate_draft
+    from backend.services.audit import log_activity
+    from backend.services.embeddings import embed_query
+    from backend.services.vector_store import search_vectors
     from backend.services.storage import upload_document_to_blob, download_document_from_blob, validate_file_format
     from backend.services.rag_engine import query_matter
     from backend.validators import validate_filename, validate_matter_name, validate_question, validate_file_type
@@ -29,7 +34,12 @@ except ImportError:
     try:
         from config import get_settings
         from database import get_db
-        from models import Matter, Chunk, Query, Document
+        from models import Matter, Chunk, Query, Document, ContractReview, Draft, AuditLog, SavedPrecedent
+        from services.contract_review import analyze_contract
+        from services.draft_service import generate_draft
+        from services.audit import log_activity
+        from services.embeddings import embed_query
+        from services.vector_store import search_vectors
         from services.storage import upload_document_to_blob, download_document_from_blob, validate_file_format
         from services.rag_engine import query_matter
         from validators import validate_filename, validate_matter_name, validate_question, validate_file_type
@@ -38,7 +48,12 @@ except ImportError:
     except ImportError:
         from .config import get_settings
         from .database import get_db
-        from .models import Matter, Chunk, Query, Document
+        from .models import Matter, Chunk, Query, Document, ContractReview, Draft, AuditLog, SavedPrecedent
+        from .services.contract_review import analyze_contract
+        from .services.draft_service import generate_draft
+        from .services.audit import log_activity
+        from .services.embeddings import embed_query
+        from .services.vector_store import search_vectors
         from .services.storage import upload_document_to_blob, download_document_from_blob, validate_file_format
         from .services.rag_engine import query_matter
         from .validators import validate_filename, validate_matter_name, validate_question, validate_file_type
@@ -240,6 +255,7 @@ async def upload_matter(
         # Update matter blob_storage_path to first document's path
         matter.blob_storage_path = blob_path
         db.commit()
+        log_activity(db, str(matter_id), "matter_created", details=f"Created matter '{name}' with {len(files)} document(s)")
         db.refresh(matter)
 
         publish_uploaded(str(matter_id), f"{len(files)} document(s)")
@@ -364,6 +380,7 @@ def cancel_matter_processing(
     matter.celery_task_id = None
     matter.updated_at = datetime.now(timezone.utc)
     db.commit()
+    log_activity(db, str(matter_uuid), "processing_cancelled", details="Processing cancelled")
 
     # Clean up any partial vectors in Qdrant (best-effort, after commit)
     try:
@@ -525,6 +542,7 @@ async def upload_matter_document(
         )
         document.celery_task_id = task.id
         db.commit()
+        log_activity(db, str(matter_uuid), "document_uploaded", details=f"Uploaded '{file.filename}'")
         logger.info(f"Queued processing task {task.id} for document {document_id} in matter {matter_id}")
 
         return {
@@ -653,6 +671,7 @@ def delete_document(matter_id: str, document_id: str, db: Session = Depends(get_
     blob_path = document.blob_storage_path
 
     # Delete chunks and document from PostgreSQL FIRST (transactional)
+    doc_name = document.name
     db.query(Chunk).filter(Chunk.document_id == doc_uuid).delete()
     db.delete(document)
 
@@ -671,6 +690,7 @@ def delete_document(matter_id: str, document_id: str, db: Session = Depends(get_
     matter.updated_at = datetime.now(timezone.utc)
 
     db.commit()
+    log_activity(db, str(matter_uuid), "document_deleted", details=f"Deleted document '{doc_name}'")
 
     # Best-effort cleanup AFTER commit: Qdrant vectors + blob storage
     if chunk_ids:
@@ -778,6 +798,7 @@ async def ask_question(
             )
             db.add(db_query)
             db.commit()
+            log_activity(db, str(matter_uuid), "query", details=question)
 
         return rag_result
     except Exception as e:
@@ -1065,6 +1086,418 @@ async def matter_progress_stream(
             await redis_client.close()
 
     return EventSourceResponse(event_generator())
+
+
+# ============================================
+# CONTRACT REVIEW ENDPOINTS
+# ============================================
+
+@app.post("/matters/{matter_id}/contract-review", response_model=dict)
+async def run_contract_review(
+    matter_id: str,
+    document_id: str = Body(None, embed=True),
+    db: Session = Depends(get_db)
+):
+    """Run contract risk analysis on a document using Gemini."""
+    try:
+        matter_uuid = UUID(matter_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid matter ID format")
+
+    matter = db.query(Matter).filter(Matter.id == matter_uuid, Matter.is_deleted == False).first()
+    if not matter:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Matter not found")
+
+    # Resolve document_id: use provided or pick first document
+    if document_id:
+        try:
+            doc_uuid = UUID(document_id)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid document ID")
+    else:
+        first_doc = db.query(Document).filter(
+            Document.matter_id == matter_uuid
+        ).order_by(Document.created_at.asc()).first()
+        if not first_doc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No documents found for this matter")
+        doc_uuid = first_doc.id
+
+    # Delete any existing review for this document (re-run)
+    db.query(ContractReview).filter(
+        ContractReview.matter_id == matter_uuid,
+        ContractReview.document_id == doc_uuid
+    ).delete()
+    db.commit()
+
+    try:
+        result = await analyze_contract(str(matter_uuid), str(doc_uuid), db)
+    except Exception as e:
+        logger.error(f"Contract review failed: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Contract review analysis failed")
+
+    # Persist the review
+    review = ContractReview(
+        id=uuid.uuid4(),
+        matter_id=matter_uuid,
+        document_id=doc_uuid,
+        risks=result.get("risks", []),
+        summary=result.get("summary", {}),
+        missing_clauses=result.get("missing_clauses", []),
+        overall_score=result.get("overall_score"),
+    )
+    db.add(review)
+    db.commit()
+
+    log_activity(db, str(matter_uuid), "contract_review", details=f"Analyzed document for contract risks")
+
+    return {
+        "id": str(review.id),
+        "matter_id": str(matter_uuid),
+        "document_id": str(doc_uuid),
+        "risks": review.risks,
+        "summary": review.summary,
+        "missing_clauses": review.missing_clauses,
+        "overall_score": review.overall_score,
+        "created_at": review.created_at.isoformat(),
+    }
+
+
+@app.get("/matters/{matter_id}/contract-review", response_model=dict)
+async def get_contract_review(
+    matter_id: str,
+    document_id: str = QueryParam(None),
+    db: Session = Depends(get_db)
+):
+    """Get the most recent contract review for a matter/document."""
+    try:
+        matter_uuid = UUID(matter_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid matter ID format")
+
+    query = db.query(ContractReview).filter(ContractReview.matter_id == matter_uuid)
+    if document_id:
+        try:
+            doc_uuid = UUID(document_id)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid document ID")
+        query = query.filter(ContractReview.document_id == doc_uuid)
+
+    review = query.order_by(ContractReview.created_at.desc()).first()
+    if not review:
+        return {"exists": False}
+
+    return {
+        "exists": True,
+        "id": str(review.id),
+        "matter_id": str(review.matter_id),
+        "document_id": str(review.document_id),
+        "risks": review.risks,
+        "summary": review.summary,
+        "missing_clauses": review.missing_clauses,
+        "overall_score": review.overall_score,
+        "created_at": review.created_at.isoformat(),
+    }
+
+
+# ============================================
+# DRAFT ASSISTANT ENDPOINTS
+# ============================================
+
+@app.post("/matters/{matter_id}/drafts", response_model=dict)
+async def create_draft(
+    matter_id: str,
+    document_type: str = Body(..., embed=True),
+    instructions: str = Body(..., embed=True),
+    db: Session = Depends(get_db)
+):
+    """Generate a legal document draft using matter context and Gemini."""
+    try:
+        matter_uuid = UUID(matter_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid matter ID format")
+
+    matter = db.query(Matter).filter(Matter.id == matter_uuid, Matter.is_deleted == False).first()
+    if not matter:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Matter not found")
+
+    try:
+        result = await generate_draft(str(matter_uuid), document_type, instructions, db)
+    except Exception as e:
+        logger.error(f"Draft generation failed: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Draft generation failed")
+
+    # Persist the draft
+    draft = Draft(
+        id=uuid.uuid4(),
+        matter_id=matter_uuid,
+        document_type=document_type,
+        instructions=instructions,
+        content=result.get("content", ""),
+        sources=result.get("sources", []),
+    )
+    db.add(draft)
+    db.commit()
+
+    log_activity(db, str(matter_uuid), "draft_generated", details=f"Generated {document_type}")
+
+    return {
+        "id": str(draft.id),
+        "matter_id": str(matter_uuid),
+        "document_type": draft.document_type,
+        "instructions": draft.instructions,
+        "content": draft.content,
+        "sources": draft.sources,
+        "created_at": draft.created_at.isoformat(),
+    }
+
+
+@app.get("/matters/{matter_id}/drafts", response_model=list)
+async def list_drafts(
+    matter_id: str,
+    db: Session = Depends(get_db)
+):
+    """List all drafts for a matter, newest first."""
+    try:
+        matter_uuid = UUID(matter_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid matter ID format")
+
+    drafts = (
+        db.query(Draft)
+        .filter(Draft.matter_id == matter_uuid)
+        .order_by(Draft.created_at.desc())
+        .all()
+    )
+
+    return [
+        {
+            "id": str(d.id),
+            "document_type": d.document_type,
+            "instructions": d.instructions,
+            "content": d.content,
+            "sources": d.sources,
+            "created_at": d.created_at.isoformat(),
+        }
+        for d in drafts
+    ]
+
+
+@app.get("/matters/{matter_id}/drafts/{draft_id}", response_model=dict)
+async def get_draft(
+    matter_id: str,
+    draft_id: str,
+    db: Session = Depends(get_db)
+):
+    """Get a single draft by ID."""
+    try:
+        matter_uuid = UUID(matter_id)
+        draft_uuid = UUID(draft_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid ID format")
+
+    draft = db.query(Draft).filter(Draft.id == draft_uuid, Draft.matter_id == matter_uuid).first()
+    if not draft:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft not found")
+
+    return {
+        "id": str(draft.id),
+        "matter_id": str(draft.matter_id),
+        "document_type": draft.document_type,
+        "instructions": draft.instructions,
+        "content": draft.content,
+        "sources": draft.sources,
+        "created_at": draft.created_at.isoformat(),
+    }
+
+
+# ============================================
+# AUDIT LOG ENDPOINT
+# ============================================
+
+@app.get("/matters/{matter_id}/audit-log", response_model=list)
+async def get_audit_log(
+    matter_id: str,
+    limit: int = QueryParam(100, ge=1, le=500),
+    db: Session = Depends(get_db)
+):
+    """Get activity audit log for a matter, newest first."""
+    try:
+        matter_uuid = UUID(matter_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid matter ID format")
+
+    logs = (
+        db.query(AuditLog)
+        .filter(AuditLog.matter_id == matter_uuid)
+        .order_by(AuditLog.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    return [
+        {
+            "id": str(log.id),
+            "action": log.action,
+            "user": log.user,
+            "details": log.details,
+            "sources": log.sources,
+            "created_at": log.created_at.isoformat(),
+        }
+        for log in logs
+    ]
+
+
+# ============================================
+# PRECEDENTS ENDPOINTS
+# ============================================
+
+@app.post("/precedents/search", response_model=dict)
+async def search_precedents(
+    query: str = Body(..., embed=True),
+    db: Session = Depends(get_db)
+):
+    """Search across all matters for relevant legal precedents using vector similarity."""
+    if not query or len(query.strip()) < 3:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Query must be at least 3 characters")
+
+    # Get all non-deleted, ready matters
+    matters = db.query(Matter).filter(Matter.is_deleted == False, Matter.status == "ready").all()
+    if not matters:
+        return {"results": [], "total": 0}
+
+    # Embed the query once
+    try:
+        query_embedding = embed_query(query)
+    except Exception as e:
+        logger.error(f"Embedding failed for precedent search: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Search embedding failed")
+
+    # Fan-out search across all matter collections
+    async def _search_matter(m):
+        try:
+            results = await asyncio.to_thread(
+                search_vectors,
+                matter_id=str(m.id),
+                query_embedding=query_embedding,
+                limit=5,
+            )
+            return [(m, r) for r in results]
+        except Exception as e:
+            logger.warning(f"Precedent search failed for matter {m.id}: {e}")
+            return []
+
+    tasks = [_search_matter(m) for m in matters]
+    gathered = await asyncio.gather(*tasks)
+
+    # Flatten, format and sort
+    all_results = []
+    for batch in gathered:
+        for matter_obj, result in batch:
+            all_results.append({
+                "matter_id": str(matter_obj.id),
+                "matter_name": matter_obj.name,
+                "document_name": result.get("document_name", "Unknown"),
+                "page_num": result.get("page_num", ""),
+                "section_name": result.get("section_name", ""),
+                "content": result.get("content", ""),
+                "relevance_score": round(result.get("score", 0), 3),
+            })
+
+    all_results.sort(key=lambda x: x["relevance_score"], reverse=True)
+    top_results = all_results[:20]
+
+    return {"results": top_results, "total": len(top_results)}
+
+
+@app.post("/precedents/save", response_model=dict)
+async def save_precedent(
+    title: str = Body(..., embed=True),
+    query: str = Body(..., embed=True),
+    document_name: str = Body(None, embed=True),
+    matter_id: str = Body(None, embed=True),
+    chunk_content: str = Body(None, embed=True),
+    page_num: int = Body(None, embed=True),
+    section_name: str = Body(None, embed=True),
+    relevance_score: str = Body(None, embed=True),
+    tags: list = Body([], embed=True),
+    notes: str = Body(None, embed=True),
+    db: Session = Depends(get_db)
+):
+    """Save a search result as a precedent bookmark."""
+    matter_uuid = None
+    if matter_id:
+        try:
+            matter_uuid = UUID(matter_id)
+        except ValueError:
+            pass
+
+    precedent = SavedPrecedent(
+        id=uuid.uuid4(),
+        title=title,
+        query=query,
+        document_name=document_name,
+        matter_id=matter_uuid,
+        chunk_content=chunk_content,
+        page_num=page_num,
+        section_name=section_name,
+        relevance_score=relevance_score,
+        tags=tags,
+        notes=notes,
+    )
+    db.add(precedent)
+    db.commit()
+
+    return {
+        "id": str(precedent.id),
+        "title": precedent.title,
+        "created_at": precedent.created_at.isoformat(),
+    }
+
+
+@app.get("/precedents", response_model=list)
+async def list_precedents(
+    db: Session = Depends(get_db)
+):
+    """List all saved precedents, newest first."""
+    precedents = db.query(SavedPrecedent).order_by(SavedPrecedent.created_at.desc()).all()
+
+    return [
+        {
+            "id": str(p.id),
+            "title": p.title,
+            "query": p.query,
+            "document_name": p.document_name,
+            "matter_id": str(p.matter_id) if p.matter_id else None,
+            "chunk_content": p.chunk_content,
+            "page_num": p.page_num,
+            "section_name": p.section_name,
+            "relevance_score": p.relevance_score,
+            "tags": p.tags or [],
+            "notes": p.notes,
+            "created_at": p.created_at.isoformat(),
+        }
+        for p in precedents
+    ]
+
+
+@app.delete("/precedents/{precedent_id}", response_model=dict)
+async def delete_precedent(
+    precedent_id: str,
+    db: Session = Depends(get_db)
+):
+    """Delete a saved precedent."""
+    try:
+        p_uuid = UUID(precedent_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid ID format")
+
+    precedent = db.query(SavedPrecedent).filter(SavedPrecedent.id == p_uuid).first()
+    if not precedent:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Precedent not found")
+
+    db.delete(precedent)
+    db.commit()
+    return {"id": str(p_uuid), "deleted": True}
 
 
 if __name__ == "__main__":

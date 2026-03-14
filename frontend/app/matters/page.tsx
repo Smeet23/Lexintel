@@ -163,9 +163,9 @@ export default function MattersPage() {
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.1 }}
-        className="flex items-center gap-4 mb-8"
+        className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4 mb-8"
       >
-        <div className="relative flex-1 max-w-sm">
+        <div className="relative flex-1 sm:max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
           <Input
             placeholder="Search matters..."
@@ -175,7 +175,7 @@ export default function MattersPage() {
           />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-40 rounded-lg">
+          <SelectTrigger className="w-full sm:w-40 rounded-lg">
             <Filter className="h-4 w-4 mr-2 text-muted" />
             <SelectValue placeholder="Status" />
           </SelectTrigger>

@@ -1,18 +1,30 @@
 "use client"
 
 import React from "react"
-import { Bell, Search, ChevronDown } from "lucide-react"
+import { Bell, Search, ChevronDown, Menu } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
 interface TopbarProps {
   title: string
+  onMobileMenuToggle?: () => void
 }
 
-export default function Topbar({ title }: TopbarProps) {
+export default function Topbar({ title, onMobileMenuToggle }: TopbarProps) {
   return (
-    <header className="sticky top-0 z-30 flex h-[60px] items-center justify-between border-b border-border/60 glass px-8">
-      <h1 className="text-[14px] font-medium text-foreground tracking-tight">{title}</h1>
+    <header className="sticky top-0 z-30 flex h-[60px] items-center justify-between border-b border-border/60 glass px-4 sm:px-6 lg:px-8">
+      <div className="flex items-center gap-3">
+        {/* Mobile hamburger */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 rounded-lg lg:hidden"
+          onClick={onMobileMenuToggle}
+        >
+          <Menu className="h-4 w-4 text-foreground" />
+        </Button>
+        <h1 className="text-[14px] font-medium text-foreground tracking-tight">{title}</h1>
+      </div>
 
       <div className="flex items-center gap-2">
         {/* Search */}
@@ -31,10 +43,10 @@ export default function Topbar({ title }: TopbarProps) {
         </Button>
 
         {/* Divider */}
-        <div className="h-5 w-px bg-border mx-1" />
+        <div className="h-5 w-px bg-border mx-1 hidden sm:block" />
 
         {/* User */}
-        <button className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-white/80 transition-all duration-200 cursor-pointer">
+        <button className="hidden sm:flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-white/80 transition-all duration-200 cursor-pointer">
           <div className="flex h-7 w-7 items-center justify-center rounded-full bg-foreground text-[11px] font-semibold text-white">
             JS
           </div>

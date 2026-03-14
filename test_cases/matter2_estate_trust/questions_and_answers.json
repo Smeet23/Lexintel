@@ -1,0 +1,77 @@
+{
+  "matter_name": "Harrison Estate Planning - Trust Agreement",
+  "document_file": "trust_agreement.txt",
+  "document_type": "Estate Planning - Revocable Living Trust",
+  "questions": [
+    {
+      "id": "Q1",
+      "question": "Who are the beneficiaries of the trust and what does each child receive as a specific bequest?",
+      "expected_answer": "The three primary beneficiaries are: (a) Elizabeth A. Harrison — receives the Greenwich residence plus $500,000 for maintenance; (b) William R. Harrison — receives the Morgan Stanley investment portfolio valued at ~$3,000,000; (c) Catherine M. Harrison-Park — receives the interest in Harrison Commercial Properties LLC valued at ~$4,500,000. Each grandchild also receives $250,000 held in an Education Sub-Trust until age 25.",
+      "expected_citation_pages": ["Article III, Article IV Section 4.2"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "Q2",
+      "question": "What is the total estimated value of the trust estate and what does it consist of?",
+      "expected_answer": "The estimated total value is approximately $18,000,000, consisting of: real estate (primary residence) $3,200,000; Morgan Stanley investments $3,000,000; Goldman Sachs investments $4,100,000; Harrison Commercial Properties LLC $4,500,000; life insurance proceeds $2,000,000; and cash/cash equivalents $1,200,000.",
+      "expected_citation_pages": ["Article VIII Section 8.4"],
+      "difficulty": "easy"
+    },
+    {
+      "id": "Q3",
+      "question": "What happens if one of the children dies before the Grantor?",
+      "expected_answer": "If a child predeceases the Grantor, their share passes to that child's then-living descendants, per stirpes. If the deceased child has no living descendants, their share is divided equally among the Grantor's surviving children.",
+      "expected_citation_pages": ["Article IV Section 4.4"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "Q4",
+      "question": "What can the Education Sub-Trust funds be used for?",
+      "expected_answer": "The Education Sub-Trust funds can be used for: (a) tuition, fees, books, room and board at accredited institutions (K-12 and higher ed); (b) tutoring, test prep, extracurriculars; (c) study abroad programs; (d) graduate and professional school expenses; and (e) a one-time distribution of up to $50,000 for a first home purchase or starting a business after age 21. The Sub-Trust terminates when the grandchild reaches age 25 or funds are exhausted.",
+      "expected_citation_pages": ["Article VI Sections 6.2, 6.3"],
+      "difficulty": "easy"
+    },
+    {
+      "id": "Q5",
+      "question": "How is the residuary estate distributed?",
+      "expected_answer": "After specific bequests, the Residuary Estate is divided: 10% goes to the Harrison Family Foundation (for educational scholarships in Fairfield County), and the remaining 90% is divided equally among the three children (30% each), provided they survive the Grantor by at least 30 days.",
+      "expected_citation_pages": ["Article IV Section 4.3"],
+      "difficulty": "easy"
+    },
+    {
+      "id": "Q6",
+      "question": "What happens if the Grantor becomes incapacitated?",
+      "expected_answer": "If the Grantor becomes incapacitated (certified by two licensed physicians), the Successor Trustee (First Connecticut Trust Company) takes over and may apply income and principal as deemed necessary for the Grantor's health, maintenance, support, and comfort, considering the Grantor's accustomed standard of living and other available resources. The Grantor also loses the ability to revoke or amend the trust during incapacity.",
+      "expected_citation_pages": ["Article II Sections 2.2, 2.3; Article IX Section 9.1"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "Q7",
+      "question": "What are the investment guidelines for the Trustee?",
+      "expected_answer": "The Trustee must maintain a diversified portfolio with these allocation guidelines: no more than 60% in equities, at least 20% in fixed-income securities, no more than 15% in alternative investments, and at least 5% in cash or cash equivalents. The Trustee must exercise prudent person judgment in managing investments.",
+      "expected_citation_pages": ["Article VII Sections 7.1, 7.2"],
+      "difficulty": "easy"
+    },
+    {
+      "id": "Q8",
+      "question": "What is the no-contest clause and what are its consequences?",
+      "expected_answer": "If any beneficiary contests the validity of the Trust or any of its provisions, that beneficiary forfeits their entire interest in the Trust, and their share is distributed as if they had predeceased the Grantor. This means their share would go to their descendants (per stirpes) or to the surviving children.",
+      "expected_citation_pages": ["Article X Section 10.4; Article IV Section 4.4"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "Q9",
+      "question": "How much does the Successor Trustee charge in fees?",
+      "expected_answer": "First Connecticut Trust Company charges 1.0% annually on the first $5,000,000 of Trust assets and 0.75% on amounts above $5,000,000. On the current $18 million estate, that would be approximately $147,500 per year ($50,000 on the first $5M + $97,500 on the remaining $13M).",
+      "expected_citation_pages": ["Article VII Section 7.5"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "Q10",
+      "question": "What are the tax implications of this trust during the Grantor's lifetime versus after death?",
+      "expected_answer": "During the Grantor's lifetime, it is a 'grantor trust' under IRC Sections 671-679, meaning all income is reported on the Grantor's personal tax returns. After death, the Trustee allocates the applicable exclusion amount (currently $13,610,000 for 2024) to minimize estate taxes and may establish a Credit Shelter/Bypass Trust. The Trustee also allocates GST exemption for trusts benefiting grandchildren and more remote descendants.",
+      "expected_citation_pages": ["Article VIII Sections 8.1, 8.2, 8.3"],
+      "difficulty": "hard"
+    }
+  ]
+}

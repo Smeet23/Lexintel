@@ -13,13 +13,29 @@ import {
   fetchMatterChunks,
   getQueryHistory,
   deleteDocument,
+  getContractReview,
+  runContractReview,
+  createDraft,
+  listDrafts,
+  getAuditLog,
+  searchPrecedents,
+  savePrecedent,
+  listPrecedents,
+  deletePrecedent,
   type MatterResponse,
   type MatterDetailResponse,
   type AskResponse,
   type DocumentResponse,
   type QueryHistoryItem,
 } from "@/lib/api-services"
-import type { ChunkResponse } from "@/lib/types"
+import type {
+  ChunkResponse,
+  ContractReviewResult,
+  DraftResponse,
+  AuditLogEntry,
+  PrecedentSearchResult,
+  SavedPrecedent,
+} from "@/lib/types"
 
 export function useMatters() {
   return useQuery<MatterResponse[]>({
@@ -141,6 +157,117 @@ export function useUploadMatterDocument(matterId: string) {
       queryClient.invalidateQueries({ queryKey: ["matters", matterId, "documents"] })
       queryClient.invalidateQueries({ queryKey: ["matters", matterId] })
       queryClient.invalidateQueries({ queryKey: ["matters"] })
+    },
+  })
+}
+
+// ============================================
+// Contract Review Hooks
+// ============================================
+
+export function useContractReview(matterId: string, documentId?: string) {
+  return useQuery<ContractReviewResult>({
+    queryKey: ["matters", matterId, "contract-review", documentId ?? "latest"],
+    queryFn: () => getContractReview(matterId, documentId),
+    enabled: !!matterId,
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useRunContractReview(matterId: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation<ContractReviewResult, Error, string | undefined>({
+    mutationFn: (documentId?: string) => runContractReview(matterId, documentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["matters", matterId, "contract-review"] })
+      queryClient.invalidateQueries({ queryKey: ["matters", matterId, "audit-log"] })
+    },
+  })
+}
+
+// ============================================
+// Draft Hooks
+// ============================================
+
+export function useDrafts(matterId: string) {
+  return useQuery<DraftResponse[]>({
+    queryKey: ["matters", matterId, "drafts"],
+    queryFn: () => listDrafts(matterId),
+    enabled: !!matterId,
+  })
+}
+
+export function useCreateDraft(matterId: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation<
+    DraftResponse,
+    Error,
+    { documentType: string; instructions: string }
+  >({
+    mutationFn: ({ documentType, instructions }) =>
+      createDraft(matterId, documentType, instructions),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["matters", matterId, "drafts"] })
+      queryClient.invalidateQueries({ queryKey: ["matters", matterId, "audit-log"] })
+    },
+  })
+}
+
+// ============================================
+// Audit Log Hooks
+// ============================================
+
+export function useAuditLog(matterId: string) {
+  return useQuery<AuditLogEntry[]>({
+    queryKey: ["matters", matterId, "audit-log"],
+    queryFn: () => getAuditLog(matterId),
+    enabled: !!matterId,
+    refetchInterval: 30_000,
+  })
+}
+
+// ============================================
+// Precedent Hooks
+// ============================================
+
+export function usePrecedentSearch(query: string | null) {
+  return useQuery<{ results: PrecedentSearchResult[]; total: number }>({
+    queryKey: ["precedents", "search", query],
+    queryFn: () => searchPrecedents(query!),
+    enabled: query !== null && query.length >= 3,
+    placeholderData: (prev) => prev,
+    staleTime: 2 * 60 * 1000,
+  })
+}
+
+export function useSavedPrecedents() {
+  return useQuery<SavedPrecedent[]>({
+    queryKey: ["precedents", "saved"],
+    queryFn: listPrecedents,
+  })
+}
+
+export function useSavePrecedent() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (precedent: Omit<SavedPrecedent, "id" | "created_at">) =>
+      savePrecedent(precedent),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["precedents", "saved"] })
+    },
+  })
+}
+
+export function useDeletePrecedent() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (id: string) => deletePrecedent(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["precedents", "saved"] })
     },
   })
 }

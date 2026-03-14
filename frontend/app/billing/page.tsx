@@ -115,16 +115,16 @@ export default function BillingPage() {
       />
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <StatsCard title="Current Plan" value="Professional" icon={CreditCard} />
         <StatsCard title="Monthly Cost" value="$299" icon={CreditCard} />
         <StatsCard title="Tokens Used" value="42,390" icon={Zap} trend={{ value: "12%", positive: true }} />
         <StatsCard title="Queries This Month" value="156" icon={TrendingUp} trend={{ value: "18%", positive: true }} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6 mb-8">
         {/* Token Usage Bar */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-border shadow-elevated p-8">
+        <div className="lg:col-span-2 bg-white rounded-xl border border-border shadow-elevated p-5 sm:p-8">
           <h3 className="font-display text-lg font-semibold text-foreground mb-5">Token Usage</h3>
           <div className="space-y-5">
             <div>
@@ -163,7 +163,7 @@ export default function BillingPage() {
         </div>
 
         {/* Plan Details */}
-        <div className="bg-white rounded-xl border border-border shadow-elevated p-8">
+        <div className="bg-white rounded-xl border border-border shadow-elevated p-5 sm:p-8">
           <h3 className="font-display text-lg font-semibold text-foreground mb-5">Plan Details</h3>
           <div className="space-y-5">
             <div className="rounded-xl bg-surface border border-border p-4">

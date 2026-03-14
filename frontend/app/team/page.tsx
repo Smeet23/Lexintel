@@ -143,7 +143,7 @@ export default function TeamPage() {
       />
 
       {/* Role Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         {[
           { role: "Partners", count: mockTeam.filter((m) => m.role === "Partner").length, desc: "Full access to all matters and settings" },
           { role: "Associates", count: mockTeam.filter((m) => m.role === "Associate").length, desc: "Access to assigned matters" },

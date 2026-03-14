@@ -119,9 +119,9 @@ export default function DocumentTab({ matterId }: DocumentTabProps) {
   }
 
   return (
-    <div className="flex gap-0 h-[calc(100vh-280px)] bg-white rounded-xl border border-border shadow-elevated overflow-hidden">
+    <div className="flex flex-col md:flex-row gap-0 h-auto md:h-[calc(100vh-280px)] bg-white rounded-xl border border-border shadow-elevated overflow-hidden">
       {/* Left sidebar — document list */}
-      <div className="w-64 shrink-0 border-r border-border bg-surface flex flex-col overflow-hidden">
+      <div className="w-full md:w-64 shrink-0 border-b md:border-b-0 md:border-r border-border bg-surface flex flex-col overflow-hidden max-h-[200px] md:max-h-none">
         <div className="px-4 py-3 border-b border-border flex items-center justify-between">
           <p className="text-xs font-semibold text-muted uppercase tracking-wider">
             Documents ({documents.length})

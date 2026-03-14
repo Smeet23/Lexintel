@@ -63,7 +63,7 @@ For each claim, include the location reference. When a named section is availabl
 When conversation history is provided, use it to resolve references like "that", "it", "the above", etc. Answer the current question based on the document excerpts, using conversation context only for disambiguation."""
 
 MIN_QUERY_LENGTH = 3
-MIN_CONFIDENCE_SCORE = 0.45  # Require 45% semantic similarity minimum
+MIN_CONFIDENCE_SCORE = 0.30  # Require 30% semantic similarity minimum (tuned for Cohere embed-v3)
 RETRIEVAL_TOP_K = 15
 RETRIEVAL_LIMIT = 30  # Request more from vector store, then take top_k (improves recall)
 FINAL_CHUNK_COUNT = 8
@@ -352,10 +352,10 @@ def extract_citations(answer: str, chunks: List[Dict]) -> Tuple[str, List[Dict],
 
     # Define patterns for all citation types
     citation_patterns = [
-        (r'\[Page\s+(\d+)(?:,\s*Section\s+[\d.]+)?\]', 'page'),  # [Page 3] or [Page 3, Section 4.1]
+        (r'\[Page\s+(\d+)(?:,\s*Section[:\s]+[^\]]+)?\]', 'page'),  # [Page 3] or [Page 3, Section: 4.1]
         (r'\[Paragraph\s+(\d+)\]', 'paragraph'),
-        (r'\[Lines\s+(\d+-\d+)\]', 'line_range'),
-        (r'\[Section\s+"([^"]+)"\]', 'section'),
+        (r'\[Lines?\s+(\d+-\d+)(?:,\s*Section[:\s]+[^\]]+)?\]', 'line_range'),  # [Lines 1-5] or [Lines 1-5, Section: 9]
+        (r'\[Section[:\s]+"?([^"\]]+)"?\]', 'section'),
     ]
 
     # Fallback patterns for less structured LLM citations
@@ -365,19 +365,55 @@ def extract_citations(answer: str, chunks: List[Dict]) -> Tuple[str, List[Dict],
         (r'(?:in |see |per )paragraph\s+(\d+)', 'paragraph'),
     ]
 
+    def _line_range_overlaps(cited_range: str, chunk_range: str) -> bool:
+        """Check if a cited line range (e.g. '1-5') overlaps with a chunk range (e.g. 'line 1-50')."""
+        try:
+            # Parse cited range: "1-5" or "101-148"
+            cited_parts = cited_range.split("-")
+            cited_start, cited_end = int(cited_parts[0]), int(cited_parts[1])
+            # Parse chunk range: "line 1-50" or "line 51-100"
+            chunk_nums = chunk_range.replace("line ", "").split("-")
+            chunk_start, chunk_end = int(chunk_nums[0]), int(chunk_nums[1])
+            return cited_start <= chunk_end and cited_end >= chunk_start
+        except (ValueError, IndexError):
+            return False
+
     # Create location to chunk mapping
     location_to_chunks = {}
     section_to_chunks = {}
     valid_locations = set()
+    line_range_chunks = []  # For overlap matching
     for chunk in chunks:
         location = str(chunk.get("page_num", ""))
         if location not in location_to_chunks:
             location_to_chunks[location] = chunk
             valid_locations.add(location)
+        # Track line-range chunks for overlap matching
+        if location.startswith("line "):
+            line_range_chunks.append((location, chunk))
         # Also map section names for [Section "X"] citations
         section_name = str(chunk.get("section_name", ""))
         if section_name and section_name not in section_to_chunks:
             section_to_chunks[section_name] = chunk
+
+    def _find_chunk_for_citation(location: str, citation_type: str):
+        """Find the best matching chunk for a citation, using overlap for line ranges."""
+        # Exact match first
+        if location in location_to_chunks:
+            return location_to_chunks[location]
+        # For line ranges, check overlap with chunk ranges
+        if citation_type == 'line_range' and location.startswith("line "):
+            cited_nums = location.replace("line ", "")
+            best_chunk = None
+            best_score = 0
+            for chunk_loc, chunk in line_range_chunks:
+                if _line_range_overlaps(cited_nums, chunk_loc):
+                    score = chunk.get("score", 0)
+                    if score > best_score:
+                        best_score = score
+                        best_chunk = chunk
+            return best_chunk
+        return None
 
     # Extract citations and match to chunks
     unmatched_citations = []
@@ -394,7 +430,7 @@ def extract_citations(answer: str, chunks: List[Dict]) -> Tuple[str, List[Dict],
             elif citation_type == 'line_range':
                 location = f"line {match.group(1)}"  # Convert to "line X-Y" format
             elif citation_type == 'section':
-                location = match.group(1)  # Section name
+                location = match.group(1).strip()  # Section name
             else:
                 continue
 
@@ -412,13 +448,13 @@ def extract_citations(answer: str, chunks: List[Dict]) -> Tuple[str, List[Dict],
                 valid_matches.append(match)
                 continue
 
-            if location in location_to_chunks:
-                chunk = location_to_chunks[location]
+            matched_chunk = _find_chunk_for_citation(location, citation_type)
+            if matched_chunk:
                 citation = {
-                    "chunk_id": chunk.get("chunk_id", ""),
+                    "chunk_id": matched_chunk.get("chunk_id", ""),
                     "location": location,
                     "citation_type": citation_type,
-                    "relevance_score": chunk.get("score", 0)
+                    "relevance_score": matched_chunk.get("score", 0)
                 }
                 if citation not in citations:  # Avoid duplicates
                     citations.append(citation)
@@ -722,19 +758,25 @@ def calculate_answer_confidence(
 
     import re
 
-    # Count sentences
-    sentences = re.split(r'[.!?]+', answer.strip())
-    sentences = [s.strip() for s in sentences if s.strip()]
+    # Count logical sentences — split on sentence-ending punctuation that is NOT inside brackets
+    # Remove bracketed citations first to get clean sentence boundaries, then check originals
+    clean_for_splitting = re.sub(r'\[[^\]]*\]', ' [CITE] ', answer.strip())
+    sentences = re.split(r'(?<=[.!?])\s+', clean_for_splitting)
+    sentences = [s.strip() for s in sentences if s.strip() and s.strip() != '[CITE]']
 
     if not sentences:
         return 0.0
 
-    # Count sentences with actual citation patterns (not just any brackets)
-    citation_pattern = re.compile(
-        r'\[(?:Page\s+\d+(?:,\s*Section\s+[\d.]+)?|Paragraph\s+\d+|Lines\s+\d+-\d+|Section\s+"[^"]+")\]'
-    )
-    cited_sentences = sum(1 for s in sentences if citation_pattern.search(s))
-    citation_coverage = cited_sentences / len(sentences) if sentences else 0
+    # For citation coverage, check how many sentences in the ORIGINAL answer have citations nearby
+    # Split original answer the same way and check for bracket patterns
+    original_sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z\[])', answer.strip())
+    original_sentences = [s.strip() for s in original_sentences if s.strip()]
+    if not original_sentences:
+        original_sentences = sentences
+
+    citation_pattern = re.compile(r'\[')  # Any bracket citation in proximity
+    cited_sentences = sum(1 for s in original_sentences if citation_pattern.search(s))
+    citation_coverage = cited_sentences / len(original_sentences) if original_sentences else 0
 
     # Average citation relevance
     if citations:

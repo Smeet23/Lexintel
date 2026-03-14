@@ -1,5 +1,12 @@
 import api from "./api"
-import type { ChunkResponse } from "./types"
+import type {
+  ChunkResponse,
+  ContractReviewResult,
+  DraftResponse,
+  AuditLogEntry,
+  PrecedentSearchResult,
+  SavedPrecedent,
+} from "./types"
 
 // ============================================
 // Types matching backend response shapes
@@ -230,4 +237,114 @@ export async function deleteDocument(
 export function subscribeMatterProgress(matterId: string): EventSource {
   const baseURL = api.defaults.baseURL || ""
   return new EventSource(`${baseURL}/matters/${matterId}/progress`)
+}
+
+// ============================================
+// Contract Review API Functions
+// ============================================
+
+export async function getContractReview(
+  matterId: string,
+  documentId?: string
+): Promise<ContractReviewResult> {
+  const params = documentId ? { document_id: documentId } : {}
+  const { data } = await api.get<ContractReviewResult>(
+    `/matters/${matterId}/contract-review`,
+    { params }
+  )
+  return data
+}
+
+export async function runContractReview(
+  matterId: string,
+  documentId?: string
+): Promise<ContractReviewResult> {
+  const { data } = await api.post<ContractReviewResult>(
+    `/matters/${matterId}/contract-review`,
+    { document_id: documentId || null }
+  )
+  return data
+}
+
+// ============================================
+// Draft Assistant API Functions
+// ============================================
+
+export async function createDraft(
+  matterId: string,
+  documentType: string,
+  instructions: string
+): Promise<DraftResponse> {
+  const { data } = await api.post<DraftResponse>(
+    `/matters/${matterId}/drafts`,
+    { document_type: documentType, instructions }
+  )
+  return data
+}
+
+export async function listDrafts(matterId: string): Promise<DraftResponse[]> {
+  const { data } = await api.get<DraftResponse[]>(`/matters/${matterId}/drafts`)
+  return data
+}
+
+export async function getDraft(
+  matterId: string,
+  draftId: string
+): Promise<DraftResponse> {
+  const { data } = await api.get<DraftResponse>(
+    `/matters/${matterId}/drafts/${draftId}`
+  )
+  return data
+}
+
+// ============================================
+// Audit Log API Functions
+// ============================================
+
+export async function getAuditLog(
+  matterId: string,
+  limit = 100
+): Promise<AuditLogEntry[]> {
+  const { data } = await api.get<AuditLogEntry[]>(
+    `/matters/${matterId}/audit-log`,
+    { params: { limit } }
+  )
+  return data
+}
+
+// ============================================
+// Precedent API Functions
+// ============================================
+
+export async function searchPrecedents(
+  query: string
+): Promise<{ results: PrecedentSearchResult[]; total: number }> {
+  const { data } = await api.post<{
+    results: PrecedentSearchResult[]
+    total: number
+  }>("/precedents/search", { query })
+  return data
+}
+
+export async function savePrecedent(
+  precedent: Omit<SavedPrecedent, "id" | "created_at">
+): Promise<{ id: string; title: string; created_at: string }> {
+  const { data } = await api.post<{
+    id: string
+    title: string
+    created_at: string
+  }>("/precedents/save", precedent)
+  return data
+}
+
+export async function listPrecedents(): Promise<SavedPrecedent[]> {
+  const { data } = await api.get<SavedPrecedent[]>("/precedents")
+  return data
+}
+
+export async function deletePrecedent(
+  id: string
+): Promise<{ id: string; deleted: boolean }> {
+  const { data } = await api.delete(`/precedents/${id}`)
+  return data
 }

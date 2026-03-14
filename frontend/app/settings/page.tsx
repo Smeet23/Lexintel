@@ -29,8 +29,8 @@ interface SettingSection {
 
 function SettingCard({ icon, title, description, children }: SettingSection) {
   return (
-    <div className="bg-white rounded-xl border border-border shadow-elevated p-8">
-      <div className="flex items-start gap-4 mb-6">
+    <div className="bg-white rounded-xl border border-border shadow-elevated p-5 sm:p-8">
+      <div className="flex items-start gap-3 sm:gap-4 mb-6">
         <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-surface shrink-0">
           {icon}
         </div>
@@ -54,12 +54,12 @@ function SettingRow({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex items-center justify-between py-3">
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4 py-3">
       <div>
         <p className="text-sm font-medium text-foreground">{label}</p>
         {description && <p className="text-xs text-muted mt-0.5">{description}</p>}
       </div>
-      <div className="shrink-0 ml-4">{children}</div>
+      <div className="shrink-0">{children}</div>
     </div>
   )
 }
@@ -207,13 +207,13 @@ export default function SettingsPage() {
           title="API Integration"
           description="Manage API keys for enterprise integrations"
         >
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <Input
               value="vrt_sk_••••••••••••••••••••••••"
               disabled
               className="font-mono text-sm"
             />
-            <Button variant="outline" size="sm">Regenerate</Button>
+            <Button variant="outline" size="sm" className="shrink-0">Regenerate</Button>
           </div>
           <p className="text-xs text-muted">
             Last regenerated: January 15, 2026
