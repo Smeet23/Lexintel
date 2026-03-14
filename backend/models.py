@@ -130,3 +130,77 @@ class ProcessingJob(Base):
 
     def __repr__(self):
         return f"<ProcessingJob(id={self.id}, matter_id={self.matter_id}, status={self.status})>"
+
+
+class ContractReview(Base):
+    """Contract risk analysis results for a document"""
+    __tablename__ = "contract_reviews"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    matter_id = Column(UUID(as_uuid=True), ForeignKey("matters.id"), nullable=False, index=True)
+    document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id"), nullable=False, index=True)
+    risks = Column(JSON, nullable=True, default=list)  # [{clause, risk_level, explanation, remedy}]
+    summary = Column(JSON, nullable=True, default=dict)  # {total_clauses, high_risk, medium_risk, low_risk}
+    missing_clauses = Column(JSON, nullable=True, default=list)
+    overall_score = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    def __repr__(self):
+        return f"<ContractReview(id={self.id}, matter_id={self.matter_id}, document_id={self.document_id})>"
+
+
+class Draft(Base):
+    """AI-generated legal document drafts"""
+    __tablename__ = "drafts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    matter_id = Column(UUID(as_uuid=True), ForeignKey("matters.id"), nullable=False, index=True)
+    document_type = Column(String(100), nullable=False)
+    instructions = Column(Text, nullable=False)
+    content = Column(Text, nullable=False)
+    sources = Column(JSON, nullable=True, default=list)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    def __repr__(self):
+        return f"<Draft(id={self.id}, matter_id={self.matter_id}, document_type={self.document_type})>"
+
+
+class AuditLog(Base):
+    """Activity audit trail for matters"""
+    __tablename__ = "audit_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    matter_id = Column(UUID(as_uuid=True), ForeignKey("matters.id"), nullable=False, index=True)
+    action = Column(String(100), nullable=False)
+    user = Column(String(255), default="System", nullable=False)
+    details = Column(Text, nullable=True)
+    sources = Column(String(500), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+
+    __table_args__ = (
+        Index('idx_audit_matter_created', 'matter_id', 'created_at'),
+    )
+
+    def __repr__(self):
+        return f"<AuditLog(id={self.id}, matter_id={self.matter_id}, action={self.action})>"
+
+
+class SavedPrecedent(Base):
+    """User-saved precedent research results"""
+    __tablename__ = "saved_precedents"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title = Column(String(500), nullable=False)
+    query = Column(Text, nullable=False)
+    document_name = Column(String(255), nullable=True)
+    matter_id = Column(UUID(as_uuid=True), ForeignKey("matters.id"), nullable=True)
+    chunk_content = Column(Text, nullable=True)
+    page_num = Column(Integer, nullable=True)
+    section_name = Column(String(255), nullable=True)
+    relevance_score = Column(String(10), nullable=True)
+    tags = Column(JSON, nullable=True, default=list)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    def __repr__(self):
+        return f"<SavedPrecedent(id={self.id}, title={self.title})>"
