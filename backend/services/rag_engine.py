@@ -21,6 +21,7 @@ try:
     from backend.models import Matter, Document, Query, Chunk
     from backend.config import get_settings
     from backend.exceptions import QueryProcessingException, EmbeddingException, VectorStoreException
+    from backend.services.legal_research import search_cases, format_as_context
 except ImportError:
     try:
         from services.embeddings import embed_text, embed_query as embed_query_fn
@@ -29,6 +30,7 @@ except ImportError:
         from models import Matter, Document, Query, Chunk
         from config import get_settings
         from exceptions import QueryProcessingException, EmbeddingException, VectorStoreException
+        from services.legal_research import search_cases, format_as_context
     except ImportError:
         from .embeddings import embed_text, embed_query as embed_query_fn
         from .vector_store import search_vectors
@@ -36,6 +38,7 @@ except ImportError:
         from ..models import Matter, Document, Query, Chunk
         from ..config import get_settings
         from ..exceptions import QueryProcessingException, EmbeddingException, VectorStoreException
+        from .legal_research import search_cases, format_as_context
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -61,6 +64,19 @@ LEGAL_SYSTEM_PROMPT = """You are an expert legal assistant specialized in analyz
 6. Never speculate beyond what the documents state
 For each claim, include the location reference. When a named section is available in the excerpt metadata, use [Section "Name"] citations for precise referencing.
 When conversation history is provided, use it to resolve references like "that", "it", "the above", etc. Answer the current question based on the document excerpts, using conversation context only for disambiguation."""
+
+LEGAL_RESEARCH_SYSTEM_PROMPT = """You are an expert legal assistant specialized in analyzing court documents, case law, and legal statutes. Your role is to:
+1. Answer questions based on the provided context, which includes BOTH the user's uploaded documents AND relevant case law from public legal databases
+2. Provide precise, factually accurate responses
+3. Always cite your sources:
+   - For user documents: cite the exact location in square brackets [Lines X-Y, Section: "Name"]
+   - For case law: cite the case name, court, and citation [Case: "Name", Citation: "X F.3d Y"]
+4. Distinguish between facts, arguments, and judgments
+5. When case law is provided, use it to support your analysis — explain how cited precedents relate to the user's case
+6. Synthesize both the user's documents and case law into a cohesive answer
+7. Clearly indicate which information comes from the user's documents vs. external case law
+For each claim, include the source reference. When both user documents and case law are available, draw connections between them.
+When conversation history is provided, use it to resolve references like "that", "it", "the above", etc."""
 
 MIN_QUERY_LENGTH = 3
 MIN_CONFIDENCE_SCORE = 0.30  # Require 30% semantic similarity minimum (tuned for Cohere embed-v3)
@@ -150,23 +166,30 @@ def format_legal_context(chunks: List[Dict], matter_name: str, doc_summaries: Di
         section = chunk.get("section_name", "")
         score = chunk.get("score", 0)
         content = chunk.get("content", "")
+        source_type = chunk.get("source_type", "document")
 
-        # Determine location label based on format
-        if location.startswith("para"):
-            location_label = f"Paragraph {location[5:]}"  # Extract number from "para X"
-        elif location.startswith("line"):
-            location_label = f"Lines {location[5:]}"  # Extract range from "line X-Y"
+        if source_type == "case_law":
+            # Label case law chunks distinctly
+            header = f"--- CASE LAW {i} (Case: {chunk.get('document_name', 'Unknown')}"
+            if section:
+                header += f", Court: {section}"
+            header += f", Score: {score:.2f}) ---\n"
         else:
-            location_label = f"Page {location}"  # Default to page
+            # Determine location label based on format
+            if location.startswith("para"):
+                location_label = f"Paragraph {location[5:]}"
+            elif location.startswith("line"):
+                location_label = f"Lines {location[5:]}"
+            else:
+                location_label = f"Page {location}"
 
-        # Format excerpt header with metadata
-        header = f"--- EXCERPT {i} ({location_label}"
-        if section:
-            header += f", Section: {section}"
-        doc_name = chunk.get("document_name", "")
-        if doc_name:
-            header += f", Document: {doc_name}"
-        header += f", Score: {score:.2f}) ---\n"
+            header = f"--- EXCERPT {i} ({location_label}"
+            if section:
+                header += f", Section: {section}"
+            doc_name = chunk.get("document_name", "")
+            if doc_name:
+                header += f", Document: {doc_name}"
+            header += f", Score: {score:.2f}) ---\n"
 
         context_parts.append(header)
         context_parts.append(content)
@@ -831,16 +854,18 @@ def classify_confidence_level(confidence_score: float) -> str:
         return "none"
 
 
-def _get_gemini_model():
+def _get_gemini_model(include_legal_research: bool = False):
     """Configure and return Gemini model instance."""
     if not settings.google_api_key:
         raise ValueError("GOOGLE_API_KEY is not configured.")
 
     genai.configure(api_key=settings.google_api_key)
 
+    prompt = LEGAL_RESEARCH_SYSTEM_PROMPT if include_legal_research else LEGAL_SYSTEM_PROMPT
+
     return genai.GenerativeModel(
         model_name=GEMINI_MODEL,
-        system_instruction=LEGAL_SYSTEM_PROMPT,
+        system_instruction=prompt,
     )
 
 
@@ -848,7 +873,8 @@ async def generate_answer(
     query: str,
     context: str,
     temperature: float = 0.2,
-    conversation_history: list = None
+    conversation_history: list = None,
+    include_legal_research: bool = False,
 ) -> Tuple[str, int]:
     """
     Generate answer using Google Gemini API.
@@ -858,6 +884,7 @@ async def generate_answer(
         context: Formatted context from retrieval
         temperature: Temperature parameter (0.2 for legal precision)
         conversation_history: Optional list of previous Q&A turns for follow-up support
+        include_legal_research: Whether case law context is included
 
     Returns:
         Tuple of (answer, tokens_used)
@@ -867,7 +894,7 @@ async def generate_answer(
         QueryProcessingException: If API call fails
     """
     try:
-        model = _get_gemini_model()
+        model = _get_gemini_model(include_legal_research=include_legal_research)
 
         # Build prompt with conversation history for follow-up support
         prompt_parts = [f"Context:\n{context}\n"]
@@ -920,7 +947,8 @@ async def query_matter(
     db: Session,
     top_k: int = FINAL_CHUNK_COUNT,
     temperature: float = 0.2,
-    conversation_history: list = None
+    conversation_history: list = None,
+    include_legal_research: bool = False,
 ) -> Dict:
     """
     Main RAG query orchestration function.
@@ -1017,6 +1045,21 @@ async def query_matter(
                 detail=str(e)
             ) from e
 
+        # 3.5 On-demand legal research (CourtListener)
+        external_chunks = []
+        if include_legal_research:
+            try:
+                case_results = await search_cases(query, max_results=5)
+                if case_results:
+                    external_chunks = format_as_context(case_results)
+                    logger.info(f"CourtListener returned {len(external_chunks)} case law results")
+            except Exception as e:
+                logger.warning(f"Legal research failed (non-blocking): {e}")
+
+        # Merge external chunks with retrieved chunks
+        if external_chunks:
+            retrieved_chunks = retrieved_chunks + external_chunks
+
         # Check for empty retrieval
         if not retrieved_chunks:
             error_response["error"] = "No relevant documents found"
@@ -1043,17 +1086,30 @@ async def query_matter(
             initial_chunks = sorted(high_confidence_chunks, key=lambda x: x.get("score", 0), reverse=True)[:RETRIEVAL_TOP_K]
 
         # 4.5. Rerank chunks for better relevance
+        # Separate case law chunks so they aren't dropped by reranking
+        doc_chunks = [c for c in initial_chunks if c.get("source_type") != "case_law"]
+        case_law_chunks = [c for c in initial_chunks if c.get("source_type") == "case_law"]
+
         try:
-            final_chunks = rerank_chunks(query, initial_chunks, top_k=top_k)
-            logger.debug(f"Reranking improved chunks: {len(initial_chunks)} → {len(final_chunks)}")
+            reranked_docs = rerank_chunks(query, doc_chunks, top_k=top_k)
+            logger.debug(f"Reranking improved chunks: {len(doc_chunks)} → {len(reranked_docs)}")
         except Exception as e:
             logger.warning(f"Reranking failed, using initial chunks: {str(e)}")
-            final_chunks = initial_chunks[:top_k]
+            reranked_docs = doc_chunks[:top_k]
+
+        # Merge: document chunks + case law chunks (case law always included)
+        final_chunks = reranked_docs + case_law_chunks
 
         # 5. Format context with token budgeting
         try:
             # Fetch document summaries for retrieved chunks
-            doc_ids = {UUID(c["document_id"]) for c in final_chunks if c.get("document_id")}
+            doc_ids = set()
+            for c in final_chunks:
+                if c.get("document_id"):
+                    try:
+                        doc_ids.add(UUID(c["document_id"]))
+                    except (ValueError, AttributeError):
+                        pass  # Skip non-UUID IDs (e.g. CourtListener chunks)
             doc_summaries = {}
             if doc_ids:
                 docs = db.query(Document).filter(Document.id.in_(doc_ids)).all()
@@ -1094,7 +1150,7 @@ async def query_matter(
 
         # 6. Generate answer
         try:
-            answer, tokens_used = await generate_answer(query, formatted_context, temperature, conversation_history)
+            answer, tokens_used = await generate_answer(query, formatted_context, temperature, conversation_history, include_legal_research)
         except QueryProcessingException as e:
             logger.error(f"Answer generation failed: {str(e)}")
             error_response["error"] = f"Failed to generate answer: API error"
@@ -1169,6 +1225,8 @@ async def query_matter(
                 "content": full_content,
                 "document_id": chunk.get("document_id", ""),
                 "document_name": chunk.get("document_name", ""),
+                "source_type": chunk.get("source_type", "document"),
+                "url": chunk.get("url", ""),
             }
             sources.append(source)
 

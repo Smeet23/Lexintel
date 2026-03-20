@@ -81,6 +81,8 @@ export default function MatterWorkspacePage() {
         excerpt: s.content?.slice(0, 200) || "",
         relevanceScore: s.relevance_score || 0,
         content: s.content ?? undefined,
+        sourceType: ((s as any).source_type as "document" | "case_law") || "document",
+        url: (s as any).url || undefined,
       }))
 
       restored.push({
@@ -94,7 +96,7 @@ export default function MatterWorkspacePage() {
     setMessages(restored)
   }, [queryHistory, matter])
 
-  const handleSendMessage = useCallback((content: string) => {
+  const handleSendMessage = useCallback((content: string, includeLegalResearch: boolean) => {
     const userMsg: QueryMessage = {
       id: `msg-${Date.now()}`,
       role: "user",
@@ -103,7 +105,7 @@ export default function MatterWorkspacePage() {
     }
     setMessages((prev) => [...prev, userMsg])
 
-    askQuestion.mutate(content, {
+    askQuestion.mutate({ question: content, includeLegalResearch }, {
       onSuccess: (result) => {
         if (result.answer) {
           // Map backend sources to Citation format
@@ -114,6 +116,8 @@ export default function MatterWorkspacePage() {
             excerpt: s.content?.slice(0, 200) || "",
             relevanceScore: s.relevance_score || 0,
             content: s.content ?? undefined,
+            sourceType: (s.source_type as "document" | "case_law") || "document",
+            url: s.url || undefined,
           }))
 
           const confidenceScore = typeof result.confidence === "object"

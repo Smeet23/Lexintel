@@ -47,6 +47,8 @@ export interface AskResponse {
     content: string
     document_id: string
     document_name: string
+    source_type?: "document" | "case_law"
+    url?: string
   }[]
   citations: {
     location: string
@@ -124,8 +126,15 @@ export async function cancelMatterProcessing(matterId: string): Promise<{ id: st
   return data
 }
 
-export async function askQuestion(matterId: string, question: string): Promise<AskResponse> {
-  const { data } = await api.post<AskResponse>(`/matters/${matterId}/ask`, { question })
+export async function askQuestion(
+  matterId: string,
+  question: string,
+  includeLegalResearch: boolean = false,
+): Promise<AskResponse> {
+  const { data } = await api.post<AskResponse>(`/matters/${matterId}/ask`, {
+    question,
+    include_legal_research: includeLegalResearch,
+  })
   return data
 }
 

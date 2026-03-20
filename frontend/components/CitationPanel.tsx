@@ -46,18 +46,43 @@ export default function CitationPanel({ citations, className, onCitationClick }:
             className="w-full text-left rounded-xl border border-border bg-white p-3 hover:shadow-elevated hover:border-border-strong transition-all duration-200 cursor-pointer group"
           >
             <div className="flex items-start gap-2.5">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-surface text-muted group-hover:bg-surface-hover transition-colors">
+              <div className={cn(
+                "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors",
+                citation.sourceType === "case_law"
+                  ? "bg-blue-50 text-blue-600 group-hover:bg-blue-100"
+                  : "bg-surface text-muted group-hover:bg-surface-hover"
+              )}>
                 <FileText className="h-3.5 w-3.5" />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
                   <p className="text-[13px] font-medium text-foreground truncate">{citation.documentName}</p>
-                  <ExternalLink className="h-3 w-3 text-muted opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                  {citation.sourceType === "case_law" && citation.url ? (
+                    <a
+                      href={citation.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="shrink-0"
+                    >
+                      <ExternalLink className="h-3 w-3 text-blue-500 hover:text-blue-700 transition-colors" />
+                    </a>
+                  ) : (
+                    <ExternalLink className="h-3 w-3 text-muted opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                  )}
                 </div>
-                <p className="text-[11px] text-muted mt-0.5">
-                  Page {citation.pageNumber}
-                  {citation.section && <> &middot; {citation.section}</>}
-                </p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  {citation.sourceType === "case_law" ? (
+                    <span className="inline-flex items-center rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 border border-blue-200/60">
+                      Case Law
+                    </span>
+                  ) : (
+                    <span className="text-[11px] text-muted">
+                      Page {citation.pageNumber}
+                    </span>
+                  )}
+                  {citation.section && <span className="text-[11px] text-muted">&middot; {citation.section}</span>}
+                </div>
                 {citation.excerpt && (
                   <p className="text-[11px] text-muted/70 mt-1.5 line-clamp-2 italic leading-relaxed">
                     &ldquo;{citation.excerpt}&rdquo;

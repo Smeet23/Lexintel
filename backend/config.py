@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     cache_enabled: bool = True
     cache_ttl_seconds: int = 86400  # 24 hours
 
+    # CourtListener API (for on-demand legal research)
+    courtlistener_api_token: str = ""
+
     model_config = ConfigDict(env_file=".env", case_sensitive=False, extra="ignore")
 
     def get_allowed_origins_list(self) -> List[str]:

@@ -6,6 +6,10 @@ export interface Citation {
   relevanceScore: number
   /** Full chunk content for click-to-view */
   content?: string
+  /** "document" or "case_law" */
+  sourceType?: "document" | "case_law"
+  /** CourtListener URL for case law */
+  url?: string
 }
 
 export interface QueryMessage {

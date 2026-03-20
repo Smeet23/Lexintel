@@ -98,8 +98,9 @@ export function useCancelMatterProcessing(matterId: string) {
 export function useAskQuestion(matterId: string) {
   const queryClient = useQueryClient()
 
-  return useMutation<AskResponse, Error, string>({
-    mutationFn: (question: string) => askQuestion(matterId, question),
+  return useMutation<AskResponse, Error, { question: string; includeLegalResearch?: boolean }>({
+    mutationFn: ({ question, includeLegalResearch }) =>
+      askQuestion(matterId, question, includeLegalResearch ?? false),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["matters", matterId] })
       queryClient.invalidateQueries({ queryKey: ["matters", matterId, "queries"] })

@@ -30,6 +30,7 @@ try:
     from backend.validators import validate_filename, validate_matter_name, validate_question, validate_file_type
     from backend.services.progress import publish_uploaded
     from backend.exceptions import BlobDownloadException
+    from backend.schemas import QueryCreate
 except ImportError:
     try:
         from config import get_settings
@@ -45,6 +46,7 @@ except ImportError:
         from validators import validate_filename, validate_matter_name, validate_question, validate_file_type
         from services.progress import publish_uploaded
         from exceptions import BlobDownloadException
+        from schemas import QueryCreate
     except ImportError:
         from .config import get_settings
         from .database import get_db
@@ -59,6 +61,7 @@ except ImportError:
         from .validators import validate_filename, validate_matter_name, validate_question, validate_file_type
         from .services.progress import publish_uploaded
         from .exceptions import BlobDownloadException
+        from .schemas import QueryCreate
 
 settings = get_settings()
 
@@ -729,12 +732,12 @@ def delete_document(matter_id: str, document_id: str, db: Session = Depends(get_
 @app.post("/matters/{matter_id}/ask", response_model=dict)
 async def ask_question(
     matter_id: str,
-    question: str = Body(..., embed=True),
+    body: QueryCreate = Body(...),
     db: Session = Depends(get_db)
 ):
     """Ask a question about a matter"""
     # Validate question input
-    validate_question(question)
+    validate_question(body.question)
 
     try:
         matter_uuid = UUID(matter_id)
@@ -784,21 +787,25 @@ async def ask_question(
 
     # Get RAG response
     try:
-        rag_result = await query_matter(str(matter_uuid), question, db, conversation_history=conversation_history)
+        rag_result = await query_matter(
+            str(matter_uuid), body.question, db,
+            conversation_history=conversation_history,
+            include_legal_research=body.include_legal_research,
+        )
 
         # Only store if answer was generated successfully
         if rag_result.get("answer"):
             db_query = Query(
                 id=uuid.uuid4(),
                 matter_id=matter_uuid,
-                question=question,
+                question=body.question,
                 answer=rag_result.get("answer", ""),
                 citations=rag_result.get("sources", []),
                 created_at=datetime.now(timezone.utc)
             )
             db.add(db_query)
             db.commit()
-            log_activity(db, str(matter_uuid), "query", details=question)
+            log_activity(db, str(matter_uuid), "query", details=body.question)
 
         return rag_result
     except Exception as e:

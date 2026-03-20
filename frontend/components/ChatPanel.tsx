@@ -142,12 +142,13 @@ export default function ChatPanel({
   onCitationClick,
 }: {
   messages: QueryMessage[]
-  onSend: (message: string) => void
+  onSend: (message: string, includeLegalResearch: boolean) => void
   isLoading?: boolean
   onSelectCitation?: (citations: Citation[]) => void
   onCitationClick?: (citation: Citation) => void
 }) {
   const [input, setInput] = useState("")
+  const [includeLegalResearch, setIncludeLegalResearch] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -157,7 +158,7 @@ export default function ChatPanel({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (input.trim() && !isLoading) {
-      onSend(input.trim())
+      onSend(input.trim(), includeLegalResearch)
       setInput("")
     }
   }
@@ -223,9 +224,31 @@ export default function ChatPanel({
             <Send className="h-3.5 w-3.5" />
           </Button>
         </div>
-        <p className="text-[11px] text-muted-foreground mt-2">
-          Enter to send &middot; Shift+Enter for new line
-        </p>
+        <div className="flex items-center justify-between mt-2">
+          <p className="text-[11px] text-muted-foreground">
+            Enter to send &middot; Shift+Enter for new line
+          </p>
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <span className="text-[11px] text-muted-foreground">Include Legal Research</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={includeLegalResearch}
+              onClick={() => setIncludeLegalResearch(!includeLegalResearch)}
+              className={cn(
+                "relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors",
+                includeLegalResearch ? "bg-primary" : "bg-muted/30"
+              )}
+            >
+              <span
+                className={cn(
+                  "pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
+                  includeLegalResearch ? "translate-x-4" : "translate-x-0"
+                )}
+              />
+            </button>
+          </label>
+        </div>
       </form>
     </div>
   )

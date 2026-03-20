@@ -52,6 +52,7 @@ class ChunkResponse(BaseModel):
 class QueryCreate(BaseModel):
     """Query request (ask question)"""
     question: str = Field(..., min_length=1, max_length=1000)
+    include_legal_research: bool = Field(False, description="Include CourtListener case law in results")
 
 
 class CitationData(BaseModel):
@@ -60,6 +61,8 @@ class CitationData(BaseModel):
     section: Optional[str] = None
     content_snippet: str
     score: Optional[float] = Field(None, ge=0.0, le=1.0)
+    source_type: Optional[str] = Field(None, description="'document' or 'case_law'")
+    url: Optional[str] = Field(None, description="External URL for case law sources")
 
 
 class QueryResponse(BaseModel):
