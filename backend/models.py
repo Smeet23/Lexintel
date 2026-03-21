@@ -35,6 +35,7 @@ class Matter(Base):
     documents = relationship("Document", back_populates="matter")
     chunks = relationship("Chunk", back_populates="matter")
     queries = relationship("Query", back_populates="matter")
+    conversations = relationship("Conversation", back_populates="matter")
 
     def __repr__(self):
         return f"<Matter(id={self.id}, name={self.name}, status={self.status})>"
@@ -92,11 +93,34 @@ class Chunk(Base):
         return f"<Chunk(id={self.id}, matter_id={self.matter_id}, page={self.page_num})>"
 
 
+class Conversation(Base):
+    __tablename__ = "conversations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    matter_id = Column(UUID(as_uuid=True), ForeignKey("matters.id"), nullable=False, index=True)
+    title = Column(String(255), nullable=True)  # Auto-generated from first question
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+    is_deleted = Column(Boolean, default=False, nullable=False)
+
+    # Relationships
+    matter = relationship("Matter", back_populates="conversations")
+    queries = relationship("Query", back_populates="conversation", order_by="Query.created_at")
+
+    __table_args__ = (
+        Index('idx_conv_matter_active', 'matter_id', 'is_deleted', 'updated_at'),
+    )
+
+    def __repr__(self):
+        return f"<Conversation(id={self.id}, matter_id={self.matter_id}, title={self.title})>"
+
+
 class Query(Base):
     __tablename__ = "queries"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     matter_id = Column(UUID(as_uuid=True), ForeignKey("matters.id"), nullable=False, index=True)
+    conversation_id = Column(UUID(as_uuid=True), ForeignKey("conversations.id"), nullable=True, index=True)
     question = Column(Text, nullable=False)
     answer = Column(Text, nullable=False)
     citations = Column(JSON, nullable=True, default=list)  # List of citation dicts
@@ -104,9 +128,11 @@ class Query(Base):
 
     # Relationships
     matter = relationship("Matter", back_populates="queries")
+    conversation = relationship("Conversation", back_populates="queries")
 
     __table_args__ = (
         Index('idx_matter_id_created', 'matter_id', 'created_at'),
+        Index('idx_query_conversation_created', 'conversation_id', 'created_at'),
     )
 
     def __repr__(self):

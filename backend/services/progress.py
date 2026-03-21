@@ -77,11 +77,24 @@ def publish_progress(
         stage_labels = dict(STAGES)
         message = stage_labels.get(stage, stage.capitalize())
 
+    step = get_step_number(stage)
+    total = len(STAGES)
+    clamped_progress = min(100, max(0, progress))
+
+    # Calculate overall progress server-side (0-100)
+    completed_steps = max(0, step - 1)
+    overall = min(99, int(((completed_steps * 100 + clamped_progress) / total)))
+    if stage == "ready":
+        overall = 100
+    elif stage == "error":
+        overall = max(0, overall)
+
     payload = {
         "stage": stage,
-        "step": get_step_number(stage),
-        "total_steps": len(STAGES),
-        "progress": min(100, max(0, progress)),  # Clamp to 0-100
+        "step": step,
+        "total_steps": total,
+        "progress": clamped_progress,
+        "overall_progress": overall,
         "message": message,
         "detail": detail,
         "retry_attempt": retry_attempt,
@@ -89,7 +102,13 @@ def publish_progress(
     }
 
     try:
-        redis_client.publish(channel, json.dumps(payload))
+        payload_json = json.dumps(payload)
+        # Cache latest state in Redis key (survives page refresh)
+        cache_key = f"lexintel:matter:{matter_id}:progress:latest"
+        ttl = 60 if stage in ("ready", "error") else 600  # shorter TTL when done
+        redis_client.setex(cache_key, ttl, payload_json)
+        # Publish to pub/sub for real-time delivery
+        redis_client.publish(channel, payload_json)
         logger.debug(f"Published progress for matter {matter_id}: {stage} ({progress}%)")
         return True
     except redis.RedisError as e:

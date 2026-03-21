@@ -6,6 +6,7 @@ import type {
   AuditLogEntry,
   PrecedentSearchResult,
   SavedPrecedent,
+  ConversationItem,
 } from "./types"
 
 // ============================================
@@ -73,6 +74,7 @@ export interface AskResponse {
     }
   }
   error: string | null
+  query_id?: string
 }
 
 export interface MatterStatusResponse {
@@ -130,10 +132,12 @@ export async function askQuestion(
   matterId: string,
   question: string,
   includeLegalResearch: boolean = false,
+  conversationId?: string,
 ): Promise<AskResponse> {
   const { data } = await api.post<AskResponse>(`/matters/${matterId}/ask`, {
     question,
     include_legal_research: includeLegalResearch,
+    conversation_id: conversationId ?? null,
   })
   return data
 }
@@ -228,6 +232,25 @@ export async function getQueryHistory(
 }
 
 // ============================================
+// Query Delete API Functions
+// ============================================
+
+export async function deleteAllQueries(
+  matterId: string
+): Promise<{ matter_id: string; deleted_count: number }> {
+  const { data } = await api.delete(`/matters/${matterId}/queries`)
+  return data
+}
+
+export async function deleteQuery(
+  matterId: string,
+  queryId: string
+): Promise<{ id: string; deleted: boolean }> {
+  const { data } = await api.delete(`/matters/${matterId}/queries/${queryId}`)
+  return data
+}
+
+// ============================================
 // Document Delete API Function
 // ============================================
 
@@ -296,16 +319,6 @@ export async function listDrafts(matterId: string): Promise<DraftResponse[]> {
   return data
 }
 
-export async function getDraft(
-  matterId: string,
-  draftId: string
-): Promise<DraftResponse> {
-  const { data } = await api.get<DraftResponse>(
-    `/matters/${matterId}/drafts/${draftId}`
-  )
-  return data
-}
-
 // ============================================
 // Audit Log API Functions
 // ============================================
@@ -355,5 +368,53 @@ export async function deletePrecedent(
   id: string
 ): Promise<{ id: string; deleted: boolean }> {
   const { data } = await api.delete(`/precedents/${id}`)
+  return data
+}
+
+// ============================================
+// Conversation API Functions
+// ============================================
+
+export async function listConversations(matterId: string): Promise<ConversationItem[]> {
+  const { data } = await api.get<ConversationItem[]>(`/matters/${matterId}/conversations`)
+  return data
+}
+
+export async function getConversation(
+  matterId: string,
+  conversationId: string
+): Promise<import("./types").ConversationDetail> {
+  const { data } = await api.get<import("./types").ConversationDetail>(
+    `/matters/${matterId}/conversations/${conversationId}`
+  )
+  return data
+}
+
+export async function createConversation(
+  matterId: string
+): Promise<{ id: string; title: string | null; created_at: string }> {
+  const { data } = await api.post<{ id: string; title: string | null; created_at: string }>(
+    `/matters/${matterId}/conversations`
+  )
+  return data
+}
+
+export async function deleteConversation(
+  matterId: string,
+  conversationId: string
+): Promise<{ id: string; deleted: boolean }> {
+  const { data } = await api.delete(`/matters/${matterId}/conversations/${conversationId}`)
+  return data
+}
+
+export async function updateConversationTitle(
+  matterId: string,
+  conversationId: string,
+  title: string
+): Promise<ConversationItem> {
+  const { data } = await api.patch<ConversationItem>(
+    `/matters/${matterId}/conversations/${conversationId}`,
+    { title }
+  )
   return data
 }

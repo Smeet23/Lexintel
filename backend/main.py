@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 try:
     from backend.config import get_settings
     from backend.database import get_db
-    from backend.models import Matter, Chunk, Query, Document, ContractReview, Draft, AuditLog, SavedPrecedent
+    from backend.models import Matter, Chunk, Query, Document, ContractReview, Draft, AuditLog, SavedPrecedent, Conversation
     from backend.services.contract_review import analyze_contract
     from backend.services.draft_service import generate_draft
     from backend.services.audit import log_activity
@@ -35,7 +35,7 @@ except ImportError:
     try:
         from config import get_settings
         from database import get_db
-        from models import Matter, Chunk, Query, Document, ContractReview, Draft, AuditLog, SavedPrecedent
+        from models import Matter, Chunk, Query, Document, ContractReview, Draft, AuditLog, SavedPrecedent, Conversation
         from services.contract_review import analyze_contract
         from services.draft_service import generate_draft
         from services.audit import log_activity
@@ -50,7 +50,7 @@ except ImportError:
     except ImportError:
         from .config import get_settings
         from .database import get_db
-        from .models import Matter, Chunk, Query, Document, ContractReview, Draft, AuditLog, SavedPrecedent
+        from .models import Matter, Chunk, Query, Document, ContractReview, Draft, AuditLog, SavedPrecedent, Conversation
         from .services.contract_review import analyze_contract
         from .services.draft_service import generate_draft
         from .services.audit import log_activity
@@ -84,7 +84,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     allow_headers=["*"],
 )
 
@@ -726,6 +726,257 @@ def delete_document(matter_id: str, document_id: str, db: Session = Depends(get_
 
 
 # ============================================
+# CONVERSATION ENDPOINTS
+# ============================================
+
+@app.post("/matters/{matter_id}/conversations", response_model=dict)
+async def create_conversation(
+    matter_id: str,
+    db: Session = Depends(get_db)
+):
+    """Create a new conversation thread for a matter."""
+    try:
+        matter_uuid = UUID(matter_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid matter ID format")
+
+    matter = db.query(Matter).filter(Matter.id == matter_uuid, Matter.is_deleted == False).first()
+    if not matter:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Matter not found")
+
+    conversation = Conversation(
+        id=uuid.uuid4(),
+        matter_id=matter_uuid,
+        title=None,
+    )
+    db.add(conversation)
+    db.commit()
+
+    return {
+        "id": str(conversation.id),
+        "title": conversation.title,
+        "created_at": conversation.created_at.isoformat(),
+    }
+
+
+@app.get("/matters/{matter_id}/conversations", response_model=list)
+async def list_conversations(
+    matter_id: str,
+    limit: int = QueryParam(50, ge=1, le=200),
+    offset: int = QueryParam(0, ge=0),
+    db: Session = Depends(get_db)
+):
+    """List all conversations for a matter, newest first."""
+    try:
+        matter_uuid = UUID(matter_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid matter ID format")
+
+    matter = db.query(Matter).filter(Matter.id == matter_uuid, Matter.is_deleted == False).first()
+    if not matter:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Matter not found")
+
+    from sqlalchemy import func
+
+    # Subquery: message count + latest question per conversation (single query)
+    stats = (
+        db.query(
+            Query.conversation_id,
+            func.count(Query.id).label("msg_count"),
+            func.max(Query.created_at).label("last_at"),
+        )
+        .filter(Query.conversation_id.isnot(None))
+        .group_by(Query.conversation_id)
+        .subquery()
+    )
+
+    conversations = (
+        db.query(Conversation, stats.c.msg_count, stats.c.last_at)
+        .outerjoin(stats, Conversation.id == stats.c.conversation_id)
+        .filter(
+            Conversation.matter_id == matter_uuid,
+            Conversation.is_deleted == False,
+        )
+        .order_by(Conversation.updated_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    # Batch fetch last question preview for all conversations with messages (1 query)
+    conv_ids_with_msgs = [conv.id for conv, count, _ in conversations if count]
+    last_previews: dict[str, str] = {}
+    if conv_ids_with_msgs:
+        from sqlalchemy import and_
+        # Subquery to get max created_at per conversation
+        latest_sq = (
+            db.query(
+                Query.conversation_id,
+                func.max(Query.created_at).label("max_at"),
+            )
+            .filter(Query.conversation_id.in_(conv_ids_with_msgs))
+            .group_by(Query.conversation_id)
+            .subquery()
+        )
+        latest_queries = (
+            db.query(Query.conversation_id, Query.question)
+            .join(
+                latest_sq,
+                and_(
+                    Query.conversation_id == latest_sq.c.conversation_id,
+                    Query.created_at == latest_sq.c.max_at,
+                ),
+            )
+            .all()
+        )
+        for cid, question in latest_queries:
+            last_previews[str(cid)] = question[:100]
+
+    return [
+        {
+            "id": str(conv.id),
+            "title": conv.title,
+            "created_at": conv.created_at.isoformat(),
+            "updated_at": conv.updated_at.isoformat(),
+            "message_count": msg_count or 0,
+            "last_message_preview": last_previews.get(str(conv.id)),
+        }
+        for conv, msg_count, last_at in conversations
+    ]
+
+
+@app.get("/matters/{matter_id}/conversations/{conversation_id}", response_model=dict)
+async def get_conversation(
+    matter_id: str,
+    conversation_id: str,
+    db: Session = Depends(get_db)
+):
+    """Get a conversation with all its messages."""
+    try:
+        matter_uuid = UUID(matter_id)
+        conv_uuid = UUID(conversation_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid ID format")
+
+    matter = db.query(Matter).filter(Matter.id == matter_uuid, Matter.is_deleted == False).first()
+    if not matter:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Matter not found")
+
+    conversation = db.query(Conversation).filter(
+        Conversation.id == conv_uuid,
+        Conversation.matter_id == matter_uuid,
+        Conversation.is_deleted == False,
+    ).first()
+    if not conversation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+
+    queries = (
+        db.query(Query)
+        .filter(Query.conversation_id == conv_uuid)
+        .order_by(Query.created_at.asc())
+        .all()
+    )
+
+    return {
+        "id": str(conversation.id),
+        "title": conversation.title,
+        "created_at": conversation.created_at.isoformat(),
+        "updated_at": conversation.updated_at.isoformat(),
+        "queries": [
+            {
+                "id": str(q.id),
+                "question": q.question,
+                "answer": q.answer,
+                "citations": q.citations,
+                "created_at": q.created_at.isoformat(),
+            }
+            for q in queries
+        ],
+    }
+
+
+@app.patch("/matters/{matter_id}/conversations/{conversation_id}", response_model=dict)
+async def update_conversation_title(
+    matter_id: str,
+    conversation_id: str,
+    title: str = Body(..., embed=True),
+    db: Session = Depends(get_db)
+):
+    """Update a conversation's title."""
+    try:
+        matter_uuid = UUID(matter_id)
+        conv_uuid = UUID(conversation_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid ID format")
+
+    matter = db.query(Matter).filter(Matter.id == matter_uuid, Matter.is_deleted == False).first()
+    if not matter:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Matter not found")
+
+    conversation = db.query(Conversation).filter(
+        Conversation.id == conv_uuid,
+        Conversation.matter_id == matter_uuid,
+        Conversation.is_deleted == False,
+    ).first()
+    if not conversation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+
+    conversation.title = title[:255]
+    db.commit()
+
+    from sqlalchemy import func
+    msg_count = db.query(func.count(Query.id)).filter(
+        Query.conversation_id == conv_uuid
+    ).scalar() or 0
+
+    return {
+        "id": str(conversation.id),
+        "title": conversation.title,
+        "created_at": conversation.created_at.isoformat(),
+        "updated_at": conversation.updated_at.isoformat(),
+        "message_count": msg_count,
+        "last_message_preview": None,
+    }
+
+
+@app.delete("/matters/{matter_id}/conversations/{conversation_id}", response_model=dict)
+async def delete_conversation(
+    matter_id: str,
+    conversation_id: str,
+    db: Session = Depends(get_db)
+):
+    """Soft-delete a conversation and dissociate its queries."""
+    try:
+        matter_uuid = UUID(matter_id)
+        conv_uuid = UUID(conversation_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid ID format")
+
+    matter = db.query(Matter).filter(Matter.id == matter_uuid, Matter.is_deleted == False).first()
+    if not matter:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Matter not found")
+
+    conversation = db.query(Conversation).filter(
+        Conversation.id == conv_uuid,
+        Conversation.matter_id == matter_uuid,
+        Conversation.is_deleted == False,
+    ).first()
+    if not conversation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+
+    # Soft delete: mark conversation as deleted and clear conversation_id from queries
+    conversation.is_deleted = True
+    conversation.updated_at = datetime.now(timezone.utc)
+    db.query(Query).filter(Query.conversation_id == conv_uuid).update(
+        {"conversation_id": None}
+    )
+    db.commit()
+    log_activity(db, str(matter_uuid), "conversation_deleted", details="Deleted a conversation thread")
+
+    return {"id": str(conv_uuid), "deleted": True}
+
+
+# ============================================
 # RAG QUERY ENDPOINTS
 # ============================================
 
@@ -772,14 +1023,41 @@ async def ask_question(
             detail="Matter processing was cancelled. Please re-upload the document."
         )
 
-    # Fetch recent conversation history for follow-up context
-    recent_queries = (
-        db.query(Query)
-        .filter(Query.matter_id == matter_uuid)
-        .order_by(Query.created_at.desc())
-        .limit(5)
-        .all()
-    )
+    # Resolve conversation if provided (Pydantic already validated UUID format)
+    conversation_uuid = body.conversation_id
+    if conversation_uuid:
+        conversation = db.query(Conversation).filter(
+            Conversation.id == conversation_uuid,
+            Conversation.matter_id == matter_uuid,
+            Conversation.is_deleted == False,
+        ).first()
+        if not conversation:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Conversation not found"
+            )
+    else:
+        conversation = None
+
+    # Fetch recent conversation history for follow-up context.
+    # If a conversation_id is given, use queries from that conversation;
+    # otherwise fall back to the most recent matter-level queries.
+    if conversation_uuid:
+        recent_queries = (
+            db.query(Query)
+            .filter(Query.conversation_id == conversation_uuid)
+            .order_by(Query.created_at.desc())
+            .limit(5)
+            .all()
+        )
+    else:
+        recent_queries = (
+            db.query(Query)
+            .filter(Query.matter_id == matter_uuid)
+            .order_by(Query.created_at.desc())
+            .limit(5)
+            .all()
+        )
     conversation_history = [
         {"question": q.question, "answer": q.answer}
         for q in reversed(recent_queries)
@@ -798,16 +1076,29 @@ async def ask_question(
             db_query = Query(
                 id=uuid.uuid4(),
                 matter_id=matter_uuid,
+                conversation_id=conversation_uuid,
                 question=body.question,
                 answer=rag_result.get("answer", ""),
                 citations=rag_result.get("sources", []),
                 created_at=datetime.now(timezone.utc)
             )
             db.add(db_query)
+
+            # Auto-set conversation title from first question if not yet titled
+            if conversation and not conversation.title:
+                conversation.title = body.question[:50]
+
+            # Bump conversation updated_at so the list sorts by most recent activity
+            if conversation:
+                conversation.updated_at = datetime.now(timezone.utc)
+
             db.commit()
             log_activity(db, str(matter_uuid), "query", details=body.question)
+            rag_result["query_id"] = str(db_query.id)
 
         return rag_result
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to process query: {str(e)}", exc_info=True)
         raise HTTPException(
@@ -853,6 +1144,64 @@ async def get_query_history(
         }
         for q in queries
     ]
+
+
+@app.delete("/matters/{matter_id}/queries", response_model=dict)
+async def delete_all_queries(
+    matter_id: str,
+    db: Session = Depends(get_db)
+):
+    """Delete all query history for a matter"""
+    try:
+        matter_uuid = UUID(matter_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid matter ID format"
+        )
+
+    matter = db.query(Matter).filter(Matter.id == matter_uuid, Matter.is_deleted == False).first()
+    if not matter:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Matter not found")
+
+    deleted_count = db.query(Query).filter(Query.matter_id == matter_uuid).delete()
+    # Also soft-delete all conversations to avoid orphaned empty shells
+    conv_count = (
+        db.query(Conversation)
+        .filter(Conversation.matter_id == matter_uuid, Conversation.is_deleted == False)
+        .update({"is_deleted": True})
+    )
+    db.commit()
+    log_activity(db, str(matter_uuid), "queries_cleared", details=f"Cleared {deleted_count} queries and {conv_count} conversations")
+
+    return {"matter_id": str(matter_uuid), "deleted_count": deleted_count}
+
+
+@app.delete("/matters/{matter_id}/queries/{query_id}", response_model=dict)
+async def delete_query(
+    matter_id: str,
+    query_id: str,
+    db: Session = Depends(get_db)
+):
+    """Delete a single query from history"""
+    try:
+        matter_uuid = UUID(matter_id)
+        query_uuid = UUID(query_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid ID format"
+        )
+
+    query = db.query(Query).filter(Query.id == query_uuid, Query.matter_id == matter_uuid).first()
+    if not query:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Query not found")
+
+    db.delete(query)
+    db.commit()
+    log_activity(db, str(matter_uuid), "query_deleted", details="Deleted a query")
+
+    return {"id": str(query_uuid), "deleted": True}
 
 
 @app.get("/matters/{matter_id}/status", response_model=dict)
@@ -1031,25 +1380,41 @@ async def matter_progress_stream(
         )
 
     async def event_generator():
-        """Generate SSE events from Redis pub/sub."""
+        """Generate SSE events from Redis pub/sub with cached state replay."""
         redis_client = await aioredis.from_url(
             settings.celery_broker_url,
             decode_responses=True
         )
         pubsub = redis_client.pubsub()
         channel = f"lexintel:matter:{matter_id}:progress"
+        cache_key = f"lexintel:matter:{matter_id}:progress:latest"
 
         try:
+            # 1. Subscribe FIRST to avoid missing events during cache read
             await pubsub.subscribe(channel)
             logger.info(f"SSE client subscribed to {channel}")
 
-            # Send initial connection event
+            # 2. Replay cached latest state (survives page refresh)
+            cached = await redis_client.get(cache_key)
+            last_overall = -1
+            if cached:
+                yield {"event": "progress", "data": cached}
+                try:
+                    parsed = json.loads(cached)
+                    last_overall = parsed.get("overall_progress", 0)
+                    if parsed.get("stage") in ("ready", "error"):
+                        logger.info(f"SSE replay shows completed state for {channel}")
+                        return
+                except json.JSONDecodeError:
+                    pass
+
+            # 3. Send connection event
             yield {
                 "event": "connected",
                 "data": json.dumps({"matter_id": matter_id, "status": "connected"})
             }
 
-            # Listen for messages with heartbeat and timeout
+            # 4. Listen for live messages with heartbeat and timeout
             max_duration = 600  # 10 minutes max connection
             heartbeat_interval = 15  # seconds
             import time
@@ -1074,6 +1439,17 @@ async def matter_progress_stream(
 
                 if message and message["type"] == "message":
                     data = message["data"]
+
+                    # Deduplicate: skip if already covered by cached replay
+                    try:
+                        parsed = json.loads(data)
+                        current_overall = parsed.get("overall_progress", 0)
+                        if current_overall <= last_overall:
+                            continue
+                        last_overall = current_overall
+                    except json.JSONDecodeError:
+                        pass
+
                     yield {"event": "progress", "data": data}
 
                     # Check if processing is complete

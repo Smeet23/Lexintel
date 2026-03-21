@@ -13,6 +13,8 @@ import {
   fetchMatterChunks,
   getQueryHistory,
   deleteDocument,
+  deleteAllQueries,
+  deleteQuery,
   getContractReview,
   runContractReview,
   createDraft,
@@ -22,6 +24,9 @@ import {
   savePrecedent,
   listPrecedents,
   deletePrecedent,
+  listConversations,
+  createConversation,
+  deleteConversation,
   type MatterResponse,
   type MatterDetailResponse,
   type AskResponse,
@@ -35,6 +40,7 @@ import type {
   AuditLogEntry,
   PrecedentSearchResult,
   SavedPrecedent,
+  ConversationItem,
 } from "@/lib/types"
 
 export function useMatters() {
@@ -98,12 +104,15 @@ export function useCancelMatterProcessing(matterId: string) {
 export function useAskQuestion(matterId: string) {
   const queryClient = useQueryClient()
 
-  return useMutation<AskResponse, Error, { question: string; includeLegalResearch?: boolean }>({
-    mutationFn: ({ question, includeLegalResearch }) =>
-      askQuestion(matterId, question, includeLegalResearch ?? false),
-    onSuccess: () => {
+  return useMutation<AskResponse, Error, { question: string; includeLegalResearch?: boolean; conversationId?: string }>({
+    mutationFn: ({ question, includeLegalResearch, conversationId }) =>
+      askQuestion(matterId, question, includeLegalResearch ?? false, conversationId),
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["matters", matterId] })
       queryClient.invalidateQueries({ queryKey: ["matters", matterId, "queries"] })
+      if (variables.conversationId) {
+        queryClient.invalidateQueries({ queryKey: ["matters", matterId, "conversations"] })
+      }
     },
   })
 }
@@ -132,6 +141,33 @@ export function useQueryHistory(matterId: string) {
     queryFn: () => getQueryHistory(matterId),
     enabled: !!matterId,
     staleTime: 30_000,
+  })
+}
+
+export function useDeleteAllQueries(matterId: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: () => deleteAllQueries(matterId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["matters", matterId, "queries"] })
+      queryClient.invalidateQueries({ queryKey: ["matters", matterId] })
+      queryClient.invalidateQueries({ queryKey: ["matters", matterId, "audit-log"] })
+      queryClient.invalidateQueries({ queryKey: ["matters", matterId, "conversations"] })
+    },
+  })
+}
+
+export function useDeleteQuery(matterId: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (queryId: string) => deleteQuery(matterId, queryId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["matters", matterId, "queries"] })
+      queryClient.invalidateQueries({ queryKey: ["matters", matterId] })
+      queryClient.invalidateQueries({ queryKey: ["matters", matterId, "audit-log"] })
+    },
   })
 }
 
@@ -272,3 +308,39 @@ export function useDeletePrecedent() {
     },
   })
 }
+
+// ============================================
+// Conversation Hooks
+// ============================================
+
+export function useConversations(matterId: string) {
+  return useQuery<ConversationItem[]>({
+    queryKey: ["matters", matterId, "conversations"],
+    queryFn: () => listConversations(matterId),
+    enabled: !!matterId,
+    staleTime: 10_000,
+  })
+}
+
+export function useCreateConversation(matterId: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: () => createConversation(matterId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["matters", matterId, "conversations"] })
+    },
+  })
+}
+
+export function useDeleteConversation(matterId: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (conversationId: string) => deleteConversation(matterId, conversationId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["matters", matterId, "conversations"] })
+    },
+  })
+}
+

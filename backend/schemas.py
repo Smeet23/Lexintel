@@ -53,6 +53,7 @@ class QueryCreate(BaseModel):
     """Query request (ask question)"""
     question: str = Field(..., min_length=1, max_length=1000)
     include_legal_research: bool = Field(False, description="Include CourtListener case law in results")
+    conversation_id: Optional[UUID] = Field(None, description="Conversation thread ID to attach this query to")
 
 
 class CitationData(BaseModel):

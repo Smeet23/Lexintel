@@ -1,12 +1,37 @@
 "use client"
 
-import React, { useState, useRef, useEffect } from "react"
+import React, { useState, useRef, useEffect, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Send, Loader2, Copy, Check, ChevronDown, ChevronUp, Scale } from "lucide-react"
+import {
+  Send,
+  Loader2,
+  Copy,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Scale,
+  Trash2,
+  MessageSquarePlus,
+  AlertTriangle,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 import type { QueryMessage, Citation } from "@/lib/types"
+
+// ─── Helpers ────────────────────────────────────────────────
+
+function formatMessageDate(timestamp: string): string {
+  const date = new Date(timestamp)
+  const now = new Date()
+  const diff = now.getTime() - date.getTime()
+  const days = Math.floor(diff / 86400000)
+
+  if (days === 0) return "Today"
+  if (days === 1) return "Yesterday"
+  if (days < 7) return date.toLocaleDateString([], { weekday: "long" })
+  return date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })
+}
 
 function ConfidenceBadge({ score }: { score: number }) {
   const color = score >= 80
@@ -21,17 +46,79 @@ function ConfidenceBadge({ score }: { score: number }) {
   )
 }
 
+// ─── Date Separator ─────────────────────────────────────────
+
+function DateSeparator({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-3 py-2">
+      <div className="flex-1 h-px bg-border" />
+      <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 select-none">
+        {label}
+      </span>
+      <div className="flex-1 h-px bg-border" />
+    </div>
+  )
+}
+
+// ─── Delete Confirmation Inline ──────────────────────────────
+
+function DeleteConfirmInline({
+  onConfirm,
+  onCancel,
+  isDeleting,
+}: {
+  onConfirm: () => void
+  onCancel: () => void
+  isDeleting?: boolean
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      transition={{ duration: 0.15 }}
+      className="flex items-center gap-2 mt-2 p-2 rounded-lg bg-red-50 border border-red-200/60"
+    >
+      <AlertTriangle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+      <span className="text-[11px] text-red-700 flex-1">Delete this Q&A?</span>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-5 text-[10px] px-1.5 text-muted-foreground hover:text-foreground"
+        onClick={onCancel}
+      >
+        Cancel
+      </Button>
+      <Button
+        size="sm"
+        className="h-5 text-[10px] px-2 bg-red-600 hover:bg-red-700 text-white"
+        onClick={onConfirm}
+        disabled={isDeleting}
+      >
+        {isDeleting ? <Loader2 className="h-3 w-3 animate-spin" /> : "Delete"}
+      </Button>
+    </motion.div>
+  )
+}
+
+// ─── Message Bubble ──────────────────────────────────────────
+
 function MessageBubble({
   message,
   onViewCitations,
   onCitationClick,
+  onDelete,
+  isDeletingMessage,
 }: {
   message: QueryMessage
   onViewCitations?: (citations: Citation[]) => void
   onCitationClick?: (citation: Citation) => void
+  onDelete?: () => void
+  isDeletingMessage?: boolean
 }) {
   const [copied, setCopied] = useState(false)
   const [showSources, setShowSources] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const isUser = message.role === "user"
 
   const handleCopy = () => {
@@ -42,27 +129,39 @@ function MessageBubble({
 
   return (
     <motion.div
+      id={message.queryId ? `msg-${message.queryId}` : undefined}
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-      className={cn(isUser ? "flex justify-end" : "")}
+      className={cn("group transition-shadow duration-500", isUser ? "flex justify-end" : "")}
     >
       <div className={cn(
-        "max-w-[85%] rounded-xl px-4 py-3",
+        "max-w-[85%] rounded-xl px-4 py-3 relative",
         isUser
           ? "bg-primary text-primary-foreground"
           : "bg-white border border-border shadow-sm"
       )}>
-        <div className="flex items-center gap-2 mb-1.5">
+        {/* Delete button — top-right corner, hover only */}
+        {!isUser && onDelete && message.queryId && !showDeleteConfirm && (
+          <button
+            type="button"
+            className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-white border border-border shadow-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-50 hover:border-red-200 hover:text-red-600 text-muted-foreground/50"
+            onClick={() => setShowDeleteConfirm(true)}
+            title="Delete this Q&A"
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+        )}
+        <div className="flex items-center gap-1.5 mb-2">
           {!isUser && (
-            <div className="flex h-5 w-5 items-center justify-center rounded-md bg-surface">
+            <div className="flex h-5 w-5 items-center justify-center rounded-md bg-surface shrink-0">
               <Scale className="h-3 w-3 text-foreground" />
             </div>
           )}
-          <span className={cn("text-[11px] font-semibold uppercase tracking-[0.05em]", isUser ? "text-white/50" : "text-muted")}>
+          <span className={cn("text-[10px] font-semibold uppercase tracking-[0.08em]", isUser ? "text-white/60" : "text-muted")}>
             {isUser ? "You" : "LexIntel"}
           </span>
-          <span className={cn("text-[11px]", isUser ? "text-white/30" : "text-muted-foreground")}>
+          <span className={cn("text-[10px]", isUser ? "text-white/35" : "text-muted-foreground")}>
             {new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           </span>
         </div>
@@ -104,6 +203,20 @@ function MessageBubble({
           </div>
         )}
 
+        {/* Inline delete confirmation */}
+        <AnimatePresence>
+          {showDeleteConfirm && !isUser && (
+            <DeleteConfirmInline
+              onConfirm={() => {
+                onDelete?.()
+                setShowDeleteConfirm(false)
+              }}
+              onCancel={() => setShowDeleteConfirm(false)}
+              isDeleting={isDeletingMessage}
+            />
+          )}
+        </AnimatePresence>
+
         <AnimatePresence>
           {showSources && message.citations && (
             <motion.div
@@ -134,25 +247,64 @@ function MessageBubble({
   )
 }
 
+// ─── Main Chat Panel ─────────────────────────────────────────
+
 export default function ChatPanel({
   messages,
   onSend,
   isLoading,
   onSelectCitation,
   onCitationClick,
+  onNewChat,
+  onClearHistory,
+  onDeleteMessage,
+  isClearingHistory,
+  isDeletingMessage,
+  hasHistory,
 }: {
   messages: QueryMessage[]
   onSend: (message: string, includeLegalResearch: boolean) => void
   isLoading?: boolean
   onSelectCitation?: (citations: Citation[]) => void
   onCitationClick?: (citation: Citation) => void
+  onNewChat?: () => void
+  onClearHistory?: () => void
+  onDeleteMessage?: (queryId: string) => void
+  isClearingHistory?: boolean
+  isDeletingMessage?: boolean
+  hasHistory?: boolean
 }) {
   const [input, setInput] = useState("")
   const [includeLegalResearch, setIncludeLegalResearch] = useState(false)
+  const [showClearConfirm, setShowClearConfirm] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  const questionCount = useMemo(
+    () => messages.filter(m => m.role === "user").length,
+    [messages]
+  )
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [messages])
+
+  // Compute date separators
+  type DateItem = { type: "date"; label: string }
+  type MsgItem = { type: "message"; message: QueryMessage }
+  const messagesWithDates = useMemo(() => {
+    const result: (DateItem | MsgItem)[] = []
+    let lastDate = ""
+    for (const msg of messages) {
+      if (msg.role === "user") {
+        const dateLabel = formatMessageDate(msg.timestamp)
+        if (dateLabel !== lastDate) {
+          lastDate = dateLabel
+          result.push({ type: "date", label: dateLabel })
+        }
+      }
+      result.push({ type: "message", message: msg })
+    }
+    return result
   }, [messages])
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -170,42 +322,189 @@ export default function ChatPanel({
     }
   }
 
+  const handleClearConfirm = () => {
+    onClearHistory?.()
+    setShowClearConfirm(false)
+  }
+
+  // Is this a "new chat" state vs "truly empty"?
+  const isNewChatState = messages.length === 0 && hasHistory
+
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto space-y-4 p-6">
-        {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-center py-12">
-            <div className="h-12 w-12 rounded-xl bg-surface flex items-center justify-center mb-4">
-              <Scale className="h-5 w-5 text-muted" />
+      {/* ── Chat Header ─────────────────────────── */}
+      <div className="flex items-center justify-between border-b border-border px-5 py-3 shrink-0 bg-white/80 backdrop-blur-sm">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10">
+            <Scale className="h-3.5 w-3.5 text-primary" />
+          </div>
+          <div>
+            <span className="text-[13px] font-semibold text-foreground leading-none">
+              {isNewChatState ? "New Conversation" : "Chat"}
+            </span>
+            {questionCount > 0 && (
+              <span className="ml-2 text-[10px] text-muted-foreground bg-surface/80 px-1.5 py-0.5 rounded-full font-medium">
+                {questionCount} {questionCount === 1 ? "question" : "questions"}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1">
+          {onNewChat && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-[11px] text-muted-foreground hover:text-foreground px-2.5 gap-1.5 rounded-lg"
+              onClick={onNewChat}
+              disabled={messages.length === 0 && !hasHistory}
+              title="Start a new conversation"
+            >
+              <MessageSquarePlus className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">New Chat</span>
+            </Button>
+          )}
+          {onClearHistory && (questionCount > 0 || hasHistory) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn(
+                "h-7 text-[11px] px-2.5 gap-1.5 rounded-lg transition-colors",
+                showClearConfirm
+                  ? "text-red-700 bg-red-50"
+                  : "text-muted-foreground hover:text-red-600 hover:bg-red-50"
+              )}
+              onClick={() => setShowClearConfirm(true)}
+              disabled={isClearingHistory}
+              title="Clear all chat history"
+            >
+              {isClearingHistory ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
+              <span className="hidden sm:inline">Clear All</span>
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Clear All Confirmation Banner ─────────── */}
+      <AnimatePresence>
+        {showClearConfirm && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden shrink-0"
+          >
+            <div className="flex items-center gap-3 px-5 py-3 bg-red-50 border-b border-red-200/60">
+              <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-[12px] font-medium text-red-800">
+                  Delete all chat history?
+                </p>
+                <p className="text-[11px] text-red-600 mt-0.5">
+                  This will permanently remove all {questionCount} question{questionCount !== 1 ? "s" : ""} and answers. This cannot be undone.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-[11px] px-3"
+                  onClick={() => setShowClearConfirm(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-7 text-[11px] px-3 bg-red-600 hover:bg-red-700 text-white shadow-sm"
+                  onClick={handleClearConfirm}
+                  disabled={isClearingHistory}
+                >
+                  {isClearingHistory ? (
+                    <>
+                      <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                      Deleting...
+                    </>
+                  ) : (
+                    "Delete All"
+                  )}
+                </Button>
+              </div>
             </div>
-            <h3 className="font-display text-[18px] text-foreground">Ask LexIntel</h3>
-            <p className="text-[13px] text-muted mt-1.5 max-w-sm leading-relaxed">
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Messages Area ─────────────────────────── */}
+      <div className="flex-1 overflow-y-auto space-y-4 p-6">
+        {/* Empty state: first time / no history */}
+        {messages.length === 0 && !isNewChatState && (
+          <div className="flex flex-col items-center justify-center h-full text-center py-12">
+            <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center mb-5 shadow-sm border border-primary/10">
+              <Scale className="h-6 w-6 text-primary/70" />
+            </div>
+            <h3 className="font-display text-[18px] text-foreground font-semibold">Ask LexIntel</h3>
+            <p className="text-[13px] text-muted mt-2 max-w-sm leading-relaxed">
               Ask questions about your uploaded documents. Every answer includes source citations and confidence scores.
             </p>
           </div>
         )}
-        {messages.map((msg) => (
-          <MessageBubble
-            key={msg.id}
-            message={msg}
-            onViewCitations={onSelectCitation}
-            onCitationClick={onCitationClick}
-          />
-        ))}
+
+        {/* Empty state: new chat (history exists but cleared locally) */}
+        {isNewChatState && (
+          <div className="flex flex-col items-center justify-center h-full text-center py-12">
+            <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-emerald-50 to-emerald-100/50 flex items-center justify-center mb-5 shadow-sm border border-emerald-200/40">
+              <MessageSquarePlus className="h-6 w-6 text-emerald-600/70" />
+            </div>
+            <h3 className="font-display text-[18px] text-foreground font-semibold">New Conversation</h3>
+            <p className="text-[13px] text-muted mt-2 max-w-sm leading-relaxed">
+              Start a fresh conversation about your documents.
+            </p>
+          </div>
+        )}
+
+        {/* Messages with date separators */}
+        {messagesWithDates.map((item, idx) => {
+          if (item.type === "date") {
+            return <DateSeparator key={`date-${idx}`} label={item.label} />
+          }
+          const msg = item.message
+          return (
+            <MessageBubble
+              key={msg.id}
+              message={msg}
+              onViewCitations={onSelectCitation}
+              onCitationClick={onCitationClick}
+              onDelete={
+                msg.queryId && onDeleteMessage
+                  ? () => onDeleteMessage(msg.queryId!)
+                  : undefined
+              }
+              isDeletingMessage={isDeletingMessage}
+            />
+          )
+        })}
         {isLoading && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="flex items-center gap-2 text-muted px-1"
+            className="flex items-center gap-2.5 text-muted px-1 py-2"
           >
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-surface">
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+            </div>
             <span className="text-[13px]">Analyzing documents...</span>
           </motion.div>
         )}
         <div ref={messagesEndRef} />
       </div>
 
-      <form onSubmit={handleSubmit} className="border-t border-border p-4">
+      {/* ── Input Area ────────────────────────────── */}
+      <form onSubmit={handleSubmit} className="border-t border-border p-4 bg-white/80 backdrop-blur-sm">
         <div className="relative">
           <Textarea
             value={input}
