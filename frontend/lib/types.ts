@@ -19,6 +19,7 @@ export interface QueryMessage {
   citations?: Citation[]
   confidenceScore?: number
   timestamp: string
+  queryId?: string
 }
 
 export interface AuditEntry {
@@ -35,6 +36,7 @@ export interface ProgressEvent {
   step: number
   total_steps: number
   progress: number
+  overall_progress: number
   message: string
   current?: number
   total?: number
@@ -141,4 +143,45 @@ export interface SavedPrecedent {
   tags: string[]
   notes: string | null
   created_at: string
+}
+
+// ============================================
+// Conversation Types
+// ============================================
+
+export interface ConversationItem {
+  id: string
+  title: string | null
+  created_at: string
+  updated_at: string
+  message_count: number
+  last_message_preview: string | null
+}
+
+export interface ConversationQueryItem {
+  id: string
+  question: string
+  answer: string
+  citations: AskSourceItem[] | null
+  created_at: string
+}
+
+export interface AskSourceItem {
+  chunk_id: string
+  page_num: string
+  section_name: string
+  relevance_score: number
+  content: string
+  document_id: string
+  document_name: string
+  source_type?: "document" | "case_law"
+  url?: string
+}
+
+export interface ConversationDetail {
+  id: string
+  title: string | null
+  created_at: string
+  updated_at: string
+  queries: ConversationQueryItem[]
 }

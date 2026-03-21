@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useCallback, useEffect, useRef } from "react"
+import React, { useState, useCallback, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import ReactMarkdown from "react-markdown"
 import {
@@ -13,11 +13,12 @@ import {
   Loader2,
   AlertTriangle,
   Download,
-  Square,
 } from "lucide-react"
 import { motion } from "framer-motion"
 import AppLayout from "@/layouts/AppLayout"
 import ChatPanel from "@/components/ChatPanel"
+import MultiStageProgress from "@/components/MultiStageProgress"
+import ChatHistory from "@/components/ChatHistory"
 import CitationPanel from "@/components/CitationPanel"
 import DocumentTab from "@/components/DocumentTab"
 import { Button } from "@/components/ui/button"
@@ -31,10 +32,10 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Progress } from "@/components/ui/progress"
-import { cn, formatRelativeTime } from "@/lib/utils"
-import { useMatter, useAskQuestion, useCancelMatterProcessing, useQueryHistory, useContractReview, useRunContractReview, useDrafts, useCreateDraft, useAuditLog } from "@/hooks/use-matters"
+import { cn, formatRelativeTime, formatDate } from "@/lib/utils"
+import { useMatter, useAskQuestion, useCancelMatterProcessing, useQueryHistory, useDeleteAllQueries, useDeleteQuery, useContractReview, useRunContractReview, useDrafts, useCreateDraft, useAuditLog, useConversations, useCreateConversation, useDeleteConversation } from "@/hooks/use-matters"
 import { useMatterProgress } from "@/hooks/use-progress"
-import type { QueryMessage, Citation, AuditLogEntry } from "@/lib/types"
+import type { QueryMessage, Citation, AuditLogEntry, AskSourceItem } from "@/lib/types"
 
 export default function MatterWorkspacePage() {
   const params = useParams()
@@ -45,116 +46,213 @@ export default function MatterWorkspacePage() {
   const [selectedCitations, setSelectedCitations] = useState<Citation[]>([])
   const [chunkPreview, setChunkPreview] = useState<Citation | null>(null)
   const [draftType, setDraftType] = useState("")
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
+  const [historySearch, setHistorySearch] = useState("")
+  // Track which conversation's messages are currently loaded so we can
+  // avoid re-loading when the same conversation is already active.
+  const loadedConversationRef = useRef<string | null>(null)
 
   const { data: matter, isLoading, error } = useMatter(matterId)
   const { data: queryHistory } = useQueryHistory(matterId)
+  const { data: conversations } = useConversations(matterId)
   const askQuestion = useAskQuestion(matterId)
   const cancelProcessing = useCancelMatterProcessing(matterId)
   const { progress } = useMatterProgress(matterId, matter?.status === "processing")
-  const historyRestoredRef = useRef(false)
   const contractReview = useContractReview(matterId)
   const runContractReview = useRunContractReview(matterId)
   const drafts = useDrafts(matterId)
   const createDraft = useCreateDraft(matterId)
   const auditLog = useAuditLog(matterId)
+  const deleteAllQueries = useDeleteAllQueries(matterId)
+  const deleteQueryMutation = useDeleteQuery(matterId)
+  const createConversationMutation = useCreateConversation(matterId)
+  const deleteConversationMutation = useDeleteConversation(matterId)
+  const [historyCollapsed, setHistoryCollapsed] = useState(false)
   const [draftInstructions, setDraftInstructions] = useState("")
   const [selectedDraft, setSelectedDraft] = useState<import("@/lib/types").DraftResponse | null>(null)
 
-  // Load conversation history on mount (runs exactly once when both data are ready)
-  useEffect(() => {
-    if (historyRestoredRef.current || !queryHistory?.length || !matter) return
-    historyRestoredRef.current = true
-
-    const restored: QueryMessage[] = []
-    for (const item of queryHistory) {
-      restored.push({
-        id: `hist-q-${item.id}`,
-        role: "user",
-        content: item.question,
-        timestamp: item.created_at,
-      })
-
-      const citations: Citation[] = (item.citations || []).map((s) => ({
-        documentName: (s as any).document_name || matter.name,
-        pageNumber: parseInt(s.page_num) || 0,
-        section: (s as any).section_name || "",
-        excerpt: s.content?.slice(0, 200) || "",
-        relevanceScore: s.relevance_score || 0,
-        content: s.content ?? undefined,
-        sourceType: ((s as any).source_type as "document" | "case_law") || "document",
-        url: (s as any).url || undefined,
-      }))
-
-      restored.push({
-        id: `hist-a-${item.id}`,
-        role: "assistant",
-        content: item.answer,
-        citations: citations.length > 0 ? citations : undefined,
-        timestamp: item.created_at,
-      })
-    }
-    setMessages(restored)
-  }, [queryHistory, matter])
-
-  const handleSendMessage = useCallback((content: string, includeLegalResearch: boolean) => {
-    const userMsg: QueryMessage = {
-      id: `msg-${Date.now()}`,
-      role: "user",
-      content,
-      timestamp: new Date().toISOString(),
-    }
-    setMessages((prev) => [...prev, userMsg])
-
-    askQuestion.mutate({ question: content, includeLegalResearch }, {
-      onSuccess: (result) => {
-        if (result.answer) {
-          // Map backend sources to Citation format
-          const citations: Citation[] = (result.sources || []).map((s) => ({
-            documentName: s.document_name || matter?.name || "Document",
-            pageNumber: parseInt(s.page_num) || 0,
-            section: s.section_name || "",
-            excerpt: s.content?.slice(0, 200) || "",
-            relevanceScore: s.relevance_score || 0,
-            content: s.content ?? undefined,
-            sourceType: (s.source_type as "document" | "case_law") || "document",
-            url: s.url || undefined,
-          }))
-
-          const confidenceScore = typeof result.confidence === "object"
-            ? Math.round((result.confidence.score || 0) * 100)
-            : 0
-
-          const aiMsg: QueryMessage = {
-            id: `msg-${Date.now() + 1}`,
-            role: "assistant",
-            content: result.answer,
-            citations,
-            confidenceScore,
-            timestamp: new Date().toISOString(),
-          }
-          setMessages((prev) => [...prev, aiMsg])
-          setSelectedCitations(citations)
-        } else {
-          const errorMsg: QueryMessage = {
-            id: `msg-${Date.now() + 1}`,
-            role: "assistant",
-            content: result.error || "Sorry, I couldn't generate an answer. Please try rephrasing your question.",
-            timestamp: new Date().toISOString(),
-          }
-          setMessages((prev) => [...prev, errorMsg])
-        }
-      },
-      onError: () => {
-        const errorMsg: QueryMessage = {
-          id: `msg-${Date.now() + 1}`,
+  // Helper: build QueryMessage[] from a list of query history items
+  const matterName = matter?.name
+  const buildMessages = useCallback(
+    (items: { id: string; question: string; answer: string; citations?: AskSourceItem[] | null; created_at: string }[]) => {
+      const restored: QueryMessage[] = []
+      for (const item of items) {
+        restored.push({
+          id: `hist-q-${item.id}`,
+          role: "user",
+          content: item.question,
+          timestamp: item.created_at,
+          queryId: item.id,
+        })
+        const citations: Citation[] = (item.citations || []).map((s) => ({
+          documentName: s.document_name || matterName || "Document",
+          pageNumber: parseInt(s.page_num) || 0,
+          section: s.section_name || "",
+          excerpt: s.content?.slice(0, 200) || "",
+          relevanceScore: s.relevance_score || 0,
+          content: s.content ?? undefined,
+          sourceType: (s.source_type as "document" | "case_law") || "document",
+          url: s.url || undefined,
+        }))
+        restored.push({
+          id: `hist-a-${item.id}`,
           role: "assistant",
-          content: "An error occurred while processing your question. Please try again.",
-          timestamp: new Date().toISOString(),
-        }
-        setMessages((prev) => [...prev, errorMsg])
+          content: item.answer,
+          citations: citations.length > 0 ? citations : undefined,
+          timestamp: item.created_at,
+          queryId: item.id,
+        })
+      }
+      return restored
+    },
+    [matterName]
+  )
+
+  // When a conversation is selected, load its messages from the backend
+  const handleConversationSelect = useCallback(
+    async (conversationId: string) => {
+      if (loadedConversationRef.current === conversationId) return
+      setActiveConversationId(conversationId)
+      loadedConversationRef.current = conversationId
+      setSelectedCitations([])
+
+      try {
+        const { getConversation } = await import("@/lib/api-services")
+        const data = await getConversation(matterId, conversationId)
+        setMessages(buildMessages(data.queries ?? []))
+      } catch {
+        setMessages([])
+      }
+    },
+    [matterId, buildMessages]
+  )
+
+  // Create a new conversation and switch to it
+  const handleNewChat = useCallback(() => {
+    createConversationMutation.mutate(undefined, {
+      onSuccess: (newConv) => {
+        setActiveConversationId(newConv.id)
+        loadedConversationRef.current = newConv.id
+        setMessages([])
+        setSelectedCitations([])
       },
     })
-  }, [askQuestion, matter])
+  }, [createConversationMutation])
+
+  const handleSendMessage = useCallback(
+    (content: string, includeLegalResearch: boolean) => {
+      const userMsg: QueryMessage = {
+        id: `msg-${Date.now()}`,
+        role: "user",
+        content,
+        timestamp: new Date().toISOString(),
+      }
+      setMessages((prev) => [...prev, userMsg])
+
+      askQuestion.mutate(
+        { question: content, includeLegalResearch, conversationId: activeConversationId ?? undefined },
+        {
+          onSuccess: (result) => {
+            if (result.answer) {
+              const citations: Citation[] = (result.sources || []).map((s) => ({
+                documentName: s.document_name || matter?.name || "Document",
+                pageNumber: parseInt(s.page_num) || 0,
+                section: s.section_name || "",
+                excerpt: s.content?.slice(0, 200) || "",
+                relevanceScore: s.relevance_score || 0,
+                content: s.content ?? undefined,
+                sourceType: (s.source_type as "document" | "case_law") || "document",
+                url: s.url || undefined,
+              }))
+
+              const confidenceScore =
+                typeof result.confidence === "object"
+                  ? Math.round((result.confidence.score || 0) * 100)
+                  : 0
+
+              const aiMsg: QueryMessage = {
+                id: `msg-${Date.now() + 1}`,
+                role: "assistant",
+                content: result.answer,
+                citations,
+                confidenceScore,
+                timestamp: new Date().toISOString(),
+                queryId: result.query_id,
+              }
+              setMessages((prev) =>
+                prev
+                  .map((m) => (m.id === userMsg.id ? { ...m, queryId: result.query_id } : m))
+                  .concat([aiMsg])
+              )
+              setSelectedCitations(citations)
+            } else {
+              const errorMsg: QueryMessage = {
+                id: `msg-${Date.now() + 1}`,
+                role: "assistant",
+                content:
+                  result.error ||
+                  "Sorry, I couldn't generate an answer. Please try rephrasing your question.",
+                timestamp: new Date().toISOString(),
+              }
+              setMessages((prev) => [...prev, errorMsg])
+            }
+          },
+          onError: (error: Error & { response?: { data?: { detail?: string } } }) => {
+            const detail =
+              error?.response?.data?.detail ||
+              error?.message ||
+              "An error occurred while processing your question. Please try again."
+            const errorMsg: QueryMessage = {
+              id: `msg-${Date.now() + 1}`,
+              role: "assistant",
+              content: detail,
+              timestamp: new Date().toISOString(),
+            }
+            setMessages((prev) => [...prev, errorMsg])
+          },
+        }
+      )
+    },
+    [askQuestion, matter, activeConversationId]
+  )
+
+  const handleClearHistory = useCallback(() => {
+    deleteAllQueries.mutate(undefined, {
+      onSuccess: () => {
+        setMessages([])
+        setSelectedCitations([])
+        setActiveConversationId(null)
+        loadedConversationRef.current = null
+      },
+    })
+  }, [deleteAllQueries])
+
+  const handleDeleteConversation = useCallback(
+    (conversationId: string) => {
+      deleteConversationMutation.mutate(conversationId, {
+        onSuccess: () => {
+          if (activeConversationId === conversationId) {
+            setActiveConversationId(null)
+            loadedConversationRef.current = null
+            setMessages([])
+            setSelectedCitations([])
+          }
+        },
+      })
+    },
+    [deleteConversationMutation, activeConversationId]
+  )
+
+  const handleDeleteMessage = useCallback(
+    (queryId: string) => {
+      deleteQueryMutation.mutate(queryId, {
+        onSuccess: () => {
+          setMessages((prev) => prev.filter((m) => m.queryId !== queryId))
+        },
+      })
+    },
+    [deleteQueryMutation]
+  )
 
   if (isLoading) {
     return (
@@ -206,7 +304,7 @@ export default function MatterWorkspacePage() {
               <Badge variant={statusBadgeVariant}>{statusLabel}</Badge>
             </div>
             <p className="text-xs sm:text-sm text-muted mt-1.5">
-              {matter.file_type.toUpperCase()} &middot; {matter.documents_count} chunks &middot; {matter.queries_count} queries &middot; Created {formatRelativeTime(matter.created_at)}
+              {matter.file_type.toUpperCase()} &middot; {matter.documents_count} {matter.documents_count === 1 ? "document" : "documents"} &middot; {matter.queries_count} {matter.queries_count === 1 ? "query" : "queries"} &middot; Created {formatDate(matter.created_at)}
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -221,56 +319,12 @@ export default function MatterWorkspacePage() {
 
       {/* Processing indicator with real-time progress */}
       {matter.status === "processing" && (
-        <div className="mb-6 rounded-xl border border-amber-200/60 bg-amber-50/60 p-4 space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <Loader2 className="h-5 w-5 animate-spin text-amber-600 shrink-0" />
-              <div>
-                <p className="text-sm font-medium text-amber-800">
-                  {progress?.message || "Document is being processed"}
-                </p>
-                <p className="text-xs text-amber-600 mt-0.5">
-                  {progress?.detail
-                    ? `${progress.detail} — Step ${progress.step} of ${progress.total_steps}`
-                    : "Connecting to processing pipeline..."}
-                </p>
-              </div>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="shrink-0 border-destructive/50 text-destructive hover:bg-destructive/10"
-              onClick={() => cancelProcessing.mutate()}
-              disabled={cancelProcessing.isPending}
-            >
-              {cancelProcessing.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <>
-                  <Square className="h-4 w-4 mr-1.5" />
-                  Cancel
-                </>
-              )}
-            </Button>
-          </div>
-
-          {/* Progress bar */}
-          {progress && (
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between text-xs text-amber-700">
-                <span className="capitalize">{progress.stage}</span>
-                <span>{Math.round(((progress.step - 1) / progress.total_steps) * 100 + (progress.progress / progress.total_steps))}%</span>
-              </div>
-              <div className="h-2 w-full rounded-full bg-amber-200/60 overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-amber-500 transition-all duration-500 ease-out"
-                  style={{
-                    width: `${Math.round(((progress.step - 1) / progress.total_steps) * 100 + (progress.progress / progress.total_steps))}%`,
-                  }}
-                />
-              </div>
-            </div>
-          )}
+        <div className="mb-6">
+          <MultiStageProgress
+            progress={progress}
+            onCancel={() => cancelProcessing.mutate()}
+            isCancelling={cancelProcessing.isPending}
+          />
         </div>
       )}
 
@@ -309,6 +363,21 @@ export default function MatterWorkspacePage() {
         {/* Ask AI Tab */}
         <TabsContent value="ask-ai">
           <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 h-auto lg:h-[calc(100vh-280px)]">
+            {/* Conversation History Sidebar */}
+            <div className="hidden lg:flex bg-white rounded-xl border border-border shadow-elevated overflow-hidden">
+              <ChatHistory
+                conversations={conversations ?? []}
+                activeConversationId={activeConversationId}
+                onSelect={handleConversationSelect}
+                onNewChat={handleNewChat}
+                onDelete={handleDeleteConversation}
+                isDeleting={deleteConversationMutation.isPending}
+                isCollapsed={historyCollapsed}
+                onToggleCollapse={() => setHistoryCollapsed((p) => !p)}
+                searchQuery={historySearch}
+                onSearchChange={setHistorySearch}
+              />
+            </div>
             <div className="flex-1 min-h-[400px] lg:min-h-0 bg-white rounded-xl border border-border shadow-elevated overflow-hidden">
               <ChatPanel
                 messages={messages}
@@ -316,6 +385,12 @@ export default function MatterWorkspacePage() {
                 isLoading={askQuestion.isPending}
                 onSelectCitation={setSelectedCitations}
                 onCitationClick={setChunkPreview}
+                onNewChat={handleNewChat}
+                onClearHistory={handleClearHistory}
+                onDeleteMessage={handleDeleteMessage}
+                isClearingHistory={deleteAllQueries.isPending}
+                isDeletingMessage={deleteQueryMutation.isPending}
+                hasHistory={(conversations?.length ?? 0) > 0 || (queryHistory?.length ?? 0) > 0}
               />
             </div>
             <div className="w-full lg:w-80 bg-white rounded-xl border border-border shadow-elevated p-5 overflow-y-auto max-h-[400px] lg:max-h-none">

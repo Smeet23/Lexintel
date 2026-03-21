@@ -27,7 +27,12 @@ export function useMatterProgress(matterId: string | undefined, isProcessing: bo
     es.addEventListener("progress", (event) => {
       try {
         const data: ProgressEvent = JSON.parse(event.data)
-        setProgress(data)
+        // Only update if progress moves forward (prevent backwards jumps)
+        setProgress((prev) => {
+          if (!prev) return data
+          if (data.overall_progress >= prev.overall_progress) return data
+          return prev
+        })
 
         if (data.stage === "ready" || data.stage === "error") {
           es.close()

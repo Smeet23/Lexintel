@@ -20,6 +20,7 @@ try:
         publish_indexing, publish_storing, publish_enriching, publish_ready,
         publish_error, publish_retrying
     )
+    from backend.services.audit import log_activity
 except ImportError:
     from database import get_session_factory
     from models import Matter, Chunk, Document
@@ -34,6 +35,7 @@ except ImportError:
         publish_indexing, publish_storing, publish_enriching, publish_ready,
         publish_error, publish_retrying
     )
+    from services.audit import log_activity
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +97,7 @@ def process_document_task(self, matter_id: str, document_id: str):
         del document_content  # Free raw file bytes early
         publish_chunking(matter_id, progress=100, current=len(chunks), total=len(chunks))
         logger.info(f"[Task {self.request.id}] Created {len(chunks)} chunks")
+        log_activity(db, matter_id, "document_chunked", details=f"Extracted {len(chunks)} chunks from {document.name}")
 
         if not chunks:
             raise ValueError("No chunks extracted from document")
@@ -187,6 +190,7 @@ def process_document_task(self, matter_id: str, document_id: str):
             publish_embedding(matter_id, progress=progress, current=processed, total=len(chunks))
 
         del chunk_contents  # Free duplicated text strings
+        log_activity(db, matter_id, "embeddings_generated", details=f"Generated {len(embeddings)} embeddings for {document.name}")
 
         # 6. Create Qdrant collection
         logger.info(f"[Task {self.request.id}] Creating vector collection")
@@ -206,6 +210,7 @@ def process_document_task(self, matter_id: str, document_id: str):
         num_chunks = len(chunks)
         del chunks  # Free chunk dicts
         publish_indexing(matter_id, progress=100, detail=f"{num_chunks} vectors indexed")
+        log_activity(db, matter_id, "vectors_indexed", details=f"Indexed {num_chunks} vectors for {document.name}")
 
         # 8. Update document + matter status to ready (unless user cancelled)
         # Lock the matter row to prevent race conditions when multiple
@@ -243,6 +248,7 @@ def process_document_task(self, matter_id: str, document_id: str):
 
         # Publish ready event
         publish_ready(matter_id, num_chunks)
+        log_activity(db, matter_id, "document_processed", details=f"{document.name} ready with {num_chunks} chunks")
 
         logger.info(f"[Task {self.request.id}] Successfully processed matter {matter_id}")
         return {
@@ -291,6 +297,7 @@ def process_document_task(self, matter_id: str, document_id: str):
 
         # Publish error event
         publish_error(matter_id, str(exc), retry_count)
+        log_activity(db, matter_id, "processing_failed", details=f"Failed after {retry_count} retries: {str(exc)[:200]}")
 
         logger.error(f"[Task {self.request.id}] Max retries exceeded for matter {matter_id}")
         return {
