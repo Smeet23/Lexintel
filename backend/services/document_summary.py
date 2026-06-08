@@ -4,8 +4,6 @@ import logging
 from collections import Counter
 from typing import List, Dict, Any, Optional
 
-import google.generativeai as genai
-
 try:
     from backend.config import get_settings
 except ImportError:
@@ -13,6 +11,14 @@ except ImportError:
         from config import get_settings
     except ImportError:
         from ..config import get_settings
+
+try:
+    from backend.services import llm
+except ImportError:
+    try:
+        from services import llm
+    except ImportError:
+        from . import llm
 
 logger = logging.getLogger(__name__)
 
@@ -34,11 +40,8 @@ async def generate_doc_summary(extracted_text: str) -> Optional[str]:
         Summary string (max 200 chars), or None on failure
     """
     settings = get_settings()
-    if not settings.google_api_key:
+    if not (settings.google_api_key or getattr(settings, "groq_api_key", "")):
         return None
-
-    genai.configure(api_key=settings.google_api_key)
-    model = genai.GenerativeModel(model_name=settings.gemini_model)
 
     # First ~30k chars covers preamble, TOC, key sections
     truncated = extracted_text[:30000]
@@ -51,14 +54,14 @@ async def generate_doc_summary(extracted_text: str) -> Optional[str]:
     )
 
     try:
-        response = await model.generate_content_async(
+        summary = await llm.agenerate(
             prompt,
-            generation_config=genai.GenerationConfig(
-                temperature=0.1,
-                max_output_tokens=100,
-            ),
+            temperature=0.1,
+            max_output_tokens=100,
+            provider=(getattr(settings, "llm_answer_provider", "gemini") or "gemini").lower(),
+            fallback=True,
         )
-        summary = response.text.strip()
+        summary = summary.strip()
         return summary[:200] if summary else None
     except Exception as e:
         logger.warning(f"Summary generation failed (graceful degradation): {e}")
@@ -75,11 +78,8 @@ async def classify_document(extracted_text: str) -> Dict[str, str]:
         Dict with keys: document_type, jurisdiction
     """
     settings = get_settings()
-    if not settings.google_api_key:
+    if not (settings.google_api_key or getattr(settings, "groq_api_key", "")):
         return {"document_type": "other", "jurisdiction": "unknown"}
-
-    genai.configure(api_key=settings.google_api_key)
-    model = genai.GenerativeModel(model_name=settings.gemini_model)
 
     truncated = extracted_text[:10000]
 
@@ -91,14 +91,14 @@ async def classify_document(extracted_text: str) -> Dict[str, str]:
     )
 
     try:
-        response = await model.generate_content_async(
+        text = await llm.agenerate(
             prompt,
-            generation_config=genai.GenerationConfig(
-                temperature=0.0,
-                max_output_tokens=50,
-            ),
+            temperature=0.0,
+            max_output_tokens=50,
+            provider=(getattr(settings, "llm_answer_provider", "gemini") or "gemini").lower(),
+            fallback=True,
         )
-        text = response.text.strip()
+        text = text.strip()
         doc_type = "other"
         jurisdiction = "unknown"
         for line in text.split("\n"):

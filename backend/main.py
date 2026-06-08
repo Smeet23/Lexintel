@@ -1,5 +1,6 @@
+import hmac
 from typing import List
-from fastapi import FastAPI, HTTPException, status, File, UploadFile, Form, Body, Query as QueryParam, Depends
+from fastapi import FastAPI, HTTPException, status, File, UploadFile, Form, Body, Query as QueryParam, Depends, Request, Path
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -11,6 +12,7 @@ import json
 import logging
 import asyncio
 import io
+import time
 import redis.asyncio as aioredis
 from sse_starlette.sse import EventSourceResponse
 
@@ -29,8 +31,8 @@ try:
     from backend.services.rag_engine import query_matter
     from backend.validators import validate_filename, validate_matter_name, validate_question, validate_file_type
     from backend.services.progress import publish_uploaded
-    from backend.exceptions import BlobDownloadException
-    from backend.schemas import QueryCreate
+    from backend.exceptions import BlobDownloadException, BlobNotFoundException
+    from backend.schemas import QueryCreate, AskResponse
 except ImportError:
     try:
         from config import get_settings
@@ -45,8 +47,8 @@ except ImportError:
         from services.rag_engine import query_matter
         from validators import validate_filename, validate_matter_name, validate_question, validate_file_type
         from services.progress import publish_uploaded
-        from exceptions import BlobDownloadException
-        from schemas import QueryCreate
+        from exceptions import BlobDownloadException, BlobNotFoundException
+        from schemas import QueryCreate, AskResponse
     except ImportError:
         from .config import get_settings
         from .database import get_db
@@ -60,10 +62,12 @@ except ImportError:
         from .services.rag_engine import query_matter
         from .validators import validate_filename, validate_matter_name, validate_question, validate_file_type
         from .services.progress import publish_uploaded
-        from .exceptions import BlobDownloadException
-        from .schemas import QueryCreate
+        from .exceptions import BlobDownloadException, BlobNotFoundException
+        from .schemas import QueryCreate, AskResponse
 
 settings = get_settings()
+
+MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 50MB
 
 
 def get_cors_origins() -> list:
@@ -83,10 +87,157 @@ cors_origins = get_cors_origins()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
+    # MVP / local dev: also accept the frontend on ANY localhost port (the dev
+    # server often runs on 3000/3001/3100 etc.). This is scoped to loopback only,
+    # so it never widens production exposure, and it works with
+    # allow_credentials (unlike the wildcard "*"). Production origins still come
+    # from the explicit allowed_origins list above.
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    # no-referrer: matter UUIDs live in the SPA URL path; with no auth they act as
+    # bearer secrets, so never leak them via the Referer header to third parties.
+    response.headers["Referrer-Policy"] = "no-referrer"
+    return response
+
+
+# ============================================
+# CITATION KNOWLEDGE GRAPH ENDPOINTS
+# ============================================
+
+@app.get("/graph/case/{citation}/good-law")
+async def get_good_law_status(
+    citation: str = Path(..., max_length=300),
+    db: Session = Depends(get_db)
+):
+    """Check if a case citation is still good law (not overruled/reversed)."""
+    try:
+        from backend.services.citation_graph import is_good_law
+    except ImportError:
+        try:
+            from services.citation_graph import is_good_law
+        except ImportError:
+            raise HTTPException(
+                status_code=status.HTTP_501_NOT_IMPLEMENTED,
+                detail="Citation graph not available"
+            )
+    try:
+        result = is_good_law(db, citation)
+        return result
+    except Exception as e:
+        logger.error(f"Error checking good law status for '{citation[:100]}': {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to check good law status"
+        )
+
+
+@app.get("/graph/case/{citation}/chain")
+async def get_citation_chain(
+    citation: str = Path(..., max_length=300),
+    depth: int = QueryParam(default=2, ge=1, le=5),
+    db: Session = Depends(get_db)
+):
+    """Get the citation chain (ancestor/descendant treatments) for a case."""
+    try:
+        from backend.services.citation_graph import get_citation_chain as _get_citation_chain
+    except ImportError:
+        try:
+            from services.citation_graph import get_citation_chain as _get_citation_chain
+        except ImportError:
+            raise HTTPException(
+                status_code=status.HTTP_501_NOT_IMPLEMENTED,
+                detail="Citation graph not available"
+            )
+    try:
+        result = _get_citation_chain(db, citation, depth)
+        return result
+    except Exception as e:
+        logger.error(f"Error getting citation chain for '{citation[:100]}': {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve citation chain"
+        )
+
+
+@app.get("/graph/case/{citation}/network")
+async def get_citation_network_endpoint(
+    citation: str = Path(..., max_length=300),
+    depth: int = QueryParam(default=2, ge=1, le=3),
+    max_nodes: int = QueryParam(default=100, ge=10, le=500),
+    db: Session = Depends(get_db)
+):
+    """Get the full citation network (nodes + edges) centered on a case."""
+    try:
+        from backend.services.citation_graph import get_citation_network as _get_citation_network
+    except ImportError:
+        try:
+            from services.citation_graph import get_citation_network as _get_citation_network
+        except ImportError:
+            raise HTTPException(
+                status_code=status.HTTP_501_NOT_IMPLEMENTED,
+                detail="Citation graph not available"
+            )
+    try:
+        result = _get_citation_network(db, citation, depth, max_nodes)
+        return result
+    except Exception as e:
+        logger.error(f"Error getting citation network for '{citation[:100]}': {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve citation network"
+        )
+
+
+@app.get("/matters/{matter_id}/graph")
+async def get_matter_graph(
+    matter_id: str,
+    db: Session = Depends(get_db)
+):
+    """Get the citation knowledge graph for all cases in a matter."""
+    try:
+        matter_uuid = UUID(matter_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid matter ID format"
+        )
+
+    matter = db.query(Matter).filter(Matter.id == matter_uuid, Matter.is_deleted == False).first()
+    if not matter:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Matter not found"
+        )
+
+    try:
+        from backend.services.citation_graph import get_matter_graph as _get_matter_graph
+    except ImportError:
+        try:
+            from services.citation_graph import get_matter_graph as _get_matter_graph
+        except ImportError:
+            raise HTTPException(
+                status_code=status.HTTP_501_NOT_IMPLEMENTED,
+                detail="Citation graph not available"
+            )
+    try:
+        return _get_matter_graph(db, matter_uuid)
+    except Exception as e:
+        logger.error(f"Error building matter graph for '{matter_id}': {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to build matter citation graph"
+        )
 
 
 @app.get("/health")
@@ -167,6 +318,7 @@ async def get_matter(
 
 @app.post("/matters", response_model=dict)
 async def upload_matter(
+    request: Request,
     name: str = Form(...),
     files: List[UploadFile] = File(...),
     db: Session = Depends(get_db)
@@ -213,7 +365,12 @@ async def upload_matter(
 
         # Process each file
         for file in files:
+            cl = request.headers.get("content-length")
+            if cl and cl.isdigit() and int(cl) > MAX_UPLOAD_SIZE:
+                raise HTTPException(status_code=413, detail=f"File exceeds {MAX_UPLOAD_SIZE} byte limit")
             file_content = await file.read()
+            if len(file_content) > MAX_UPLOAD_SIZE:
+                raise HTTPException(status_code=413, detail="File too large. Maximum 50MB.")
 
             try:
                 file_type = validate_file_type(file.content_type, file.filename)
@@ -249,7 +406,7 @@ async def upload_matter(
             task = celery_app.send_task(
                 'backend.tasks.process_document_task',
                 args=(str(matter_id), str(document_id)),
-                queue='celery'
+                queue='default'
             )
             document.celery_task_id = task.id
             task_ids.append(task.id)
@@ -460,6 +617,7 @@ async def list_matter_documents(
 
 @app.post("/matters/{matter_id}/documents", response_model=dict)
 async def upload_matter_document(
+    request: Request,
     matter_id: str,
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
@@ -495,8 +653,13 @@ async def upload_matter_document(
     if file.filename:
         validate_filename(file.filename)
 
+    cl = request.headers.get("content-length")
+    if cl and cl.isdigit() and int(cl) > MAX_UPLOAD_SIZE:
+        raise HTTPException(status_code=413, detail=f"File exceeds {MAX_UPLOAD_SIZE} byte limit")
     try:
         file_content = await file.read()
+        if len(file_content) > MAX_UPLOAD_SIZE:
+            raise HTTPException(status_code=413, detail="File too large. Maximum 50MB.")
 
         try:
             file_type = validate_file_type(file.content_type, file.filename)
@@ -541,7 +704,7 @@ async def upload_matter_document(
         task = celery_app.send_task(
             'backend.tasks.process_document_task',
             args=(str(matter_uuid), str(document_id)),
-            queue='celery'
+            queue='default'
         )
         document.celery_task_id = task.id
         db.commit()
@@ -616,6 +779,12 @@ async def download_document(
 
     try:
         file_bytes = download_document_from_blob(document.blob_storage_path)
+    except BlobNotFoundException as e:
+        logger.warning(f"Document blob missing for document {document_id}: {e.detail}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found in storage."
+        )
     except BlobDownloadException as e:
         logger.error(f"Failed to download document {document_id}: {e.message}")
         raise HTTPException(
@@ -888,6 +1057,9 @@ async def get_conversation(
                 "question": q.question,
                 "answer": q.answer,
                 "citations": q.citations,
+                "citation_verification": q.citation_verification,
+                "claim_verification": q.claim_verification,
+                "conflict_analysis": q.conflict_analysis,
                 "created_at": q.created_at.isoformat(),
             }
             for q in queries
@@ -980,8 +1152,9 @@ async def delete_conversation(
 # RAG QUERY ENDPOINTS
 # ============================================
 
-@app.post("/matters/{matter_id}/ask", response_model=dict)
+@app.post("/matters/{matter_id}/ask", response_model=AskResponse)
 async def ask_question(
+    request: Request,
     matter_id: str,
     body: QueryCreate = Body(...),
     db: Session = Depends(get_db)
@@ -1063,16 +1236,66 @@ async def ask_question(
         for q in reversed(recent_queries)
     ]
 
-    # Get RAG response
+    # Get RAG response — use agentic pipeline when enabled
+    _agentic_t0 = time.monotonic()
     try:
-        rag_result = await query_matter(
-            str(matter_uuid), body.question, db,
-            conversation_history=conversation_history,
-            include_legal_research=body.include_legal_research,
-        )
+        # Try agentic RAG if enabled (multi-agent with self-correction).
+        # Use the module-level `settings` (already imported with the working
+        # import-fallback). A bare `from backend.config import ...` here raised
+        # ModuleNotFoundError when uvicorn runs from the backend/ cwd, silently
+        # forcing use_agentic=False so the agentic path was never reachable via HTTP.
+        use_agentic = bool(getattr(settings, 'agentic_rag_enabled', False))
+
+        if use_agentic:
+            try:
+                try:
+                    from backend.services.agentic_rag import agentic_query_matter
+                except ImportError:
+                    try:
+                        from services.agentic_rag import agentic_query_matter
+                    except ImportError:
+                        from .services.agentic_rag import agentic_query_matter
+                rag_result = await agentic_query_matter(
+                    str(matter_uuid), body.question, db,
+                    conversation_history=conversation_history,
+                    include_legal_research=body.include_legal_research,
+                )
+            except Exception as e:
+                logger.warning(f"Agentic RAG failed, falling back to standard: {e}")
+                rag_result = await query_matter(
+                    str(matter_uuid), body.question, db,
+                    conversation_history=conversation_history,
+                    include_legal_research=body.include_legal_research,
+                    as_of_date=body.as_of_date,
+                )
+        else:
+            rag_result = await query_matter(
+                str(matter_uuid), body.question, db,
+                conversation_history=conversation_history,
+                include_legal_research=body.include_legal_research,
+                as_of_date=body.as_of_date,
+            )
 
         # Only store if answer was generated successfully
         if rag_result.get("answer"):
+            # Agentic observability — present only when the agentic pipeline ran.
+            # Non-agentic queries leave these NULL (additive, backwards-compatible).
+            agentic_meta = rag_result.get("agentic_metadata")
+            agent_latency_ms = None
+            agent_iterations = None
+            routing_decision = None
+            if agentic_meta:
+                agent_latency_ms = int((time.monotonic() - _agentic_t0) * 1000)
+                agent_iterations = int(agentic_meta.get("rewrite_count", 0)) + 1
+                routing_decision = agentic_meta.get("complexity")
+                # Enrich the persisted blob with the derived top-level signals.
+                agentic_meta = {
+                    **agentic_meta,
+                    "routing_decision": routing_decision,
+                    "agent_iterations": agent_iterations,
+                    "agent_latency_ms": agent_latency_ms,
+                }
+
             db_query = Query(
                 id=uuid.uuid4(),
                 matter_id=matter_uuid,
@@ -1080,6 +1303,13 @@ async def ask_question(
                 question=body.question,
                 answer=rag_result.get("answer", ""),
                 citations=rag_result.get("sources", []),
+                citation_verification=rag_result.get("citation_verification"),
+                claim_verification=rag_result.get("claim_verification"),
+                conflict_analysis=rag_result.get("conflict_analysis"),
+                routing_decision=routing_decision,
+                agent_iterations=agent_iterations,
+                agent_latency_ms=agent_latency_ms,
+                agentic_metadata=agentic_meta,
                 created_at=datetime.now(timezone.utc)
             )
             db.add(db_query)
@@ -1275,6 +1505,14 @@ async def download_matter_document(
 
     try:
         file_bytes = download_document_from_blob(matter.blob_storage_path)
+    except BlobNotFoundException as e:
+        # The document no longer exists in storage (deleted/expired blob) — a
+        # permanent 404, not a transient failure. Retrying will not help.
+        logger.warning(f"Document blob missing for matter {matter_id}: {e.detail}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found in storage."
+        )
     except BlobDownloadException as e:
         logger.error(f"Failed to download document for matter {matter_id}: {e.message} — {e.detail}")
         raise HTTPException(
@@ -1557,6 +1795,10 @@ async def get_contract_review(
     except ValueError:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid matter ID format")
 
+    matter = db.query(Matter).filter(Matter.id == matter_uuid, Matter.is_deleted == False).first()
+    if not matter:
+        raise HTTPException(status_code=404, detail="Matter not found")
+
     query = db.query(ContractReview).filter(ContractReview.matter_id == matter_uuid)
     if document_id:
         try:
@@ -1589,8 +1831,8 @@ async def get_contract_review(
 @app.post("/matters/{matter_id}/drafts", response_model=dict)
 async def create_draft(
     matter_id: str,
-    document_type: str = Body(..., embed=True),
-    instructions: str = Body(..., embed=True),
+    document_type: str = Body(..., embed=True, max_length=100),
+    instructions: str = Body(..., embed=True, max_length=5000),
     db: Session = Depends(get_db)
 ):
     """Generate a legal document draft using matter context and Gemini."""
@@ -1644,6 +1886,10 @@ async def list_drafts(
         matter_uuid = UUID(matter_id)
     except ValueError:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid matter ID format")
+
+    matter = db.query(Matter).filter(Matter.id == matter_uuid, Matter.is_deleted == False).first()
+    if not matter:
+        raise HTTPException(status_code=404, detail="Matter not found")
 
     drafts = (
         db.query(Draft)
@@ -1709,6 +1955,10 @@ async def get_audit_log(
     except ValueError:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid matter ID format")
 
+    matter = db.query(Matter).filter(Matter.id == matter_uuid, Matter.is_deleted == False).first()
+    if not matter:
+        raise HTTPException(status_code=404, detail="Matter not found")
+
     logs = (
         db.query(AuditLog)
         .filter(AuditLog.matter_id == matter_uuid)
@@ -1743,8 +1993,17 @@ async def search_precedents(
     if not query or len(query.strip()) < 3:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Query must be at least 3 characters")
 
-    # Get all non-deleted, ready matters
-    matters = db.query(Matter).filter(Matter.is_deleted == False, Matter.status == "ready").all()
+    # Get non-deleted, ready matters. Cap the fan-out: one request otherwise
+    # amplifies into one Qdrant search PER matter, so bound it (most-recent first)
+    # to keep cost/latency predictable as the corpus grows.
+    _PRECEDENT_SEARCH_MAX_MATTERS = 50
+    matters = (
+        db.query(Matter)
+        .filter(Matter.is_deleted == False, Matter.status == "ready")
+        .order_by(Matter.updated_at.desc())
+        .limit(_PRECEDENT_SEARCH_MAX_MATTERS)
+        .all()
+    )
     if not matters:
         return {"results": [], "total": 0}
 
@@ -1881,6 +2140,326 @@ async def delete_precedent(
     db.delete(precedent)
     db.commit()
     return {"id": str(p_uuid), "deleted": True}
+
+
+# ============================================
+# ADMIN: EMBEDDING RE-INDEX / MIGRATION
+# ============================================
+#
+# SECURITY (hard prereq, out of scope for this pass): the app has no auth
+# layer. These /admin/* endpoints MUST be gated (API key / IP allowlist /
+# reverse-proxy) before production. _require_admin is a stub seam: when an
+# ADMIN_API_KEY env var is configured it enforces the X-Admin-Key header;
+# otherwise it is a permissive no-op (dev convenience). Replace before prod.
+
+def _require_admin(request: Request) -> None:
+    """Admin gate enforced on every request to /admin/* endpoints.
+
+    Behaviour:
+    - ADMIN_API_KEY set: caller must supply matching ``X-Admin-Api-Key`` header
+      (constant-time comparison via ``hmac.compare_digest``); mismatch → 401.
+    - ADMIN_API_KEY not set, debug=True: access allowed but a loud warning is
+      emitted so the operator knows the endpoints are open.
+    - ADMIN_API_KEY not set, debug=False (production): → 503.
+    """
+    import os
+    expected = os.environ.get("ADMIN_API_KEY")
+    if not expected:
+        if settings.debug:
+            logger.warning(
+                "ADMIN_API_KEY not set — admin endpoints OPEN in debug mode"
+            )
+            return
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Admin API not configured",
+        )
+    provided = request.headers.get("X-Admin-Api-Key", "")
+    if not hmac.compare_digest(expected, provided):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Admin auth required",
+        )
+
+
+@app.get("/admin/embedding-status", response_model=dict)
+async def get_embedding_status(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Per-matter embedding model + drift, plus aggregate provider status.
+
+    Drift = chunks not yet on the target model = partial-reindex detector.
+    """
+    _require_admin(request)
+    from sqlalchemy import func
+
+    target_model = settings.embedding_model
+
+    matters = (
+        db.query(Matter)
+        .filter(Matter.is_deleted.is_(False))
+        .order_by(Matter.updated_at.desc())
+        .all()
+    )
+
+    per_matter = []
+    reindexed = 0
+    pending = 0
+    for matter in matters:
+        total_chunks = (
+            db.query(func.count(Chunk.id))
+            .filter(Chunk.matter_id == matter.id)
+            .scalar()
+        ) or 0
+        on_target = (
+            db.query(func.count(Chunk.id))
+            .filter(Chunk.matter_id == matter.id, Chunk.embedding_model == target_model)
+            .scalar()
+        ) or 0
+        drift = total_chunks - on_target
+        is_on_target = (matter.embedding_model == target_model) and drift == 0
+        if is_on_target:
+            reindexed += 1
+        else:
+            pending += 1
+        per_matter.append({
+            "matter_id": str(matter.id),
+            "name": matter.name,
+            "status": matter.status,
+            "embedding_model": matter.embedding_model,
+            "total_chunks": total_chunks,
+            "chunks_on_target": on_target,
+            "drift": drift,
+        })
+
+    try:
+        from backend.services.embeddings import _detect_provider
+    except ImportError:
+        from services.embeddings import _detect_provider
+
+    return {
+        "aggregate": {
+            "active_provider": _detect_provider(),
+            "target_model": target_model,
+            "reindexed_matters": reindexed,
+            "pending_matters": pending,
+            "dimensions": 1024,
+        },
+        "matters": per_matter,
+    }
+
+
+@app.post("/admin/reindex", response_model=dict)
+async def trigger_reindex(
+    request: Request,
+    matter_id: str = Body(default=None, embed=True),
+    target_model: str = Body(default=None, embed=True),
+):
+    """Dispatch a re-index. With matter_id: that matter; without: all matters.
+
+    Poll progress via /admin/embedding-status (drift -> 0) and the existing SSE
+    progress channel. Returns the dispatched Celery task id.
+    """
+    _require_admin(request)
+    resolved_model = target_model or settings.embedding_model
+
+    _ALLOWED_EMBEDDING_MODELS: frozenset = frozenset({
+        "voyage-law-2",
+        "embed-english-v3.0",
+    })
+    if resolved_model not in _ALLOWED_EMBEDDING_MODELS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid target_model. Allowed values: {sorted(_ALLOWED_EMBEDDING_MODELS)}",
+        )
+
+    try:
+        from backend.celery_app import celery_app
+    except ImportError:
+        from celery_app import celery_app
+
+    if matter_id:
+        try:
+            UUID(matter_id)
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid matter_id")
+        task = celery_app.send_task(
+            "backend.tasks.reindex_matter_task",
+            args=(matter_id, resolved_model),
+            queue="default",
+        )
+        scope = "matter"
+    else:
+        task = celery_app.send_task(
+            "backend.tasks.reindex_all_matters_task",
+            args=(resolved_model,),
+            queue="default",
+        )
+        scope = "all"
+
+    logger.info(f"Dispatched reindex task {task.id} (scope={scope}, model={resolved_model})")
+    return {
+        "task_id": task.id,
+        "scope": scope,
+        "matter_id": matter_id,
+        "target_model": resolved_model,
+    }
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Standalone agent-native primitives — expose each RAG capability as its own
+# endpoint so an agent (or integrator) can call verification, conflict detection,
+# issue spotting, and citation lookup independently of /ask. (todos/002)
+# ════════════════════════════════════════════════════════════════════════════
+
+async def _retrieve_chunks_for(matter_uuid, query: str, top_k: int = 8):
+    """Embed the query and retrieve top chunks for a matter — the retrieval stage
+    shared by the standalone verify/conflict primitives below."""
+    try:
+        from backend.services.rag_engine import retrieve_chunks
+    except ImportError:
+        try:
+            from services.rag_engine import retrieve_chunks
+        except ImportError:
+            from .services.rag_engine import retrieve_chunks
+    embedding = await asyncio.to_thread(embed_query, query)
+    return await asyncio.to_thread(retrieve_chunks, str(matter_uuid), embedding, top_k)
+
+
+def _guard_matter(db, matter_id: str):
+    """Parse matter_id and ensure the (non-deleted) matter exists. Returns UUID."""
+    try:
+        matter_uuid = UUID(matter_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid matter ID format")
+    matter = db.query(Matter).filter(Matter.id == matter_uuid, Matter.is_deleted == False).first()
+    if not matter:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Matter not found")
+    return matter_uuid
+
+
+@app.post("/problem-formulation", response_model=dict)
+async def problem_formulation(query: str = Body(..., embed=True, max_length=5000)):
+    """Identify the legal issues / research questions implied by a query."""
+    try:
+        from backend.services.problem_formulation import identify_issues
+    except ImportError:
+        try:
+            from services.problem_formulation import identify_issues
+        except ImportError:
+            from .services.problem_formulation import identify_issues
+    result = await identify_issues(query)
+    return result or {"issues": [], "missing_information": []}
+
+
+@app.get("/citations/lookup", response_model=dict)
+async def citation_lookup(
+    citation: str = QueryParam(..., max_length=300),
+    jurisdiction: str = QueryParam("US", max_length=8),
+):
+    """Look up a single legal citation in external databases (CourtListener etc.)."""
+    try:
+        from backend.services.citation_lookup import lookup_citation
+    except ImportError:
+        try:
+            from services.citation_lookup import lookup_citation
+        except ImportError:
+            from .services.citation_lookup import lookup_citation
+    result = await lookup_citation(citation, jurisdiction)
+    if not result:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Citation not found")
+    return result
+
+
+@app.post("/citations/lookup-batch", response_model=dict)
+async def citation_lookup_batch(
+    citations: list[str] = Body(..., embed=True),
+    jurisdiction: str = Body("US", embed=True),
+):
+    """Look up multiple citations concurrently (max 50)."""
+    if not citations:
+        return {"results": {}}
+    if len(citations) > 50:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="Maximum 50 citations per batch")
+    try:
+        from backend.services.citation_lookup import lookup_citations_batch
+    except ImportError:
+        try:
+            from services.citation_lookup import lookup_citations_batch
+        except ImportError:
+            from .services.citation_lookup import lookup_citations_batch
+    payload = [
+        {"raw_text": c, "jurisdiction": jurisdiction, "index": i}
+        for i, c in enumerate(citations) if isinstance(c, str) and c.strip()
+    ]
+    results = await lookup_citations_batch(payload)
+    # Dict[int, ...] -> map back to the original citation strings for clarity
+    return {"results": {citations[i]: results.get(i) for i in range(len(citations))}}
+
+
+@app.post("/matters/{matter_id}/conflicts", response_model=dict)
+async def matter_conflicts(
+    matter_id: str,
+    query: str = Body(..., embed=True, max_length=5000),
+    db: Session = Depends(get_db),
+):
+    """Detect cross-source conflicts among the chunks most relevant to a query."""
+    matter_uuid = _guard_matter(db, matter_id)
+    chunks = await _retrieve_chunks_for(matter_uuid, query)
+    try:
+        from backend.services.conflict_detector import detect_conflicts
+    except ImportError:
+        try:
+            from services.conflict_detector import detect_conflicts
+        except ImportError:
+            from .services.conflict_detector import detect_conflicts
+    result = await asyncio.to_thread(detect_conflicts, chunks, query)
+    return result or {"conflicts": [], "summary": {"total_conflicts": 0, "high_severity": 0,
+                                                    "medium_severity": 0, "recommended_action": ""}}
+
+
+@app.post("/matters/{matter_id}/verify-citations", response_model=dict)
+async def matter_verify_citations(
+    matter_id: str,
+    answer: str = Body(..., embed=True, max_length=20000),
+    query: str = Body("", embed=True, max_length=5000),
+    db: Session = Depends(get_db),
+):
+    """Verify the citations in a supplied answer against the matter's documents."""
+    matter_uuid = _guard_matter(db, matter_id)
+    chunks = await _retrieve_chunks_for(matter_uuid, query or answer)
+    try:
+        from backend.services.citation_agent import verify_response_citations
+    except ImportError:
+        try:
+            from services.citation_agent import verify_response_citations
+        except ImportError:
+            from .services.citation_agent import verify_response_citations
+    result = await verify_response_citations(answer, chunks)
+    return result or {"verified_citations": [], "summary": {}}
+
+
+@app.post("/matters/{matter_id}/verify-claims", response_model=dict)
+async def matter_verify_claims(
+    matter_id: str,
+    answer: str = Body(..., embed=True, max_length=20000),
+    query: str = Body("", embed=True, max_length=5000),
+    db: Session = Depends(get_db),
+):
+    """Verify (ground) the factual claims in a supplied answer against the matter's documents."""
+    matter_uuid = _guard_matter(db, matter_id)
+    chunks = await _retrieve_chunks_for(matter_uuid, query or answer)
+    try:
+        from backend.services.claim_verifier import verify_claims
+    except ImportError:
+        try:
+            from services.claim_verifier import verify_claims
+        except ImportError:
+            from .services.claim_verifier import verify_claims
+    result = await verify_claims(answer, chunks)
+    return result or {"verified_claims": [], "summary": {}}
 
 
 if __name__ == "__main__":

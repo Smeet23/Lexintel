@@ -6,21 +6,22 @@ from the vector store and guided by user instructions.
 import logging
 from typing import Dict, Any, List
 
-import google.generativeai as genai
-
 try:
     from backend.config import get_settings
     from backend.services.embeddings import embed_query
     from backend.services.vector_store import search_vectors
+    from backend.services import llm
 except ImportError:
     try:
         from config import get_settings
         from services.embeddings import embed_query
         from services.vector_store import search_vectors
+        from services import llm
     except ImportError:
         from ..config import get_settings
         from .embeddings import embed_query
         from .vector_store import search_vectors
+        from . import llm
 
 logger = logging.getLogger(__name__)
 
@@ -178,18 +179,14 @@ async def generate_draft(
     # 3. Call Gemini for draft generation
     # ------------------------------------------------------------------
     try:
-        genai.configure(api_key=settings.google_api_key)
-        model = genai.GenerativeModel(model_name=settings.gemini_model)
-
-        response = await model.generate_content_async(
+        generated_content = await llm.agenerate(
             prompt,
-            generation_config=genai.GenerationConfig(
-                temperature=0.3,
-                max_output_tokens=8192,
-            ),
+            json=False,
+            temperature=0.3,
+            max_output_tokens=8192,
+            provider="gemini",
+            fallback=False,
         )
-
-        generated_content = response.text.strip()
     except Exception as e:
         logger.warning(f"Gemini draft generation failed (graceful degradation): {e}")
         return default_result

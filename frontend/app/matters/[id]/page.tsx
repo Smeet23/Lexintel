@@ -13,6 +13,7 @@ import {
   Loader2,
   AlertTriangle,
   Download,
+  Network,
 } from "lucide-react"
 import { motion } from "framer-motion"
 import AppLayout from "@/layouts/AppLayout"
@@ -20,6 +21,8 @@ import ChatPanel from "@/components/ChatPanel"
 import MultiStageProgress from "@/components/MultiStageProgress"
 import ChatHistory from "@/components/ChatHistory"
 import CitationPanel from "@/components/CitationPanel"
+import dynamic from "next/dynamic"
+const CitationGraphTab = dynamic(() => import("@/components/CitationGraphTab"), { ssr: false })
 import DocumentTab from "@/components/DocumentTab"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -36,6 +39,7 @@ import { cn, formatRelativeTime, formatDate } from "@/lib/utils"
 import { useMatter, useAskQuestion, useCancelMatterProcessing, useQueryHistory, useDeleteAllQueries, useDeleteQuery, useContractReview, useRunContractReview, useDrafts, useCreateDraft, useAuditLog, useConversations, useCreateConversation, useDeleteConversation } from "@/hooks/use-matters"
 import { useMatterProgress } from "@/hooks/use-progress"
 import type { QueryMessage, Citation, AuditLogEntry, AskSourceItem } from "@/lib/types"
+import type { RawVerifiedCitation, RawVerifiedClaim, RawIssueItem } from "@/lib/api-services"
 
 export default function MatterWorkspacePage() {
   const params = useParams()
@@ -74,7 +78,7 @@ export default function MatterWorkspacePage() {
   // Helper: build QueryMessage[] from a list of query history items
   const matterName = matter?.name
   const buildMessages = useCallback(
-    (items: { id: string; question: string; answer: string; citations?: AskSourceItem[] | null; created_at: string }[]) => {
+    (items: { id: string; question: string; answer: string; citations?: AskSourceItem[] | null; citation_verification?: any; claim_verification?: any; conflict_analysis?: any; created_at: string }[]) => {
       const restored: QueryMessage[] = []
       for (const item of items) {
         restored.push({
@@ -93,6 +97,12 @@ export default function MatterWorkspacePage() {
           content: s.content ?? undefined,
           sourceType: (s.source_type as "document" | "case_law") || "document",
           url: s.url || undefined,
+          courtLevel: s.court_level,
+          jurisdictionCode: s.jurisdiction_code,
+          authorityScore: s.authority_score,
+          bindingAuthority: s.binding_authority,
+          effectiveDate: s.effective_date,
+          documentStatus: s.document_status,
         }))
         restored.push({
           id: `hist-a-${item.id}`,
@@ -101,6 +111,52 @@ export default function MatterWorkspacePage() {
           citations: citations.length > 0 ? citations : undefined,
           timestamp: item.created_at,
           queryId: item.id,
+          verificationSummary: item.citation_verification?.summary
+            ? {
+                total: item.citation_verification.summary.total,
+                verified: item.citation_verification.summary.verified,
+                partial: item.citation_verification.summary.partial,
+                unverified: item.citation_verification.summary.unverified,
+                not_found: item.citation_verification.summary.not_found,
+                unverifiable: item.citation_verification.summary.unverifiable ?? 0,
+              }
+            : undefined,
+          verifiedCitations: item.citation_verification?.verified_citations?.map((c: RawVerifiedCitation) => ({
+            index: c.index,
+            rawText: c.raw_text,
+            caseName: c.case_name,
+            court: c.court,
+            date: c.date,
+            jurisdiction: c.jurisdiction,
+            status: c.status,
+            caseStatus: c.case_status,
+            confidence: c.confidence,
+            sourceUrl: c.source_url,
+            citationCount: c.citation_count,
+            quoteMatch: c.quote_match,
+            matchedSourceIdx: c.matched_source_idx,
+            verificationMethod: c.verification_method,
+          })),
+          claimVerificationSummary: item.claim_verification?.summary,
+          verifiedClaims: item.claim_verification?.verified_claims?.map((c: RawVerifiedClaim) => ({
+            claimText: c.claim_text,
+            citedSources: c.cited_sources,
+            status: c.status,
+            confidence: c.confidence,
+            verificationTier: c.verification_tier,
+            issues: c.issues,
+            sourceExcerpt: c.source_excerpt,
+            requiresReview: c.requires_review,
+          })),
+          conflictAnalysis: item.conflict_analysis
+            ? {
+                has_conflicts: item.conflict_analysis.has_conflicts,
+                conflicts: item.conflict_analysis.conflicts || [],
+                summary: item.conflict_analysis.summary,
+              }
+            : undefined,
+          // issue_analysis is not persisted in the Query model — not available from history
+          issueAnalysis: undefined,
         })
       }
       return restored
@@ -154,16 +210,47 @@ export default function MatterWorkspacePage() {
         {
           onSuccess: (result) => {
             if (result.answer) {
-              const citations: Citation[] = (result.sources || []).map((s) => ({
-                documentName: s.document_name || matter?.name || "Document",
-                pageNumber: parseInt(s.page_num) || 0,
-                section: s.section_name || "",
-                excerpt: s.content?.slice(0, 200) || "",
-                relevanceScore: s.relevance_score || 0,
-                content: s.content ?? undefined,
-                sourceType: (s.source_type as "document" | "case_law") || "document",
-                url: s.url || undefined,
-              }))
+              const citations: Citation[] = (result.sources || []).map((s, idx) => {
+                // Cross-link verification data from citation_verification to each source
+                const matchedVerification = result.citation_verification?.verified_citations?.find(
+                  (vc: RawVerifiedCitation) =>
+                    vc.matched_source_idx != null
+                      ? vc.matched_source_idx === idx
+                      : vc.index === idx + 1
+                )
+                return {
+                  documentName: s.document_name || matter?.name || "Document",
+                  pageNumber: parseInt(s.page_num) || 0,
+                  section: s.section_name || "",
+                  excerpt: s.content?.slice(0, 200) || "",
+                  relevanceScore: s.relevance_score || 0,
+                  content: s.content ?? undefined,
+                  sourceType: (s.source_type as "document" | "case_law") || "document",
+                  url: s.url || undefined,
+                  courtLevel: s.court_level,
+                  jurisdictionCode: s.jurisdiction_code,
+                  authorityScore: s.authority_score,
+                  bindingAuthority: s.binding_authority,
+                  effectiveDate: s.effective_date,
+                  documentStatus: s.document_status,
+                  verification: matchedVerification ? {
+                    index: matchedVerification.index,
+                    rawText: matchedVerification.raw_text,
+                    caseName: matchedVerification.case_name,
+                    court: matchedVerification.court,
+                    date: matchedVerification.date,
+                    jurisdiction: matchedVerification.jurisdiction,
+                    status: matchedVerification.status,
+                    caseStatus: matchedVerification.case_status,
+                    confidence: matchedVerification.confidence,
+                    sourceUrl: matchedVerification.source_url,
+                    citationCount: matchedVerification.citation_count,
+                    quoteMatch: matchedVerification.quote_match,
+                    matchedSourceIdx: matchedVerification.matched_source_idx,
+                    verificationMethod: matchedVerification.verification_method,
+                  } : undefined,
+                }
+              })
 
               const confidenceScore =
                 typeof result.confidence === "object"
@@ -178,6 +265,70 @@ export default function MatterWorkspacePage() {
                 confidenceScore,
                 timestamp: new Date().toISOString(),
                 queryId: result.query_id,
+                conflictAnalysis: result.conflict_analysis
+                  ? {
+                      has_conflicts: result.conflict_analysis.has_conflicts,
+                      conflicts: (result.conflict_analysis.conflicts ?? []).map((c) => ({
+                        ...c,
+                        chunk_a: {
+                          ...c.chunk_a,
+                          credibility: c.chunk_a.credibility,
+                        },
+                        chunk_b: {
+                          ...c.chunk_b,
+                          credibility: c.chunk_b.credibility,
+                        },
+                      })),
+                      summary: result.conflict_analysis.summary,
+                    }
+                  : undefined,
+                verificationSummary: result.citation_verification?.summary
+                  ? {
+                      total: result.citation_verification.summary.total,
+                      verified: result.citation_verification.summary.verified,
+                      partial: result.citation_verification.summary.partial,
+                      unverified: result.citation_verification.summary.unverified,
+                      not_found: result.citation_verification.summary.not_found,
+                      unverifiable: result.citation_verification.summary.unverifiable ?? 0,
+                    }
+                  : undefined,
+                verifiedCitations: result.citation_verification?.verified_citations?.map((c: RawVerifiedCitation) => ({
+                  index: c.index,
+                  rawText: c.raw_text,
+                  caseName: c.case_name,
+                  court: c.court,
+                  date: c.date,
+                  jurisdiction: c.jurisdiction,
+                  status: c.status,
+                  caseStatus: c.case_status,
+                  confidence: c.confidence,
+                  sourceUrl: c.source_url,
+                  citationCount: c.citation_count,
+                  quoteMatch: c.quote_match,
+                  matchedSourceIdx: c.matched_source_idx,
+                  verificationMethod: c.verification_method,
+                })),
+                claimVerificationSummary: result.claim_verification?.summary,
+                verifiedClaims: result.claim_verification?.verified_claims?.map((c: RawVerifiedClaim) => ({
+                  claimText: c.claim_text,
+                  citedSources: c.cited_sources,
+                  status: c.status,
+                  confidence: c.confidence,
+                  verificationTier: c.verification_tier,
+                  issues: c.issues,
+                  sourceExcerpt: c.source_excerpt,
+                  requiresReview: c.requires_review,
+                })),
+                issueAnalysis: result.issue_analysis ? {
+                  issues: (result.issue_analysis.issues || []).map((i: RawIssueItem) => ({
+                    domain: i.domain,
+                    issue: i.issue,
+                    legalQuestion: i.legal_question,
+                    confidence: i.confidence,
+                    keyFacts: i.key_facts || [],
+                  })),
+                  missingInformation: result.issue_analysis.missing_information || [],
+                } : undefined,
               }
               setMessages((prev) =>
                 prev
@@ -351,6 +502,11 @@ export default function MatterWorkspacePage() {
               <PenLine className="h-4 w-4 mr-1.5" />
               <span className="hidden sm:inline">Draft Assistant</span>
               <span className="sm:hidden">Draft</span>
+            </TabsTrigger>
+            <TabsTrigger value="citation-graph">
+              <Network className="h-4 w-4 mr-1.5" />
+              <span className="hidden sm:inline">Citation Graph</span>
+              <span className="sm:hidden">Graph</span>
             </TabsTrigger>
             <TabsTrigger value="audit-log">
               <ClipboardList className="h-4 w-4 mr-1.5" />
@@ -678,6 +834,11 @@ export default function MatterWorkspacePage() {
               </div>
             </div>
           </div>
+        </TabsContent>
+
+        {/* Citation Graph Tab */}
+        <TabsContent value="citation-graph">
+          <CitationGraphTab matterId={matterId} />
         </TabsContent>
 
         {/* Audit Log Tab */}

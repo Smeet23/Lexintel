@@ -27,6 +27,7 @@ import {
   listConversations,
   createConversation,
   deleteConversation,
+  getMatterGraph,
   type MatterResponse,
   type MatterDetailResponse,
   type AskResponse,
@@ -41,6 +42,7 @@ import type {
   PrecedentSearchResult,
   SavedPrecedent,
   ConversationItem,
+  CitationNetwork,
 } from "@/lib/types"
 
 export function useMatters() {
@@ -344,3 +346,12 @@ export function useDeleteConversation(matterId: string) {
   })
 }
 
+
+export function useMatterGraph(matterId: string, enabled = true) {
+  return useQuery<CitationNetwork>({
+    queryKey: ["matters", matterId, "graph"],
+    queryFn: () => getMatterGraph(matterId),
+    enabled: enabled && !!matterId,
+    staleTime: 60_000,
+  })
+}

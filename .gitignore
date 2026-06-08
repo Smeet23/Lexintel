@@ -31,3 +31,7 @@ Thumbs.db
 
 # Git worktrees
 .worktrees/
+
+# Claude Code local state
+.claude/settings.local.json
+.claude/*.lock

@@ -7,6 +7,11 @@ import type {
   PrecedentSearchResult,
   SavedPrecedent,
   ConversationItem,
+  GraphNode,
+  GraphEdge,
+  CitationNetwork,
+  TreatmentType,
+  GoodLawResponse,
 } from "./types"
 
 // ============================================
@@ -38,6 +43,110 @@ export interface CreateMatterResponse {
   created_at: string
 }
 
+// ============================================
+// Raw (snake_case) sub-shapes returned by the backend /ask endpoint.
+// Exported so types.ts can reuse them for ConversationQueryItem.
+// ============================================
+
+export interface RawVerifiedCitation {
+  index: number
+  raw_text: string
+  case_name?: string
+  court?: string
+  date?: string
+  jurisdiction?: string
+  status: "verified" | "partial" | "unverified" | "not_found" | "unverifiable"
+  case_status?: "good_law" | "caution" | "bad_law" | "unknown"
+  confidence: number
+  source_url?: string
+  citation_count?: number
+  quote_match?: number
+  matched_source_idx?: number
+  verification_method?: string
+}
+
+export interface RawCitationVerification {
+  annotated_answer: string
+  verified_citations: RawVerifiedCitation[]
+  summary: {
+    total: number
+    verified: number
+    partial: number
+    unverified: number
+    not_found: number
+    unverifiable: number
+  }
+}
+
+export interface RawVerifiedClaim {
+  claim_text: string
+  cited_sources: number[]
+  status: "supported" | "partially_supported" | "unsupported" | "uncited"
+  confidence: number
+  verification_tier: number
+  issues: string[]
+  source_excerpt?: string
+  requires_review?: boolean
+}
+
+export interface RawClaimVerification {
+  verified_claims: RawVerifiedClaim[]
+  summary: {
+    total: number
+    supported: number
+    partially_supported: number
+    unsupported: number
+    uncited: number
+  }
+}
+
+export interface RawCredibility {
+  score: number
+  authority_type: string
+  authority_weight: number
+  recency_weight: number
+  specificity_weight: number
+  citation_weight: number
+}
+
+export interface RawConflictChunk {
+  document_id: string
+  document_name: string
+  page_num: string
+  section_name?: string
+  content_snippet: string
+  credibility: RawCredibility
+}
+
+export interface RawConflict {
+  id: string
+  severity: "high" | "medium"
+  contradiction_score: number
+  chunk_a: RawConflictChunk
+  chunk_b: RawConflictChunk
+  recommended_source: "a" | "b"
+  explanation: string
+}
+
+export interface RawConflictAnalysis {
+  has_conflicts: boolean
+  conflicts: RawConflict[]
+  summary: {
+    total_conflicts: number
+    high_severity: number
+    medium_severity: number
+    recommended_action: string
+  }
+}
+
+export interface RawIssueItem {
+  domain: string
+  issue: string
+  legal_question: string
+  confidence: number
+  key_facts: string[]
+}
+
 export interface AskResponse {
   answer: string | null
   sources: {
@@ -50,6 +159,12 @@ export interface AskResponse {
     document_name: string
     source_type?: "document" | "case_law"
     url?: string
+    court_level?: string
+    jurisdiction_code?: string
+    authority_score?: number
+    binding_authority?: boolean
+    effective_date?: string | null
+    document_status?: string
   }[]
   citations: {
     location: string
@@ -73,6 +188,19 @@ export interface AskResponse {
       avg_citation_relevance: number
     }
   }
+  citation_verification?: RawCitationVerification | null
+  claim_verification?: RawClaimVerification | null
+  conflict_analysis?: RawConflictAnalysis | null
+  issue_analysis?: {
+    issues: {
+      domain: string
+      issue: string
+      legal_question: string
+      confidence: number
+      key_facts: string[]
+    }[]
+    missing_information: string[]
+  } | null
   error: string | null
   query_id?: string
 }
@@ -417,4 +545,110 @@ export async function updateConversationTitle(
     { title }
   )
   return data
+}
+
+// ============================================
+// Citation Knowledge Graph API Functions
+// ============================================
+
+// Raw shapes returned by the backend citation_graph serializers
+// (_node_to_dict / _edge_to_dict use snake_case DB field names).
+interface RawGraphNode {
+  id: string
+  node_type: GraphNode["type"]
+  citation_text: string
+  name?: string | null
+  court?: string | null
+  year?: number | null
+  jurisdiction?: string | null
+  authority_score?: number | null
+  is_verified?: boolean
+  is_good_law?: boolean | null
+  good_law_status?: "bad" | "good" | "no_adverse" | "unknown"
+}
+
+interface RawGraphEdge {
+  source_id: string
+  target_id: string
+  treatment: TreatmentType
+  confidence?: number | null
+}
+
+interface RawCitationNetwork {
+  nodes?: RawGraphNode[]
+  edges?: RawGraphEdge[]
+  stats?: { total_nodes: number; total_edges: number }
+}
+
+function mapGraphNode(n: RawGraphNode): GraphNode {
+  return {
+    id: n.id,
+    citation: n.citation_text,
+    name: n.name ?? undefined,
+    type: n.node_type,
+    year: n.year ?? undefined,
+    jurisdiction: n.jurisdiction ?? undefined,
+    court: n.court ?? undefined,
+    authority_score: n.authority_score ?? undefined,
+    is_good_law: n.is_good_law ?? null,
+    is_verified: n.is_verified,
+    good_law_status: n.good_law_status,
+  }
+}
+
+function mapGraphEdge(e: RawGraphEdge): GraphEdge {
+  return {
+    source: e.source_id,
+    target: e.target_id,
+    treatment: e.treatment,
+    confidence: e.confidence ?? undefined,
+  }
+}
+
+function normalizeCitationNetwork(raw: RawCitationNetwork | null | undefined): CitationNetwork {
+  // Distinguish a genuinely empty graph (e.g. `{ nodes: [] }`) from a malformed
+  // response. Only treat it as malformed when the payload is missing entirely or
+  // carries neither a `nodes` nor an `edges` field.
+  if (raw == null || (raw.nodes === undefined && raw.edges === undefined)) {
+    throw new Error("Malformed citation graph response")
+  }
+  return {
+    nodes: (raw.nodes ?? []).map(mapGraphNode),
+    edges: (raw.edges ?? []).map(mapGraphEdge),
+    stats: raw.stats,
+  }
+}
+
+async function parseGraphJson(res: Response): Promise<RawCitationNetwork> {
+  try {
+    return (await res.json()) as RawCitationNetwork
+  } catch {
+    throw new Error("Citation graph response was not valid JSON")
+  }
+}
+
+export async function getGoodLawStatus(citation: string): Promise<GoodLawResponse> {
+  const res = await fetch(
+    `${api.defaults.baseURL}/graph/case/${encodeURIComponent(citation)}/good-law`
+  )
+  if (!res.ok) throw new Error("Failed to check good law status")
+  return res.json() as Promise<GoodLawResponse>
+}
+
+export async function getCitationNetwork(
+  citation: string,
+  depth = 2,
+  maxNodes = 100
+): Promise<CitationNetwork> {
+  const res = await fetch(
+    `${api.defaults.baseURL}/graph/case/${encodeURIComponent(citation)}/network?depth=${depth}&max_nodes=${maxNodes}`
+  )
+  if (!res.ok) throw new Error("Failed to get citation network")
+  return normalizeCitationNetwork(await parseGraphJson(res))
+}
+
+export async function getMatterGraph(matterId: string): Promise<CitationNetwork> {
+  const res = await fetch(`${api.defaults.baseURL}/matters/${matterId}/graph`)
+  if (!res.ok) throw new Error("Failed to get matter graph")
+  return normalizeCitationNetwork(await parseGraphJson(res))
 }

@@ -31,6 +31,17 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,  # Process one task at a time
     worker_max_tasks_per_child=1000,  # Worker respawn after 1000 tasks
     broker_connection_retry_on_startup=True,  # Retry broker connection on startup (Celery 6.0 compatibility)
+    # Queue routing — the producer (API send_task) and the worker MUST agree on
+    # the queue name. Celery's built-in default is "celery", but run_worker.sh
+    # consumes "-Q default"; without this, every task lands in "celery" and is
+    # never consumed, leaving documents stuck in "processing" forever.
+    task_default_queue="default",
+    # Reliability: ack a task only AFTER it completes (not on receipt), and
+    # re-queue it if the worker is lost mid-task (crash/deploy/restart). With
+    # early ack (the default) a worker restart silently drops the in-flight task
+    # and the document hangs in "processing" with no error.
+    task_acks_late=True,
+    task_reject_on_worker_lost=True,
 )
 
 __all__ = ["celery_app"]

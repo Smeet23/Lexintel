@@ -2,17 +2,17 @@
 import logging
 import os
 from azure.storage.blob import BlobServiceClient
-from azure.core.exceptions import AzureError
+from azure.core.exceptions import AzureError, ResourceNotFoundError
 
 logger = logging.getLogger(__name__)
 
 try:
-    from backend.exceptions import BlobUploadException, BlobDownloadException, BlobDeleteException
+    from backend.exceptions import BlobUploadException, BlobDownloadException, BlobDeleteException, BlobNotFoundException
 except ImportError:
     try:
-        from exceptions import BlobUploadException, BlobDownloadException, BlobDeleteException
+        from exceptions import BlobUploadException, BlobDownloadException, BlobDeleteException, BlobNotFoundException
     except ImportError:
-        from ..exceptions import BlobUploadException, BlobDownloadException, BlobDeleteException
+        from ..exceptions import BlobUploadException, BlobDownloadException, BlobDeleteException, BlobNotFoundException
 
 def get_settings():
     """Get settings - lazy import to avoid circular dependencies"""
@@ -148,6 +148,14 @@ def download_document_from_blob(blob_path: str) -> bytes:
 
         return download_stream.readall()
 
+    except ResourceNotFoundError as e:
+        # The blob genuinely does not exist — a permanent 404 condition, NOT a
+        # transient storage failure. Distinguish it so the API can return 404.
+        logger.warning(f"Blob not found: {blob_path}")
+        raise BlobNotFoundException(
+            "Document not found in storage",
+            detail=f"Blob does not exist: {blob_path}"
+        ) from e
     except AzureError as e:
         logger.error(f"Azure storage download failed: {str(e)}")
         raise BlobDownloadException(

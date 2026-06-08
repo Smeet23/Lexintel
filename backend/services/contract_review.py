@@ -3,22 +3,22 @@
 Analyzes legal contracts for risks, missing clauses, and overall health score.
 """
 import json
-import re
 import logging
 from typing import Dict, Any
-
-import google.generativeai as genai
 
 try:
     from backend.config import get_settings
     from backend.models import Chunk, Document
+    from backend.services import llm
 except ImportError:
     try:
         from config import get_settings
         from models import Chunk, Document
+        from services import llm
     except ImportError:
         from ..config import get_settings
         from ..models import Chunk, Document
+        from . import llm
 
 logger = logging.getLogger(__name__)
 
@@ -60,31 +60,6 @@ Be thorough but concise. Focus on legally significant risks.
 CONTRACT TEXT:
 {document_text}
 """
-
-
-def _parse_json_response(text: str) -> Dict[str, Any]:
-    """Parse JSON from Gemini response, handling markdown code fences as fallback.
-
-    Args:
-        text: Raw response text from Gemini
-
-    Returns:
-        Parsed dict
-
-    Raises:
-        json.JSONDecodeError: If JSON parsing fails after all attempts
-    """
-    # First try direct parse
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-
-    # Strip markdown code fences (```json ... ``` or ``` ... ```)
-    cleaned = re.sub(r"^```(?:json)?\s*\n?", "", text.strip(), flags=re.MULTILINE)
-    cleaned = re.sub(r"\n?```\s*$", "", cleaned.strip(), flags=re.MULTILINE)
-
-    return json.loads(cleaned)
 
 
 def _validate_result(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -220,31 +195,25 @@ async def analyze_contract(
     # ------------------------------------------------------------------
     # 3. Call Gemini for contract review
     # ------------------------------------------------------------------
+    prompt = CONTRACT_REVIEW_PROMPT.format(document_text=document_text)
+
     try:
-        genai.configure(api_key=settings.google_api_key)
-        model = genai.GenerativeModel(model_name=settings.gemini_model)
-
-        prompt = CONTRACT_REVIEW_PROMPT.format(document_text=document_text)
-
-        response = await model.generate_content_async(
+        parsed = await llm.agenerate(
             prompt,
-            generation_config=genai.GenerationConfig(
-                temperature=0.2,
-                max_output_tokens=4096,
-                response_mime_type="application/json",
-            ),
+            json=True,
+            temperature=0.2,
+            max_output_tokens=4096,
+            provider="gemini",
+            fallback=False,
         )
-
-        raw_text = response.text.strip()
     except Exception as e:
         logger.warning(f"Gemini contract review call failed (graceful degradation): {e}")
         return dict(DEFAULT_RESULT)
 
     # ------------------------------------------------------------------
-    # 4. Parse and validate JSON response
+    # 4. Validate JSON response
     # ------------------------------------------------------------------
     try:
-        parsed = _parse_json_response(raw_text)
         result = _validate_result(parsed)
         logger.info(
             f"Contract review complete for document {document_id}: "

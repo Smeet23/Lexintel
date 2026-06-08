@@ -39,6 +39,15 @@ class BlobDownloadException(StorageException):
     pass
 
 
+class BlobNotFoundException(BlobDownloadException):
+    """Raised when the requested blob does not exist (distinct from a transient
+    storage failure). Subclasses BlobDownloadException so existing
+    ``except BlobDownloadException`` handlers still catch it as a fallback, while
+    callers that care can map it to HTTP 404 instead of 500."""
+
+    pass
+
+
 class BlobDeleteException(StorageException):
     """Raised when deleting from blob storage fails"""
 

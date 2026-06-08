@@ -250,7 +250,15 @@ def _get_semantic_chunker():
         from langchain_huggingface import HuggingFaceEmbeddings
 
         logger.info(f"Initializing LegalSemanticChunker with NUPunkt + {SEMANTIC_EMBEDDING_MODEL} (pid={current_pid})")
-        embeddings = HuggingFaceEmbeddings(model_name=SEMANTIC_EMBEDDING_MODEL)
+        # Pin device (default CPU). Apple-MPS initialised inside a Celery prefork
+        # child crashes the worker ("MPSKernel ... MTLCompilerService unavailable"),
+        # so default to CPU for this tiny model; override via LOCAL_MODEL_DEVICE.
+        import os as _os
+        _device = _os.environ.get("LOCAL_MODEL_DEVICE", "cpu")
+        embeddings = HuggingFaceEmbeddings(
+            model_name=SEMANTIC_EMBEDDING_MODEL,
+            model_kwargs={"device": _device},
+        )
 
         base_chunker = SemanticChunker(
             embeddings=embeddings,

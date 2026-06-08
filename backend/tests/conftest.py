@@ -23,6 +23,14 @@ mock_settings.debug = True
 mock_settings.cache_enabled = False
 mock_settings.cache_ttl_seconds = 0
 mock_settings.allowed_origins = "http://localhost:3000"
+# Numeric RRF weights — must be real numbers (not MagicMock children) so
+# hybrid_search.get_rrf_weights can do arithmetic on them.
+mock_settings.bm25_weight = 0.7
+mock_settings.dense_weight = 0.3
+mock_settings.voyage_api_key = ""
+# Numeric ingest concurrency cap — must be a real int (not a MagicMock child)
+# so citation_graph._gather_bounded can build an asyncio.Semaphore.
+mock_settings.citation_graph_max_concurrency = 8
 
 import backend.config
 backend.config.get_settings = lambda: mock_settings

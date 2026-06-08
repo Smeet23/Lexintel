@@ -196,7 +196,10 @@ def test_section_detector():
     print("TEST 1: SECTION DETECTOR")
     print(DIVIDER)
 
-    from services.section_detector import detect_sections
+    import pytest
+    # Stale test: section detection was inlined into chunking; the standalone
+    # services.section_detector module no longer exists. Skip rather than error.
+    detect_sections = pytest.importorskip("services.section_detector").detect_sections
 
     legal_text = """RECITALS
 

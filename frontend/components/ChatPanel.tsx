@@ -13,11 +13,16 @@ import {
   Trash2,
   MessageSquarePlus,
   AlertTriangle,
+  Lightbulb,
+  AlertCircle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
-import type { QueryMessage, Citation } from "@/lib/types"
+import type { QueryMessage, Citation, CitationVerification, ConflictAnalysis } from "@/lib/types"
+import InlineCitation from "@/components/InlineCitation"
+import VerificationBar from "@/components/VerificationBar"
+import ConflictAlert from "@/components/ConflictAlert"
 
 // ─── Helpers ────────────────────────────────────────────────
 
@@ -101,6 +106,46 @@ function DeleteConfirmInline({
   )
 }
 
+// ─── Inline Citation Parser ──────────────────────────────────
+
+function parseMessageWithCitations(
+  content: string,
+  verifiedCitations?: CitationVerification[],
+): React.ReactNode[] {
+  // Match [N] patterns (numbered citations)
+  const parts: React.ReactNode[] = []
+  const regex = /\[(\d+)\]/g
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+
+  while ((match = regex.exec(content)) !== null) {
+    // Add text before the citation
+    if (match.index > lastIndex) {
+      parts.push(content.slice(lastIndex, match.index))
+    }
+
+    const citationIndex = parseInt(match[1], 10)
+    const verification = verifiedCitations?.find(c => c.index === citationIndex)
+
+    parts.push(
+      <InlineCitation
+        key={`cite-${match.index}-${citationIndex}`}
+        index={citationIndex}
+        verification={verification}
+      />
+    )
+
+    lastIndex = match.index + match[0].length
+  }
+
+  // Add remaining text
+  if (lastIndex < content.length) {
+    parts.push(content.slice(lastIndex))
+  }
+
+  return parts.length > 0 ? parts : [content]
+}
+
 // ─── Message Bubble ──────────────────────────────────────────
 
 function MessageBubble({
@@ -166,9 +211,66 @@ function MessageBubble({
           </span>
         </div>
 
-        <p className={cn("text-[14px] leading-relaxed whitespace-pre-wrap", isUser ? "text-primary-foreground" : "text-foreground")}>
-          {message.content}
-        </p>
+        <div className={cn("text-[14px] leading-relaxed whitespace-pre-wrap", isUser ? "text-primary-foreground" : "text-foreground")}>
+          {!isUser && message.verifiedCitations && message.verifiedCitations.length > 0
+            ? parseMessageWithCitations(message.content, message.verifiedCitations)
+            : message.content
+          }
+        </div>
+
+        {/* Issue Analysis Badges */}
+        {!isUser && message.issueAnalysis && message.issueAnalysis.issues.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 mt-2">
+            <Lightbulb className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+            <span className="text-[11px] font-medium text-muted-foreground mr-1">Issues:</span>
+            {message.issueAnalysis.issues.map((issue, i) => (
+              <span
+                key={i}
+                className={cn(
+                  "inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-medium border",
+                  issue.confidence >= 0.7
+                    ? "bg-blue-50 text-blue-700 border-blue-200/60"
+                    : issue.confidence >= 0.4
+                      ? "bg-slate-50 text-slate-600 border-slate-200/60"
+                      : "bg-gray-50 text-gray-500 border-gray-200/60"
+                )}
+                title={`${issue.issue}\nConfidence: ${(issue.confidence * 100).toFixed(0)}%\nKey facts: ${issue.keyFacts.join(", ")}`}
+              >
+                {issue.domain}
+                <span className="ml-1 opacity-60">{(issue.confidence * 100).toFixed(0)}%</span>
+              </span>
+            ))}
+            {message.issueAnalysis.missingInformation.length > 0 && (
+              <span
+                className="inline-flex items-center gap-0.5 rounded-md px-2 py-0.5 text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200/60"
+                title={`Missing: ${message.issueAnalysis.missingInformation.join("; ")}`}
+              >
+                <AlertCircle className="h-2.5 w-2.5" />
+                {message.issueAnalysis.missingInformation.length} missing info
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Verification bar (citations + claims) */}
+        {!isUser && ((message.verificationSummary && message.verifiedCitations && message.verificationSummary.total > 0) || (message.claimVerificationSummary && message.claimVerificationSummary.total > 0)) && (
+          <div className="mt-2">
+            <VerificationBar
+              summary={message.verificationSummary ?? { total: 0, verified: 0, partial: 0, unverified: 0, not_found: 0, unverifiable: 0 }}
+              citations={message.verifiedCitations ?? []}
+              claimSummary={message.claimVerificationSummary}
+              claims={message.verifiedClaims}
+            />
+          </div>
+        )}
+
+        {/* Conflict alert */}
+        {!isUser && message.conflictAnalysis?.has_conflicts && (
+          <ConflictAlert
+            analysis={message.conflictAnalysis}
+            className="mt-2"
+          />
+        )}
 
         {!isUser && (
           <div className="mt-3 flex items-center gap-2 border-t border-border pt-3">

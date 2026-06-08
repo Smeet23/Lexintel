@@ -36,3 +36,8 @@ export function truncate(str: string, length: number): string {
   if (str.length <= length) return str
   return str.slice(0, length) + "..."
 }
+
+/** Returns true only for http:// or https:// URLs — guards against javascript: and data: XSS. */
+export function isSafeUrl(url: string): boolean {
+  return /^https?:\/\//.test(url)
+}
