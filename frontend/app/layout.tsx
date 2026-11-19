@@ -4,7 +4,7 @@ import "./globals.css"
 
 export const metadata: Metadata = {
   title: "LexIntel - Legal Intelligence Platform",
-  description: "Jurisdiction-aware legal AI with verified citations and full audit trails",
+  description: "Jurisdiction-aware legal AI with source citations and full audit trails",
 }
 
 export default function RootLayout({

@@ -63,43 +63,9 @@ export default function LoginPage() {
           </h1>
           <p className="mt-5 text-[17px] text-white/40 leading-relaxed max-w-md">
             Every answer backed by source documents, page numbers,
-            and confidence scores. Built for firms that demand precision.
+            and confidence scores.
           </p>
 
-          {/* Proof points */}
-          <div className="mt-10 grid grid-cols-3 gap-px bg-white/[0.06] rounded-xl overflow-hidden">
-            {[
-              { label: "Documents analyzed", value: "2.4M+" },
-              { label: "Accuracy rate", value: "99.2%" },
-              { label: "Firms onboarded", value: "340+" },
-            ].map((stat, i) => (
-              <motion.div
-                key={stat.label}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: 0.4 + i * 0.1, ease }}
-                className="bg-white/[0.03] p-5"
-              >
-                <p className="font-display text-xl font-semibold text-primary-foreground tracking-tight">{stat.value}</p>
-                <p className="text-[11px] text-white/30 mt-1 uppercase tracking-[0.06em]">{stat.label}</p>
-              </motion.div>
-            ))}
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.5, delay: 0.6, ease }}
-          className="flex items-center gap-8 text-[11px] text-white/20 uppercase tracking-[0.08em] relative z-10"
-        >
-          <span>SOC 2 Type II</span>
-          <span className="h-3 w-px bg-white/10" />
-          <span>GDPR</span>
-          <span className="h-3 w-px bg-white/10" />
-          <span>ISO 27001</span>
-          <span className="h-3 w-px bg-white/10" />
-          <span>No AI Training</span>
         </motion.div>
       </div>
 
@@ -171,9 +137,7 @@ export default function LoginPage() {
                 <input type="checkbox" className="rounded border-border accent-foreground h-3.5 w-3.5" />
                 <span className="text-[13px] text-muted">Remember me</span>
               </label>
-              <a href="#" className="text-[13px] text-foreground hover:text-foreground/70 font-medium transition-colors">
-                Forgot password?
-              </a>
+
             </div>
 
             <Button type="submit" size="lg" className="w-full rounded-lg" disabled={isLoading}>
@@ -193,9 +157,7 @@ export default function LoginPage() {
 
           <p className="text-center text-[13px] text-muted mt-8">
             Don&apos;t have an account?{" "}
-            <a href="#" className="text-foreground hover:text-foreground/70 font-medium transition-colors">
-              Request access
-            </a>
+            <span className="text-muted">Request access</span>
           </p>
         </motion.div>
       </div>

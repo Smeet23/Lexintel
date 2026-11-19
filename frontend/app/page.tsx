@@ -12,12 +12,8 @@ import {
   BookOpen,
   Brain,
   Search,
-  CheckCircle2,
   Lock,
-  Eye,
-  XCircle,
   ListChecks,
-  ShieldCheck,
   ArrowUpRight,
   ChevronRight,
   Menu,
@@ -198,8 +194,7 @@ function HeroSection() {
             transition={{ duration: 0.7, delay: 0.4, ease }}
             className="mt-8 text-[18px] md:text-[20px] text-muted leading-relaxed max-w-xl"
           >
-            Trusted by legal professionals worldwide. Every answer backed by
-            source documents, page numbers, and confidence scores.
+            Every answer backed by source documents, page numbers, and confidence scores.
           </motion.p>
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -233,8 +228,7 @@ function ProductShowcase() {
           <FadeIn delay={0.1}>
             <div className="pt-8">
               <p className="text-[15px] text-muted leading-relaxed">
-                More than <span className="text-foreground font-medium">10,000 legal professionals</span> use
-                LexIntel to cut through complexity to navigate complex legal work.
+                LexIntel helps you search, review, and work with your legal documents.
               </p>
             </div>
           </FadeIn>
@@ -327,36 +321,6 @@ function ProductShowcase() {
   )
 }
 
-function MetricsSection() {
-  const metrics = [
-    { value: "200K+", label: "Queries processed daily" },
-    { value: "1.3M+", label: "Documents analyzed" },
-    { value: "99.2%", label: "Citation accuracy" },
-    { value: "92%", label: "Monthly active usage" },
-  ]
-
-  return (
-    <section className="py-24 px-6 border-y border-border bg-surface/60">
-      <div className="max-w-[1200px] mx-auto">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-12 md:gap-8">
-          {metrics.map((m, i) => (
-            <FadeIn key={m.label} delay={i * 0.1}>
-              <div className="text-center md:text-left">
-                <p className="font-display text-[2.5rem] md:text-[3rem] text-foreground tracking-tight leading-none">
-                  {m.value}
-                </p>
-                <p className="text-[13px] text-muted mt-3 leading-snug">
-                  {m.label}
-                </p>
-              </div>
-            </FadeIn>
-          ))}
-        </div>
-      </div>
-    </section>
-  )
-}
-
 function PlatformSection() {
   const capabilities = [
     {
@@ -382,7 +346,7 @@ function PlatformSection() {
     {
       icon: Search,
       title: "Document Intelligence",
-      description: "Process PDFs, DOCX, and scanned documents. Automatic indexing, OCR, and semantic search across millions of pages.",
+      description: "Process PDFs, DOCX, and text files with automatic indexing and semantic search.",
     },
     {
       icon: ListChecks,
@@ -451,7 +415,7 @@ function FeaturesSection() {
     },
     {
       title: "Regulatory",
-      description: "Navigate complex regulatory landscapes with AI-powered compliance monitoring.",
+      description: "Navigate complex regulatory landscapes with compliance monitoring.",
     },
     {
       title: "Knowledge Management",
@@ -480,7 +444,7 @@ function FeaturesSection() {
                 <Button
                   variant="outline"
                   size="lg"
-                  className="text-[14px] border-white/20 text-white hover:bg-white/10 hover:text-white rounded-lg"
+                  className="text-[14px] bg-transparent border-white/20 text-white hover:bg-white/10 hover:text-white rounded-lg"
                 >
                   Explore Platform
                   <ArrowRight className="h-4 w-4 ml-1" />
@@ -518,88 +482,34 @@ function FeaturesSection() {
 function SecuritySection() {
   const features = [
     {
-      icon: ShieldCheck,
-      title: "Dedicated Security Expertise",
-      description: "In-house security team spans infrastructure, product, and operations with 24/7 coverage and end-to-end monitoring.",
-    },
-    {
       icon: Lock,
-      title: "Data Sovereignty and Control",
-      description: "Retain full control over your data. Set retention policies, delete data anytime, and keep everything in-region.",
-    },
-    {
-      icon: XCircle,
-      title: "No Model Training",
-      description: "We contractually guarantee your data stays yours. We never use inputs, outputs, or uploaded documents to train models.",
-    },
-    {
-      icon: Eye,
-      title: "Independently Tested",
-      description: "Regular third-party penetration testing, SOC 2 Type II and ISO 27001 audits by top-tier security firms.",
+      title: "Matter-scoped documents",
+      description: "Your documents stay scoped to your matters.",
     },
   ]
-
-  const badges = ["SOC 2 Type II", "ISO 27001", "GDPR", "CCPA"]
 
   return (
     <section id="security" className="py-32 px-6">
       <div className="max-w-[1200px] mx-auto">
         <FadeIn>
           <div className="max-w-2xl mb-16">
-            <p className="text-[12px] font-medium text-muted uppercase tracking-[0.12em] mb-4">
-              Security
-            </p>
-            <h2 className="font-display text-[2.5rem] md:text-[3rem] text-foreground tracking-tight leading-[1.1]">
-              For the Most<br />
-              Sensitive Matters
-            </h2>
-            <p className="mt-5 text-[16px] text-muted leading-relaxed">
-              Built on a non-negotiable principle: protecting the security and confidentiality
-              of your data. Enterprise-grade controls from the ground up.
-            </p>
+            <p className="text-[12px] font-medium text-muted uppercase tracking-[0.12em] mb-4">Security</p>
+            <h2 className="font-display text-[2.5rem] md:text-[3rem] text-foreground tracking-tight leading-[1.1]">Designed for<br />Sensitive Matters</h2>
           </div>
         </FadeIn>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-16">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {features.map((f, i) => (
             <FadeIn key={f.title} delay={i * 0.1}>
               <div className="bg-white border border-border rounded-xl p-8 hover:shadow-elevated-lg hover:border-border-strong transition-all duration-400 group">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-surface group-hover:bg-surface-hover transition-colors">
                   <f.icon className="h-5 w-5 text-foreground" strokeWidth={1.5} />
                 </div>
-                <h3 className="font-display text-[18px] text-foreground mt-5 mb-2">
-                  {f.title}
-                </h3>
-                <p className="text-[14px] text-muted leading-relaxed">
-                  {f.description}
-                </p>
+                <h3 className="font-display text-[18px] text-foreground mt-5 mb-2">{f.title}</h3>
+                <p className="text-[14px] text-muted leading-relaxed">{f.description}</p>
               </div>
             </FadeIn>
           ))}
         </div>
-
-        <FadeIn>
-          <div className="bg-surface/60 rounded-xl p-10 md:p-14 border border-border">
-            <h3 className="font-display text-[20px] text-foreground mb-3">
-              Enterprise-grade security and controls
-            </h3>
-            <p className="text-[14px] text-muted leading-relaxed max-w-lg mb-8">
-              Our platform is designed to safeguard the most sensitive information,
-              with certifications that meet the highest industry standards.
-            </p>
-            <div className="flex flex-wrap gap-3">
-              {badges.map((badge) => (
-                <div
-                  key={badge}
-                  className="flex items-center gap-2 bg-white border border-border rounded-lg px-5 py-3 shadow-sm hover:shadow-elevated transition-shadow"
-                >
-                  <CheckCircle2 className="h-4 w-4 text-foreground" />
-                  <span className="text-[14px] font-medium text-foreground">{badge}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </FadeIn>
       </div>
     </section>
   )
@@ -608,24 +518,24 @@ function SecuritySection() {
 function FAQSection() {
   const faqs = [
     {
-      q: "How does LexIntel ensure citation accuracy?",
-      a: "Every response includes direct references to source documents with page numbers, section identifiers, and relevance scores. Our retrieval system cross-validates against the original corpus to maintain 99%+ citation accuracy.",
+      q: "How are answers supported?",
+      a: "Answers can include references to source documents, page numbers, and confidence scores to help you review the supporting material.",
     },
     {
       q: "Where is my data hosted and processed?",
-      a: "Data is hosted on enterprise-grade cloud infrastructure with SOC 2 Type II certification. We offer regional data residency options including US, EU, and Australia.",
+      a: "Your documents are associated with the matters you add them to. Contact us if you need details about infrastructure or data handling.",
     },
     {
       q: "Does LexIntel train on my data?",
-      a: "No. We contractually prohibit using customer data for model training. Your documents, queries, and responses are never used to improve or train any models.",
+      a: "Data handling depends on the service configuration. Review your applicable terms before adding sensitive documents.",
     },
     {
       q: "What file formats are supported?",
-      a: "We support PDF, DOCX, TXT, and scanned documents with OCR. Our processing pipeline handles files up to 50MB with automatic page-level indexing.",
+      a: "Available formats depend on the document processing service. Check the upload flow for the formats accepted by your workspace.",
     },
     {
       q: "How does access control work?",
-      a: "Role-based access controls ensure only authorized users can access specific matters. Partners, associates, and paralegals each have configurable permission levels.",
+      a: "Workspace access controls are still being developed. Avoid adding documents that require access restrictions until those controls are available.",
     },
   ]
 
@@ -675,8 +585,7 @@ function CTASection() {
             your legal workflow?
           </h2>
           <p className="mt-6 text-[17px] text-white/40 leading-relaxed max-w-md mx-auto">
-            Join hundreds of firms using LexIntel to research,
-            analyze, and draft with verifiable precision.
+            Explore a workspace for searching, reviewing, and working with legal documents.
           </p>
           <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
             <Link href="/dashboard">
@@ -691,7 +600,7 @@ function CTASection() {
             <Button
               variant="outline"
               size="lg"
-              className="border-white/20 text-white hover:bg-white/10 hover:text-white text-[15px] h-12 px-8 rounded-lg"
+              className="bg-transparent border-white/20 text-white hover:bg-white/10 hover:text-white text-[15px] h-12 px-8 rounded-lg"
             >
               Request a Demo
             </Button>
@@ -703,24 +612,7 @@ function CTASection() {
 }
 
 function Footer() {
-  const columns = [
-    {
-      title: "Platform",
-      links: ["AI Research", "Contract Review", "Draft Assistant", "Document Intelligence", "Audit Trail"],
-    },
-    {
-      title: "Solutions",
-      links: ["Litigation", "Transactional", "In-House", "Regulatory", "Knowledge Management"],
-    },
-    {
-      title: "Company",
-      links: ["Security", "Customers", "About", "Careers", "Newsroom"],
-    },
-    {
-      title: "Resources",
-      links: ["Documentation", "Blog", "Guides", "Privacy Policy", "Terms of Service"],
-    },
-  ]
+
 
   return (
     <footer className="border-t border-border bg-white py-16 px-6">
@@ -737,33 +629,14 @@ function Footer() {
               Legal intelligence,<br />verified.
             </p>
           </div>
-          {columns.map((col) => (
-            <div key={col.title}>
-              <p className="text-[12px] font-medium text-foreground uppercase tracking-[0.06em] mb-4">
-                {col.title}
-              </p>
-              <ul className="space-y-2.5">
-                {col.links.map((link) => (
-                  <li key={link}>
-                    <a href="#" className="text-[13px] text-muted hover:text-foreground transition-colors">
-                      {link}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+    
         </div>
 
         <div className="mt-14 pt-6 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-[12px] text-muted">
             &copy; 2026 LexIntel. All rights reserved.
           </p>
-          <div className="flex items-center gap-6 text-[12px] text-muted">
-            <a href="#" className="hover:text-foreground transition-colors">Privacy</a>
-            <a href="#" className="hover:text-foreground transition-colors">Terms</a>
-            <a href="#" className="hover:text-foreground transition-colors">Security</a>
-          </div>
+
         </div>
       </div>
     </footer>
@@ -776,7 +649,6 @@ export default function LandingPage() {
       <Navbar />
       <HeroSection />
       <ProductShowcase />
-      <MetricsSection />
       <PlatformSection />
       <FeaturesSection />
       <SecuritySection />

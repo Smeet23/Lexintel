@@ -12,7 +12,6 @@ import {
   CreditCard,
   Settings,
   Scale,
-  LogOut,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react"
@@ -22,9 +21,9 @@ const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Matters", href: "/matters", icon: Briefcase },
   { name: "Precedents", href: "/precedents", icon: BookOpen },
-  { name: "Team", href: "/team", icon: Users },
-  { name: "Billing", href: "/billing", icon: CreditCard },
-  { name: "Settings", href: "/settings", icon: Settings },
+  { name: "Team", href: "/team", icon: Users, soon: true },
+  { name: "Billing", href: "/billing", icon: CreditCard, soon: true },
+  { name: "Settings", href: "/settings", icon: Settings, soon: true },
 ]
 
 interface SidebarProps {
@@ -104,7 +103,10 @@ export default function Sidebar({ collapsed = false, onToggle, mobileOpen = fals
                     exit={{ opacity: 0, x: -4 }}
                     transition={{ duration: 0.15 }}
                   >
-                    {item.name}
+                    <span className="flex items-center gap-2">
+                      {item.name}
+                      {item.soon && <span className="text-[9px] font-medium text-muted/60 normal-case tracking-normal">Soon</span>}
+                    </span>
                   </motion.span>
                 )}
               </AnimatePresence>
@@ -127,20 +129,6 @@ export default function Sidebar({ collapsed = false, onToggle, mobileOpen = fals
               <span>Collapse</span>
             </>
           )}
-        </button>
-        <button className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium text-muted hover:bg-red-50 hover:text-red-600 transition-all duration-200 cursor-pointer">
-          <LogOut className="h-[18px] w-[18px] shrink-0" />
-          <AnimatePresence>
-            {!collapsed && (
-              <motion.span
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-              >
-                Sign Out
-              </motion.span>
-            )}
-          </AnimatePresence>
         </button>
       </div>
     </aside>

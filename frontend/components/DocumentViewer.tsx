@@ -2,13 +2,14 @@
 
 import React, { useState, useRef, useEffect, useMemo } from "react"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
-import { X, Download, FileText, Layers, ChevronRight, Loader2, AlertTriangle, Hash } from "lucide-react"
+import { X, Download, FileText, Layers, ChevronRight, Loader2, Hash } from "lucide-react"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { getMatterDocumentDownloadUrl } from "@/lib/api-services"
 import { useMatterChunks } from "@/hooks/use-matters"
+import ErrorState from "@/components/ErrorState"
 import type { ChunkResponse } from "@/lib/types"
 
 // ============================================
@@ -160,7 +161,7 @@ interface ChunksViewProps {
 }
 
 function ChunksView({ matterId }: ChunksViewProps) {
-  const { data: chunks, isLoading, isError } = useMatterChunks(matterId)
+  const { data: chunks, isLoading, isError, refetch } = useMatterChunks(matterId)
   const [activeSection, setActiveSection] = useState<string | null>(null)
 
   const pageGroups = useMemo(() => groupChunksByPage(chunks ?? []), [chunks])
@@ -187,13 +188,7 @@ function ChunksView({ matterId }: ChunksViewProps) {
   }
 
   if (isError) {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center p-8">
-        <AlertTriangle className="h-8 w-8 text-red-500" />
-        <p className="text-sm font-medium text-foreground">Failed to load document chunks</p>
-        <p className="text-xs text-muted">The chunks endpoint may not be available yet.</p>
-      </div>
-    )
+    return <ErrorState onRetry={() => refetch()} className="flex-1" />
   }
 
   if (!chunks || chunks.length === 0) {

@@ -3,7 +3,7 @@
 import React from "react"
 import { FileText, ExternalLink, Download, BookOpen, CheckCircle2, AlertTriangle, XCircle, HelpCircle, ShieldCheck, ShieldAlert, ShieldX, Scale, Clock } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { cn, isSafeUrl } from "@/lib/utils"
+import { cn, isSafeUrl, formatNumber } from "@/lib/utils"
 import type { Citation, VerificationStatus } from "@/lib/types"
 
 interface CitationPanelProps {
@@ -193,7 +193,7 @@ export default function CitationPanel({ citations, className, onCitationClick }:
                   )}
                   {citation.effectiveDate && (
                     <span className="text-[10px] text-muted-foreground mt-0.5">
-                      Effective: {new Date(citation.effectiveDate).toLocaleDateString()}
+                      Effective: {new Date(citation.effectiveDate).toLocaleDateString("en-US")}
                     </span>
                   )}
 
@@ -207,7 +207,7 @@ export default function CitationPanel({ citations, className, onCitationClick }:
                   {/* Citation count */}
                   {v?.citationCount !== undefined && v.citationCount > 0 && (
                     <p className="text-[10px] text-muted-foreground mt-0.5">
-                      Cited by {v.citationCount.toLocaleString()} cases
+                      Cited by {formatNumber(v.citationCount)} cases
                     </p>
                   )}
 

@@ -2,7 +2,7 @@
 
 import React, { useState } from "react"
 import { ExternalLink, CheckCircle2, AlertTriangle, XCircle, HelpCircle, ShieldCheck, ShieldAlert, ShieldX } from "lucide-react"
-import { cn, isSafeUrl } from "@/lib/utils"
+import { cn, isSafeUrl, formatNumber } from "@/lib/utils"
 import type { CitationVerification, VerificationStatus, CaseStatus } from "@/lib/types"
 
 // ─── Status config ──────────────────────────────────────────
@@ -178,7 +178,7 @@ export default function InlineCitation({ index, verification, onClick }: InlineC
           {verification.citationCount !== undefined && verification.citationCount > 0 && (
             <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1">
               <span>Cited by</span>
-              <span className="font-medium">{verification.citationCount.toLocaleString()} cases</span>
+              <span className="font-medium">{formatNumber(verification.citationCount)} cases</span>
             </div>
           )}
 
