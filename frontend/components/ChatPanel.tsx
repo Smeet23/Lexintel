@@ -34,8 +34,8 @@ function formatMessageDate(timestamp: string): string {
 
   if (days === 0) return "Today"
   if (days === 1) return "Yesterday"
-  if (days < 7) return date.toLocaleDateString([], { weekday: "long" })
-  return date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })
+  if (days < 7) return date.toLocaleDateString("en-US", { weekday: "long" })
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
 }
 
 function ConfidenceBadge({ score }: { score: number }) {
@@ -207,7 +207,7 @@ function MessageBubble({
             {isUser ? "You" : "LexIntel"}
           </span>
           <span className={cn("text-[10px]", isUser ? "text-white/35" : "text-muted-foreground")}>
-            {new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            {new Date(message.timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
           </span>
         </div>
 

@@ -28,8 +28,8 @@ export function formatRelativeTime(date: string | Date): string {
   return formatDate(date)
 }
 
-export function formatNumber(num: number): string {
-  return new Intl.NumberFormat("en-US").format(num)
+export function formatNumber(n: number): string {
+  return new Intl.NumberFormat("en-US").format(n)
 }
 
 export function truncate(str: string, length: number): string {

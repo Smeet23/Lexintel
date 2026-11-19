@@ -18,6 +18,7 @@ import {
 import { motion } from "framer-motion"
 import AppLayout from "@/layouts/AppLayout"
 import ChatPanel from "@/components/ChatPanel"
+import ErrorState from "@/components/ErrorState"
 import MultiStageProgress from "@/components/MultiStageProgress"
 import ChatHistory from "@/components/ChatHistory"
 import CitationPanel from "@/components/CitationPanel"
@@ -56,7 +57,7 @@ export default function MatterWorkspacePage() {
   // avoid re-loading when the same conversation is already active.
   const loadedConversationRef = useRef<string | null>(null)
 
-  const { data: matter, isLoading, error } = useMatter(matterId)
+  const { data: matter, isLoading, isError, refetch } = useMatter(matterId)
   const { data: queryHistory } = useQueryHistory(matterId)
   const { data: conversations } = useConversations(matterId)
   const askQuestion = useAskQuestion(matterId)
@@ -407,7 +408,7 @@ export default function MatterWorkspacePage() {
 
   if (isLoading) {
     return (
-      <AppLayout title="Loading...">
+      <AppLayout title="Matter">
         <div className="flex items-center justify-center py-24">
           <Loader2 className="h-6 w-6 animate-spin text-muted" />
           <span className="ml-2 text-muted">Loading matter...</span>
@@ -416,12 +417,12 @@ export default function MatterWorkspacePage() {
     )
   }
 
-  if (error || !matter) {
+  if (isError || !matter) {
     return (
-      <AppLayout title="Error">
-        <div className="py-24 text-center">
-          <p className="text-muted">Matter not found or backend unavailable.</p>
-          <Button variant="outline" className="mt-4" onClick={() => router.push("/matters")}>
+      <AppLayout title="Matter">
+        <div className="max-w-2xl mx-auto flex flex-col items-center">
+          <ErrorState onRetry={() => refetch()} />
+          <Button variant="outline" onClick={() => router.push("/matters")}>
             <ArrowLeft className="h-4 w-4" /> Back to Matters
           </Button>
         </div>
@@ -613,7 +614,11 @@ export default function MatterWorkspacePage() {
                   </div>
                 )}
 
-                {!contractReview.isLoading && !contractReview.data?.exists && !runContractReview.isPending && (
+                {contractReview.isError && (
+                  <ErrorState onRetry={() => contractReview.refetch()} />
+                )}
+
+                {!contractReview.isLoading && !contractReview.isError && !contractReview.data?.exists && !runContractReview.isPending && (
                   <div className="text-center py-12 text-muted">
                     <Shield className="h-10 w-10 mx-auto mb-3 opacity-30" />
                     <p className="text-sm">No contract review yet. Click "Run Analysis" to analyze this document for risks.</p>
@@ -810,10 +815,13 @@ export default function MatterWorkspacePage() {
                     <Loader2 className="h-4 w-4 animate-spin text-muted" />
                   </div>
                 )}
-                {!drafts.isLoading && (!drafts.data || drafts.data.length === 0) && (
+                {drafts.isError && (
+                  <ErrorState onRetry={() => drafts.refetch()} />
+                )}
+                {!drafts.isLoading && !drafts.isError && (!drafts.data || drafts.data.length === 0) && (
                   <p className="text-sm text-muted text-center py-4">No drafts yet.</p>
                 )}
-                {drafts.data && drafts.data.length > 0 && (
+                {!drafts.isError && drafts.data && drafts.data.length > 0 && (
                   <div className="space-y-3 max-h-[400px] overflow-y-auto">
                     {drafts.data.map((draft) => (
                       <div
@@ -853,13 +861,16 @@ export default function MatterWorkspacePage() {
                 <span className="ml-2 text-sm text-muted">Loading activity log...</span>
               </div>
             )}
-            {!auditLog.isLoading && (!auditLog.data || auditLog.data.length === 0) && (
+            {auditLog.isError && (
+              <ErrorState onRetry={() => auditLog.refetch()} />
+            )}
+            {!auditLog.isLoading && !auditLog.isError && (!auditLog.data || auditLog.data.length === 0) && (
               <div className="text-center py-12 text-muted">
                 <ClipboardList className="h-10 w-10 mx-auto mb-3 opacity-30" />
                 <p className="text-sm">No activity recorded yet.</p>
               </div>
             )}
-            {auditLog.data && auditLog.data.length > 0 && (
+            {!auditLog.isError && auditLog.data && auditLog.data.length > 0 && (
               <div className="divide-y divide-border">
                 {auditLog.data.map((entry) => (
                   <div key={entry.id} className="px-4 py-3 flex items-start gap-4">

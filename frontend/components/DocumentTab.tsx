@@ -12,6 +12,7 @@ import {
   Trash2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import ErrorState from "@/components/ErrorState"
 import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
@@ -49,7 +50,7 @@ const STATUS_BADGE: Record<string, "active" | "processing" | "error" | "closed">
 }
 
 export default function DocumentTab({ matterId }: DocumentTabProps) {
-  const { data: documents, isLoading: docsLoading } = useMatterDocuments(matterId)
+  const { data: documents, isLoading: docsLoading, isError: docsError, refetch: refetchDocuments } = useMatterDocuments(matterId)
   const uploadDoc = useUploadMatterDocument(matterId)
   const deleteDoc = useDeleteDocument(matterId)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -85,6 +86,10 @@ export default function DocumentTab({ matterId }: DocumentTabProps) {
         <span className="ml-2 text-sm text-muted">Loading documents...</span>
       </div>
     )
+  }
+
+  if (docsError) {
+    return <ErrorState onRetry={() => refetchDocuments()} />
   }
 
   if (!documents || documents.length === 0) {
@@ -277,7 +282,7 @@ interface DocumentChunkViewerProps {
 }
 
 function DocumentChunkViewer({ matterId, document: doc }: DocumentChunkViewerProps) {
-  const { data: chunks, isLoading, isError } = useMatterChunks(matterId, doc.id)
+  const { data: chunks, isLoading, isError, refetch } = useMatterChunks(matterId, doc.id)
   const [activeSection, setActiveSection] = useState<string | null>(null)
 
   const pageGroups = useMemo(() => groupChunksByPage(chunks ?? []), [chunks])
@@ -316,10 +321,7 @@ function DocumentChunkViewer({ matterId, document: doc }: DocumentChunkViewerPro
 
   if (isError) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-2 p-8">
-        <AlertTriangle className="h-8 w-8 text-red-500" />
-        <p className="text-sm font-medium text-foreground">Failed to load chunks</p>
-      </div>
+      <ErrorState onRetry={() => refetch()} className="flex-1" />
     )
   }
 

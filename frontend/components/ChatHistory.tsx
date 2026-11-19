@@ -32,7 +32,7 @@ function formatRelativeShort(dateStr: string): string {
   if (diffHr < 24) return `${diffHr}h`
   if (diffDay === 1) return "1d"
   if (diffDay < 7) return `${diffDay}d`
-  return date.toLocaleDateString([], { month: "short", day: "numeric" })
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" })
 }
 
 function getDateGroup(dateStr: string): string {
@@ -45,7 +45,7 @@ function getDateGroup(dateStr: string): string {
   if (diffDay === 1) return "Yesterday"
   if (diffDay < 7) return "This Week"
   if (diffDay < 30) return "This Month"
-  return date.toLocaleDateString([], { month: "long", year: "numeric" })
+  return date.toLocaleDateString("en-US", { month: "long", year: "numeric" })
 }
 
 function highlightMatch(text: string, query: string): React.ReactNode {
