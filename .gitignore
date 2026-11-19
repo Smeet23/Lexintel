@@ -1,15 +1,13 @@
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
-env/
-venv/
-.env
-.env.local
-backend/.env
-backend/.venv
+.venv/
+venv
+.pytest_cache/
+.coverage
+htmlcov/
+*.db
+
 # Node
 node_modules/
 .next/
@@ -17,21 +15,19 @@ dist/
 build/
 *.tsbuildinfo
 
-# IDE
+# Env
+.env
+.env.*
+!.env.example
+
+# IDE / OS
 .vscode/
 .idea/
 *.swp
-
-# OS
 .DS_Store
 Thumbs.db
 
-# Temp
+# Misc
 *.log
-
-# Git worktrees
 .worktrees/
-
-# Claude Code local state
-.claude/settings.local.json
-.claude/*.lock
+.claude/
