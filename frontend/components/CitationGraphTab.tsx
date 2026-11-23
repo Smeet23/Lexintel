@@ -1,12 +1,13 @@
 "use client"
 
 import { useState } from "react"
-import { Loader2, Network, RefreshCw, AlertTriangle, Info, X } from "lucide-react"
+import { Loader2, Network, RefreshCw, Info, X } from "lucide-react"
 import CitationGraph from "@/components/CitationGraph"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useMatterGraph } from "@/hooks/use-matters"
 import type { GraphNode } from "@/lib/types"
+import ErrorState from "@/components/ErrorState"
 
 interface CitationGraphTabProps {
   matterId: string
@@ -74,17 +75,7 @@ export default function CitationGraphTab({ matterId }: CitationGraphTabProps) {
         </div>
       )}
 
-      {isError && (
-        <div className="text-center py-16 text-muted">
-          <AlertTriangle className="h-10 w-10 mx-auto mb-3 opacity-40 text-amber-500" />
-          <p className="text-sm">
-            {error instanceof Error ? error.message : "Failed to load citation graph."}
-          </p>
-          <Button variant="outline" size="sm" className="mt-4" onClick={() => refetch()}>
-            Try again
-          </Button>
-        </div>
-      )}
+      {isError && <ErrorState onRetry={() => refetch()} />}
 
       {!isLoading && !isError && nodes.length === 0 && (
         <div className="text-center py-16 text-muted">

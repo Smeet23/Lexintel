@@ -15,6 +15,7 @@ import {
 } from "lucide-react"
 import AppLayout from "@/layouts/AppLayout"
 import PageHeader from "@/components/PageHeader"
+import ErrorState from "@/components/ErrorState"
 import DataTable from "@/components/DataTable"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -62,7 +63,7 @@ export default function MattersPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const uploadAbortRef = useRef<AbortController | null>(null)
 
-  const { data: matters, isLoading, error } = useMatters()
+  const { data: matters, isLoading, isError, refetch } = useMatters()
   const createMatter = useCreateMatter()
   const deleteMatter = useDeleteMatter()
 
@@ -200,10 +201,8 @@ export default function MattersPage() {
             <Loader2 className="h-5 w-5 animate-spin text-muted" />
             <span className="ml-2 text-sm text-muted">Loading matters...</span>
           </div>
-        ) : error ? (
-          <div className="py-16 text-center">
-            <p className="text-sm text-muted">Failed to load matters. Is the backend running?</p>
-          </div>
+        ) : isError ? (
+          <ErrorState onRetry={() => refetch()} />
         ) : (
           <>
             <DataTable

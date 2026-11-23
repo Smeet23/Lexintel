@@ -1,0 +1,22 @@
+UNITED STATES DISTRICT COURT
+DISTRICT OF OREGON
+Case No. 3:26-cv-00640
+
+RIVERSIDE SENSORS LLC, Plaintiff,
+v.
+TIDELINE LABS INC., Defendant.
+
+ANSWER TO COMPLAINT FOR BREACH OF CONTRACT
+
+I. RESPONSES TO ALLEGATIONS
+1. Tideline admits entering purchase order RL-441 for 48 probes at the stated contract price.
+2. Tideline admits a carrier presented the shipment on May 18, 2026. Tideline denies that a receiving employee signed a final acceptance certificate.
+3. Tideline alleges that six probes failed the on-site calibration check and that the affected cases had broken security seals.
+4. Tideline denies withholding payment for absent calibration certificates. It says payment was withheld because the six probes did not meet the salinity tolerance in Appendix B.
+5. Tideline says it gave written notice of rejection on May 19, 2026 and offered to make the rejected probes available for collection.
+6. Tideline admits Global Harbor Freight delivered the cases and denies allegations about how they were packed before shipment.
+
+II. AFFIRMATIVE DEFENSES
+7. Tideline asserts that the unpaid balance was contingent on final acceptance after a seven-day field trial.
+8. Tideline says it obtained substitute probes from Bay River Instruments and seeks recoupment of $8,400 in cover costs.
+9. Tideline asks that judgment be entered for Tideline and that Riverside recover no late charges.

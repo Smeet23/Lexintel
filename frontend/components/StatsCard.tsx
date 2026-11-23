@@ -13,12 +13,12 @@ interface StatsCardProps {
 export default function StatsCard({ title, value, icon: Icon, trend, className }: StatsCardProps) {
   return (
     <div className={cn(
-      "bg-white rounded-xl border border-border p-4 sm:p-6 transition-all duration-300 hover:shadow-elevated hover:border-border-strong group",
+      "h-full bg-white rounded-xl border border-border p-4 sm:p-6 transition-all duration-300 hover:shadow-elevated hover:border-border-strong group",
       className
     )}>
       <div className="flex items-start justify-between">
         <div className="min-w-0">
-          <p className="text-[11px] sm:text-[12px] font-medium uppercase tracking-[0.06em] text-muted truncate">{title}</p>
+          <p className="text-[11px] sm:text-[12px] font-medium uppercase tracking-[0.06em] text-muted">{title}</p>
           <p className="font-display text-[22px] sm:text-[28px] text-foreground mt-1.5 sm:mt-2 tracking-tight">{value}</p>
           <p className={cn(
             "text-[10px] sm:text-[11px] font-medium mt-1.5 sm:mt-2",

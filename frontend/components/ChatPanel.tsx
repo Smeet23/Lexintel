@@ -34,8 +34,8 @@ function formatMessageDate(timestamp: string): string {
 
   if (days === 0) return "Today"
   if (days === 1) return "Yesterday"
-  if (days < 7) return date.toLocaleDateString([], { weekday: "long" })
-  return date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })
+  if (days < 7) return date.toLocaleDateString("en-US", { weekday: "long" })
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
 }
 
 function ConfidenceBadge({ score }: { score: number }) {
@@ -162,7 +162,9 @@ function MessageBubble({
   isDeletingMessage?: boolean
 }) {
   const [copied, setCopied] = useState(false)
-  const [showSources, setShowSources] = useState(false)
+  const [showSources, setShowSources] = useState(() =>
+    message.citations?.some(citation => Boolean(citation.retrievalMethod)) ?? false
+  )
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const isUser = message.role === "user"
 
@@ -207,7 +209,7 @@ function MessageBubble({
             {isUser ? "You" : "LexIntel"}
           </span>
           <span className={cn("text-[10px]", isUser ? "text-white/35" : "text-muted-foreground")}>
-            {new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            {new Date(message.timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
           </span>
         </div>
 
@@ -336,9 +338,13 @@ function MessageBubble({
                   className="w-full flex items-center gap-2 rounded-lg bg-surface px-3 py-2 text-[12px] text-left hover:bg-surface-hover transition-colors cursor-pointer border border-transparent hover:border-border"
                 >
                   <span className="font-medium text-foreground">{c.documentName}</span>
-                  <span className="text-muted">p. {c.pageNumber}</span>
+                  {(c.pageLabel || !c.retrievalMethod) && (
+                    <span className="text-muted">p. {c.pageLabel || c.pageNumber}</span>
+                  )}
                   {c.section && <span className="text-muted">&middot; {c.section}</span>}
-                  <span className="ml-auto text-foreground font-mono text-[11px]">{Math.round(c.relevanceScore * 100)}%</span>
+                  {!c.retrievalMethod && (
+                    <span className="ml-auto text-foreground font-mono text-[11px]">{Math.round(c.relevanceScore * 100)}%</span>
+                  )}
                 </button>
               ))}
             </motion.div>
@@ -365,7 +371,7 @@ export default function ChatPanel({
   hasHistory,
 }: {
   messages: QueryMessage[]
-  onSend: (message: string, includeLegalResearch: boolean) => void
+  onSend: (message: string) => void
   isLoading?: boolean
   onSelectCitation?: (citations: Citation[]) => void
   onCitationClick?: (citation: Citation) => void
@@ -377,7 +383,6 @@ export default function ChatPanel({
   hasHistory?: boolean
 }) {
   const [input, setInput] = useState("")
-  const [includeLegalResearch, setIncludeLegalResearch] = useState(false)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -412,7 +417,7 @@ export default function ChatPanel({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (input.trim() && !isLoading) {
-      onSend(input.trim(), includeLegalResearch)
+      onSend(input.trim())
       setInput("")
     }
   }
@@ -551,7 +556,7 @@ export default function ChatPanel({
             </div>
             <h3 className="font-display text-[18px] text-foreground font-semibold">Ask LexIntel</h3>
             <p className="text-[13px] text-muted mt-2 max-w-sm leading-relaxed">
-              Ask questions about your uploaded documents. Every answer includes source citations and confidence scores.
+              Search your uploaded documents and open matching passages in their source.
             </p>
           </div>
         )}
@@ -599,7 +604,7 @@ export default function ChatPanel({
             <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-surface">
               <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
             </div>
-            <span className="text-[13px]">Analyzing documents...</span>
+            <span className="text-[13px]">Searching documents...</span>
           </motion.div>
         )}
         <div ref={messagesEndRef} />
@@ -613,6 +618,7 @@ export default function ChatPanel({
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Ask a question about your documents..."
+            maxLength={2000}
             className="pr-12 min-h-[48px] max-h-32 resize-none text-[14px] rounded-xl"
             rows={1}
           />
@@ -629,26 +635,6 @@ export default function ChatPanel({
           <p className="text-[11px] text-muted-foreground">
             Enter to send &middot; Shift+Enter for new line
           </p>
-          <label className="flex items-center gap-2 cursor-pointer select-none">
-            <span className="text-[11px] text-muted-foreground">Include Legal Research</span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={includeLegalResearch}
-              onClick={() => setIncludeLegalResearch(!includeLegalResearch)}
-              className={cn(
-                "relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors",
-                includeLegalResearch ? "bg-primary" : "bg-muted/30"
-              )}
-            >
-              <span
-                className={cn(
-                  "pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
-                  includeLegalResearch ? "translate-x-4" : "translate-x-0"
-                )}
-              />
-            </button>
-          </label>
         </div>
       </form>
     </div>

@@ -1,0 +1,21 @@
+DATA PROCESSING AGREEMENT
+Effective Date: April 1, 2026
+Green Quay Health Ltd (Controller) and Slate Harbor Systems Ltd (Processor)
+
+ARTICLE I INSTRUCTIONS
+1.1 The Processor shall use the patient appointment records only to operate the booking platform for the Controller.
+1.2 The Processor shall not analyze patient appointment records to train its own prediction models.
+
+ARTICLE II SECURITY
+2.1 The Processor must notify the Controller of a confirmed personal data breach within eighteen hours of confirming it.
+2.2 The Processor shall preserve incident logs for 120 days after notifying the Controller.
+2.3 The Processor must send the initial breach notice to privacy@greenquay.example.
+
+ARTICLE III SUBPROCESSORS
+3.1 The Processor shall give the Controller 21 days' written notice before engaging a new subprocessor.
+3.2 The Controller may object on reasonable data protection grounds within ten business days of notice.
+
+ARTICLE IV RETURN AND DELETION
+4.1 On expiry, the Processor shall return one encrypted export in CSV format to the Controller.
+4.2 After the export has been accepted, the Processor must erase all production copies within 45 calendar days.
+4.3 Residual copies in backups may remain until overwritten in the normal cycle, which shall never exceed 90 days after acceptance.

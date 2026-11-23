@@ -11,6 +11,7 @@ import {
 } from "lucide-react"
 import AppLayout from "@/layouts/AppLayout"
 import PageHeader from "@/components/PageHeader"
+import ErrorState from "@/components/ErrorState"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -116,7 +117,11 @@ export default function PrecedentsPage() {
             </div>
           )}
 
-          {searchQuery && !searchResults.isLoading && searchResults.data && (
+          {searchQuery && searchResults.isError && (
+            <ErrorState onRetry={() => searchResults.refetch()} />
+          )}
+
+          {searchQuery && !searchResults.isLoading && !searchResults.isError && searchResults.data && (
             <>
               <p className="text-sm text-muted mb-4">
                 {searchResults.data.total} result{searchResults.data.total !== 1 ? "s" : ""} for &ldquo;{searchQuery}&rdquo;
@@ -189,7 +194,11 @@ export default function PrecedentsPage() {
             </div>
           )}
 
-          {!savedPrecedents.isLoading && (!savedPrecedents.data || savedPrecedents.data.length === 0) && (
+          {savedPrecedents.isError && (
+            <ErrorState onRetry={() => savedPrecedents.refetch()} />
+          )}
+
+          {!savedPrecedents.isLoading && !savedPrecedents.isError && (!savedPrecedents.data || savedPrecedents.data.length === 0) && (
             <div className="text-center py-16 text-muted">
               <BookOpen className="h-12 w-12 mx-auto mb-4 opacity-20" />
               <p className="text-sm">No saved precedents yet.</p>
@@ -197,7 +206,7 @@ export default function PrecedentsPage() {
             </div>
           )}
 
-          {savedPrecedents.data && savedPrecedents.data.length > 0 && (
+          {!savedPrecedents.isError && savedPrecedents.data && savedPrecedents.data.length > 0 && (
             <div className="space-y-3">
               {savedPrecedents.data.map((p) => (
                 <div

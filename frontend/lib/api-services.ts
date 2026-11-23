@@ -149,23 +149,8 @@ export interface RawIssueItem {
 
 export interface AskResponse {
   answer: string | null
-  sources: {
-    chunk_id: string
-    page_num: string
-    section_name: string
-    relevance_score: number
-    content: string
-    document_id: string
-    document_name: string
-    source_type?: "document" | "case_law"
-    url?: string
-    court_level?: string
-    jurisdiction_code?: string
-    authority_score?: number
-    binding_authority?: boolean
-    effective_date?: string | null
-    document_status?: string
-  }[]
+  sources: import("./types").AskSourceItem[]
+  conversation_id?: string
   citations: {
     location: string
     citation_type: string
@@ -178,7 +163,7 @@ export interface AskResponse {
   query: string
   model: string
   tokens_used: number
-  confidence: {
+  confidence?: {
     level: string
     score: number
     factors: {
@@ -289,6 +274,9 @@ export interface DocumentResponse {
   document_type: string | null
   jurisdiction: string | null
   created_at: string
+  ingestion_status?: string
+  error_detail?: string | null
+  warnings?: { code: string; page?: number }[]
 }
 
 export interface UploadDocumentResponse {
@@ -334,6 +322,16 @@ export async function fetchMatterChunks(
 export function getMatterDocumentDownloadUrl(matterId: string, documentId: string): string {
   const baseUrl = api.defaults.baseURL || ""
   return `${baseUrl}/matters/${matterId}/documents/${documentId}/download`
+}
+
+export function getMatterDocumentPreviewUrl(matterId: string, documentId: string): string {
+  const baseUrl = api.defaults.baseURL || ""
+  return `${baseUrl}/matters/${matterId}/documents/${documentId}/preview`
+}
+
+export async function retryMatterDocument(matterId: string, documentId: string): Promise<DocumentResponse> {
+  const { data } = await api.post<DocumentResponse>(`/matters/${matterId}/documents/${documentId}/retry`)
+  return data
 }
 
 // ============================================

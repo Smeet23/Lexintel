@@ -55,7 +55,7 @@ export default function MultiStageProgress({
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-semibold text-amber-900">
-            {isError ? "Processing Failed" : isReady ? "Processing Complete" : progress.message}
+            {progress.message}
           </p>
           {progress.detail && !isReady && (
             <p className="text-xs text-amber-700 mt-0.5">

@@ -1,56 +1,60 @@
-# Multi-stage build
-FROM python:3.11-slim as builder
+FROM ghcr.io/astral-sh/uv:0.9.17 AS uv
 
-WORKDIR /tmp
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    postgresql-client \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements
-COPY requirements.txt .
-
-# Install Python dependencies
-RUN pip install --user --no-cache-dir -r requirements.txt
-
-# Final stage
-FROM python:3.11-slim
-
+FROM python:3.12-slim-bookworm AS base
+COPY --from=uv /uv /usr/local/bin/uv
+ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 UV_LINK_MODE=copy UV_HTTP_TIMEOUT=180
 WORKDIR /app
 
-# Install runtime dependencies only
-RUN apt-get update && apt-get install -y \
-    postgresql-client \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+FROM base AS api
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --locked --no-dev
+RUN useradd --create-home --uid 10001 lexintel && install -d -o lexintel -g lexintel /var/lib/lexintel/files
+COPY lexintel_ingest ./lexintel_ingest
+USER lexintel
+CMD ["uvicorn", "lexintel_ingest.api:app", "--host", "0.0.0.0", "--port", "8000"]
 
-# Create non-root user for security
-RUN useradd -m -u 1000 appuser && \
-    mkdir -p /app /tmp/lexintel_storage && \
-    chown -R appuser:appuser /app /tmp/lexintel_storage
+FROM base AS parser-tools
+RUN <<'INSTALL'
+set -eu
+sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources
+apt-get update
+set -- libreoffice-writer tesseract-ocr tesseract-ocr-eng tesseract-ocr-hin fonts-liberation fonts-dejavu-core
+apt-get --print-uris --yes --no-install-recommends install "$@" > /tmp/packages
+python - <<'PYTHON'
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+import shlex
+import shutil
+import urllib.request
 
-# Copy Python dependencies from builder
-COPY --from=builder /root/.local /home/appuser/.local
+entries = [shlex.split(line) for line in Path("/tmp/packages").read_text().splitlines() if line.startswith("'")]
 
-# Set PATH
-ENV PATH=/home/appuser/.local/bin:$PATH
-ENV PYTHONUNBUFFERED=1
+def download(entry):
+    url, filename, *_ = entry
+    destination = Path("/var/cache/apt/archives") / filename
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(url, timeout=60) as source, destination.open("wb") as output:
+                shutil.copyfileobj(source, output)
+            return
+        except OSError:
+            destination.unlink(missing_ok=True)
+            if attempt == 2:
+                raise
 
-# Copy application code (keeping backend folder structure)
-COPY --chown=appuser:appuser . /app
+with ThreadPoolExecutor(max_workers=12) as executor:
+    list(executor.map(download, entries))
+PYTHON
+apt-get install -y --no-download --no-install-recommends "$@"
+rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*.deb /tmp/packages
+INSTALL
 
-# Switch to non-root user
-USER appuser
-
-# Health check
-HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
-
-# Set PYTHONPATH for module imports
-ENV PYTHONPATH=/app
-
-# Run migrations and start app (run alembic from /app since alembic.ini uses backend/alembic path)
-CMD ["sh", "-c", "cd /app && python -m alembic -c backend/alembic.ini upgrade head && uvicorn backend.main:app --host 0.0.0.0 --port 8000"]
+FROM parser-tools AS worker
+ENV HF_HUB_DISABLE_XET=1 HF_HUB_DISABLE_TELEMETRY=1 TOKENIZERS_PARALLELISM=false OMP_NUM_THREADS=2
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --locked --no-dev --group parser
+RUN useradd --create-home --uid 10001 lexintel \
+    && install -d -o lexintel -g lexintel /var/lib/lexintel/files /home/lexintel/.cache/huggingface
+COPY lexintel_ingest ./lexintel_ingest
+USER lexintel
+CMD ["python", "-m", "lexintel_ingest.worker"]

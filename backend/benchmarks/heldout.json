@@ -1,0 +1,284 @@
+{
+  "documents": {
+    "ram_kumar": {
+      "name": "ram-kumar.pdf",
+      "sha256": "ba367b7ac20f4f4b926f69818eaebebab01b992d87ce582d1146de281874f02c",
+      "url": "https://api.sci.gov.in/supremecourt/2024/25762/25762_2024_5_1502_59288_Judgement_10-Feb-2025.pdf"
+    },
+    "chellammal": {
+      "name": "2025-insc-540.pdf",
+      "sha256": "eef44a9b16f8832ed32371390d8be2f9afdeac41c8e6185fd677d5895f87e4c7",
+      "url": "https://api.sci.gov.in/supremecourt/2019/45661/45661_2019_14_1501_61058_Judgement_22-Apr-2025.pdf"
+    },
+    "cold_storage": {
+      "name": "cold-storage-agreement.pdf",
+      "sha256": "9c852afc68819ae5cfac23bf19c85f8bf06ca6a4ebd9d859e5cebdb6ab626d31",
+      "path": "backend/benchmarks/fixtures/heldout/cold-storage-agreement.pdf"
+    },
+    "data_processing": {
+      "name": "data-processing-agreement.txt",
+      "sha256": "b8463f46c913531a41fed935c2a2f9eb4942f6b7cb310cd69511c199e3e4e2e4",
+      "path": "backend/benchmarks/fixtures/heldout/data-processing-agreement.txt"
+    },
+    "riverside": {
+      "name": "riverside-complaint.txt",
+      "sha256": "56c0e93fe19ae99412b8a079dbdc32f844940126dbdf40926c7aeb6e949c989a",
+      "path": "backend/benchmarks/fixtures/heldout/riverside-complaint.txt"
+    },
+    "tideline": {
+      "name": "tideline-answer.txt",
+      "sha256": "b45816aea4c60bd277e7667f2021d462311e4a175494460d041d0632d201a4bb",
+      "path": "backend/benchmarks/fixtures/heldout/tideline-answer.txt"
+    }
+  },
+  "questions": [
+    {
+      "id": "R1",
+      "document": "ram_kumar",
+      "question": "What happened to the criminal prosecution at the end of Ram Kumar's Supreme Court appeal?",
+      "location": "¶30, p. 21",
+      "page": 21,
+      "anchor": "are hereby quashed",
+      "context": "CC No. 1771 of 2022"
+    },
+    {
+      "id": "R2",
+      "document": "ram_kumar",
+      "question": "What shortage did the complainant's lawyer say made out a case against the institute's director?",
+      "location": "¶10, p. 7",
+      "page": 7,
+      "anchor": "PPE kits, masks and sanitizers"
+    },
+    {
+      "id": "R3",
+      "document": "ram_kumar",
+      "question": "In Ram Kumar, which IPC provision was dropped between the initial police report and the formal criminal charges?",
+      "location": "¶13, p. 8",
+      "page": 8,
+      "anchor": "section 354 of IPC, which was incorporated in the FIR, was deleted"
+    },
+    {
+      "id": "R4",
+      "document": "ram_kumar",
+      "question": "What precedent did the court cite in Ram Kumar for the threshold test when asked to throw out a charge sheet?",
+      "location": "¶14, p. 8",
+      "page": 8,
+      "anchor": "State of Haryana v. Bhajan Lal"
+    },
+    {
+      "id": "R5",
+      "document": "ram_kumar",
+      "question": "What outcome did the State of Telangana ask the Supreme Court for in Ram Kumar?",
+      "location": "¶11, p. 7",
+      "page": 7,
+      "anchor": "also adopted the submissions of the complainant’s counsel and prayed for dismissal"
+    },
+    {
+      "id": "C1",
+      "document": "chellammal",
+      "question": "In Chellammal, which ruling was left standing and what question did the Supreme Court send back to the High Court?",
+      "location": "¶31, p. 14",
+      "page": 14,
+      "anchor": "remit the matter to the High Court",
+      "context": "maintaining the conviction"
+    },
+    {
+      "id": "C2",
+      "document": "chellammal",
+      "question": "What safeguard against having to report to custody did the Chellammal appellants keep while the High Court reconsidered the case?",
+      "location": "¶32, p. 14",
+      "page": 14,
+      "anchor": "exemption from surrendering will continue"
+    },
+    {
+      "id": "C3",
+      "document": "chellammal",
+      "question": "What year did counsel say the Probation Act came into force in Tamil Nadu?",
+      "location": "¶19, p. 8",
+      "page": 8,
+      "anchor": "State of Tamil Nadu in the year 1964"
+    },
+    {
+      "id": "C4",
+      "document": "chellammal",
+      "question": "How did the Madras High Court change the second appellant's prison term?",
+      "location": "¶3, p. 2",
+      "page": 2,
+      "anchor": "was reduced to a year’s rigorous imprisonment"
+    },
+    {
+      "id": "C5",
+      "document": "chellammal",
+      "question": "What did the deceased say in her declaration about requests for dowry?",
+      "location": "¶6, p. 2",
+      "page": 2,
+      "anchor": "the appellants never demanded dowry"
+    },
+    {
+      "id": "S1",
+      "document": "cold_storage",
+      "question": "What's the charge if a shipment needs to go out outside normal hours at North Inlet?",
+      "location": "Schedule B, After-hours dispatch row, p. 1",
+      "page": 1,
+      "table": 1,
+      "row": 2,
+      "anchor": "USD 145 per shipment"
+    },
+    {
+      "id": "S2",
+      "document": "cold_storage",
+      "question": "How much is a no-show pickup charged under the cold storage deal?",
+      "location": "Schedule B, Missed collection row, p. 1",
+      "page": 1,
+      "table": 1,
+      "row": 3,
+      "anchor": "USD 60 per appointment"
+    },
+    {
+      "id": "S3",
+      "document": "cold_storage",
+      "question": "How quickly must the storage operator call Beacon after an alarm for excessive heat?",
+      "location": "§2.1, p. 1",
+      "page": 1,
+      "anchor": "within 35 minutes"
+    },
+    {
+      "id": "S4",
+      "document": "cold_storage",
+      "question": "How long can the operator wait before transferring affected inventory to backup storage?",
+      "location": "§2.2, p. 1",
+      "page": 1,
+      "anchor": "within two hours"
+    },
+    {
+      "id": "S5",
+      "document": "cold_storage",
+      "question": "Under the cold storage deal, how long does a party get to fix a serious breach before the other side can end the contract?",
+      "location": "§3.1, p. 1",
+      "page": 1,
+      "anchor": "fifteen calendar days"
+    },
+    {
+      "id": "D1",
+      "document": "data_processing",
+      "question": "After Slate Harbor verifies that data was exposed, how soon must it tell Green Quay?",
+      "location": "§2.1, line 10",
+      "page": 1,
+      "anchor": "within eighteen hours"
+    },
+    {
+      "id": "D2",
+      "document": "data_processing",
+      "question": "Can Slate Harbor use appointment data to improve its in-house AI predictions?",
+      "location": "§1.2, line 7",
+      "page": 1,
+      "anchor": "train its own prediction models"
+    },
+    {
+      "id": "D3",
+      "document": "data_processing",
+      "question": "How long does Green Quay have to challenge a proposed downstream data vendor?",
+      "location": "§3.2, line 16",
+      "page": 1,
+      "anchor": "within ten business days"
+    },
+    {
+      "id": "D4",
+      "document": "data_processing",
+      "question": "When must live copies be wiped once Green Quay has signed off on the handover?",
+      "location": "§4.2, line 20",
+      "page": 1,
+      "anchor": "erase all production copies within 45 calendar days"
+    },
+    {
+      "id": "D5",
+      "document": "data_processing",
+      "question": "How long can Slate Harbor retain the remaining backup copies after Green Quay accepts the export?",
+      "location": "§4.3, line 21",
+      "page": 1,
+      "anchor": "never exceed 90 days"
+    },
+    {
+      "id": "P1-H",
+      "document": "riverside",
+      "question": "According to the supplier's complaint, how many probes were ordered and what was the total price?",
+      "location": "¶3, line 16",
+      "page": 1,
+      "anchor": "48 conductivity probes",
+      "context": "$96,000"
+    },
+    {
+      "id": "P2-H",
+      "document": "riverside",
+      "question": "What reason does Riverside's complaint attribute to Tideline for holding back payment?",
+      "location": "¶6, line 19",
+      "page": 1,
+      "anchor": "claimed the calibration certificates were absent"
+    },
+    {
+      "id": "P3-H",
+      "document": "riverside",
+      "question": "What surcharge does Riverside request on the unpaid principal?",
+      "location": "¶10, line 27",
+      "page": 1,
+      "anchor": "1.25% per month"
+    },
+    {
+      "id": "P4-H",
+      "document": "riverside",
+      "question": "Why does Riverside contend the port shutdown didn't get Tideline off the hook for the bill?",
+      "location": "¶9, line 24",
+      "page": 1,
+      "anchor": "before the closure",
+      "context": "had already been received"
+    },
+    {
+      "id": "P5-H",
+      "document": "riverside",
+      "question": "What evidence does the plaintiff want the court to make Tideline keep?",
+      "location": "¶11, line 28",
+      "page": 1,
+      "anchor": "receiving logs and warehouse camera records"
+    },
+    {
+      "id": "T1",
+      "document": "tideline",
+      "question": "How many units does Tideline say flunked the calibration check on site?",
+      "location": "¶3, line 14",
+      "page": 1,
+      "anchor": "six probes failed the on-site calibration check"
+    },
+    {
+      "id": "T2",
+      "document": "tideline",
+      "question": "In its own answer, what does Tideline say actually led it to withhold payment?",
+      "location": "¶4, line 15",
+      "page": 1,
+      "anchor": "did not meet the salinity tolerance"
+    },
+    {
+      "id": "T3",
+      "document": "tideline",
+      "question": "What day does Tideline claim it notified Riverside that it was rejecting the probes?",
+      "location": "¶5, line 16",
+      "page": 1,
+      "anchor": "May 19, 2026"
+    },
+    {
+      "id": "T4",
+      "document": "tideline",
+      "question": "What condition does the buyer say had to be met before the outstanding balance fell due?",
+      "location": "¶7, line 20",
+      "page": 1,
+      "anchor": "final acceptance after a seven-day field trial"
+    },
+    {
+      "id": "T5",
+      "document": "tideline",
+      "question": "How much does the buyer seek to recover for purchasing replacements?",
+      "location": "¶8, line 21",
+      "page": 1,
+      "anchor": "$8,400 in cover costs"
+    }
+  ]
+}
