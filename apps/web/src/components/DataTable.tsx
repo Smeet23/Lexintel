@@ -1,18 +1,18 @@
-import React from "react"
-import { cn } from "@/lib/utils"
+import React from "react";
+import { cn } from "@/lib/utils";
 
 interface Column {
-  key: string
-  header: string
-  className?: string
-  render?: (item: any) => React.ReactNode
+  key: string;
+  header: string;
+  className?: string;
+  render?: (item: any) => React.ReactNode;
 }
 
 interface DataTableProps {
-  columns: Column[]
-  data: any[]
-  onRowClick?: (item: any) => void
-  emptyMessage?: string
+  columns: Column[];
+  data: any[];
+  onRowClick?: (item: any) => void;
+  emptyMessage?: string;
 }
 
 export default function DataTable({
@@ -31,7 +31,7 @@ export default function DataTable({
                 key={col.key}
                 className={cn(
                   "py-3.5 px-5 text-[11px] font-medium uppercase tracking-[0.06em] text-muted bg-surface/30",
-                  col.className
+                  col.className,
                 )}
               >
                 {col.header}
@@ -56,11 +56,14 @@ export default function DataTable({
                 onClick={() => onRowClick?.(item)}
                 className={cn(
                   "border-b border-border last:border-0 transition-colors duration-150",
-                  onRowClick && "cursor-pointer hover:bg-surface/50"
+                  onRowClick && "cursor-pointer hover:bg-surface/50",
                 )}
               >
                 {columns.map((col) => (
-                  <td key={col.key} className={cn("py-4 px-5 text-sm", col.className)}>
+                  <td
+                    key={col.key}
+                    className={cn("py-4 px-5 text-sm", col.className)}
+                  >
                     {col.render
                       ? col.render(item)
                       : (item[col.key] as React.ReactNode)}
@@ -72,5 +75,5 @@ export default function DataTable({
         </tbody>
       </table>
     </div>
-  )
+  );
 }

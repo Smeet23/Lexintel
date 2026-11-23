@@ -1,7 +1,7 @@
-"use client"
+"use client";
 
-import React, { useState, useMemo } from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import React, { useState, useMemo } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Search,
   X,
@@ -12,46 +12,46 @@ import {
   PanelLeftOpen,
   Plus,
   MessageSquarePlus,
-} from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
-import type { ConversationItem } from "@/lib/types"
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import type { ConversationItem } from "@/lib/types";
 
 // ─── Helpers ────────────────────────────────────────────────
 
 function formatRelativeShort(dateStr: string): string {
-  const date = new Date(dateStr)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffMin = Math.floor(diffMs / 60000)
-  const diffHr = Math.floor(diffMs / 3600000)
-  const diffDay = Math.floor(diffMs / 86400000)
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  const diffHr = Math.floor(diffMs / 3600000);
+  const diffDay = Math.floor(diffMs / 86400000);
 
-  if (diffMin < 1) return "now"
-  if (diffMin < 60) return `${diffMin}m`
-  if (diffHr < 24) return `${diffHr}h`
-  if (diffDay === 1) return "1d"
-  if (diffDay < 7) return `${diffDay}d`
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+  if (diffMin < 1) return "now";
+  if (diffMin < 60) return `${diffMin}m`;
+  if (diffHr < 24) return `${diffHr}h`;
+  if (diffDay === 1) return "1d";
+  if (diffDay < 7) return `${diffDay}d`;
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 function getDateGroup(dateStr: string): string {
-  const date = new Date(dateStr)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffDay = Math.floor(diffMs / 86400000)
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffDay = Math.floor(diffMs / 86400000);
 
-  if (diffDay === 0) return "Today"
-  if (diffDay === 1) return "Yesterday"
-  if (diffDay < 7) return "This Week"
-  if (diffDay < 30) return "This Month"
-  return date.toLocaleDateString("en-US", { month: "long", year: "numeric" })
+  if (diffDay === 0) return "Today";
+  if (diffDay === 1) return "Yesterday";
+  if (diffDay < 7) return "This Week";
+  if (diffDay < 30) return "This Month";
+  return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 }
 
 function highlightMatch(text: string, query: string): React.ReactNode {
-  if (!query.trim()) return text
-  const idx = text.toLowerCase().indexOf(query.toLowerCase())
-  if (idx === -1) return text
+  if (!query.trim()) return text;
+  const idx = text.toLowerCase().indexOf(query.toLowerCase());
+  if (idx === -1) return text;
   return (
     <>
       {text.slice(0, idx)}
@@ -60,22 +60,22 @@ function highlightMatch(text: string, query: string): React.ReactNode {
       </mark>
       {text.slice(idx + query.length)}
     </>
-  )
+  );
 }
 
 // ─── Props ───────────────────────────────────────────────────
 
 export interface ChatHistoryProps {
-  conversations: ConversationItem[]
-  activeConversationId: string | null
-  onSelect: (id: string) => void
-  onNewChat: () => void
-  onDelete: (id: string) => void
-  isDeleting?: boolean
-  isCollapsed: boolean
-  onToggleCollapse: () => void
-  searchQuery: string
-  onSearchChange: (q: string) => void
+  conversations: ConversationItem[];
+  activeConversationId: string | null;
+  onSelect: (id: string) => void;
+  onNewChat: () => void;
+  onDelete: (id: string) => void;
+  isDeleting?: boolean;
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
+  searchQuery: string;
+  onSearchChange: (q: string) => void;
 }
 
 // ─── Component ───────────────────────────────────────────────
@@ -92,32 +92,32 @@ export default function ChatHistory({
   searchQuery,
   onSearchChange,
 }: ChatHistoryProps) {
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
-    if (!searchQuery.trim()) return conversations
-    const q = searchQuery.toLowerCase()
+    if (!searchQuery.trim()) return conversations;
+    const q = searchQuery.toLowerCase();
     return conversations.filter(
       (conv) =>
         (conv.title ?? "").toLowerCase().includes(q) ||
-        (conv.last_message_preview ?? "").toLowerCase().includes(q)
-    )
-  }, [conversations, searchQuery])
+        (conv.last_message_preview ?? "").toLowerCase().includes(q),
+    );
+  }, [conversations, searchQuery]);
 
   const grouped = useMemo(() => {
-    const groups: { label: string; items: ConversationItem[] }[] = []
-    let currentLabel = ""
+    const groups: { label: string; items: ConversationItem[] }[] = [];
+    let currentLabel = "";
     for (const conv of filtered) {
-      const label = getDateGroup(conv.updated_at)
+      const label = getDateGroup(conv.updated_at);
       if (label !== currentLabel) {
-        currentLabel = label
-        groups.push({ label, items: [conv] })
+        currentLabel = label;
+        groups.push({ label, items: [conv] });
       } else {
-        groups[groups.length - 1].items.push(conv)
+        groups[groups.length - 1].items.push(conv);
       }
     }
-    return groups
-  }, [filtered])
+    return groups;
+  }, [filtered]);
 
   // ── Collapsed state ──────────────────────────────────────────
   if (isCollapsed) {
@@ -138,7 +138,7 @@ export default function ChatHistory({
           </span>
         )}
       </div>
-    )
+    );
   }
 
   return (
@@ -147,7 +147,9 @@ export default function ChatHistory({
       <div className="flex items-center justify-between px-3 py-2.5 border-b border-border shrink-0">
         <div className="flex items-center gap-1.5">
           <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="text-[12px] font-semibold text-foreground">Chats</span>
+          <span className="text-[12px] font-semibold text-foreground">
+            Chats
+          </span>
           {conversations.length > 0 && (
             <span className="text-[10px] text-muted-foreground bg-white rounded-full px-1.5 py-0.5 border border-border font-medium">
               {conversations.length}
@@ -215,7 +217,9 @@ export default function ChatHistory({
         {conversations.length === 0 && (
           <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
             <MessageSquare className="h-8 w-8 text-muted-foreground/20 mb-2" />
-            <p className="text-[11px] text-muted-foreground">No conversations yet</p>
+            <p className="text-[11px] text-muted-foreground">
+              No conversations yet
+            </p>
             <p className="text-[10px] text-muted-foreground/60 mt-0.5">
               Click &quot;New Chat&quot; to start one
             </p>
@@ -225,7 +229,9 @@ export default function ChatHistory({
         {conversations.length > 0 && filtered.length === 0 && (
           <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
             <Search className="h-6 w-6 text-muted-foreground/20 mb-2" />
-            <p className="text-[11px] text-muted-foreground">No matches found</p>
+            <p className="text-[11px] text-muted-foreground">
+              No matches found
+            </p>
           </div>
         )}
 
@@ -243,9 +249,9 @@ export default function ChatHistory({
                   ? conv.last_message_preview.length > 45
                     ? conv.last_message_preview.slice(0, 45) + "..."
                     : conv.last_message_preview
-                  : "Untitled conversation")
+                  : "Untitled conversation");
 
-              const isActive = activeConversationId === conv.id
+              const isActive = activeConversationId === conv.id;
 
               return (
                 <div
@@ -254,11 +260,11 @@ export default function ChatHistory({
                     "group/item mx-1.5 mb-0.5 rounded-lg px-2.5 py-2 cursor-pointer transition-colors relative",
                     isActive
                       ? "bg-white border border-border shadow-sm"
-                      : "hover:bg-white/70"
+                      : "hover:bg-white/70",
                   )}
                   onClick={() => {
-                    setDeleteConfirmId(null)
-                    onSelect(conv.id)
+                    setDeleteConfirmId(null);
+                    onSelect(conv.id);
                   }}
                 >
                   <p className="text-[12px] font-medium text-foreground leading-snug line-clamp-2 pr-1">
@@ -266,7 +272,8 @@ export default function ChatHistory({
                   </p>
                   <div className="flex items-center justify-between mt-1">
                     <span className="text-[10px] text-muted-foreground/60">
-                      {conv.message_count > 0 && `${conv.message_count} msg${conv.message_count !== 1 ? "s" : ""} · `}
+                      {conv.message_count > 0 &&
+                        `${conv.message_count} msg${conv.message_count !== 1 ? "s" : ""} · `}
                       {formatRelativeShort(conv.updated_at)}
                     </span>
 
@@ -276,8 +283,8 @@ export default function ChatHistory({
                         type="button"
                         className="opacity-0 group-hover/item:opacity-100 transition-opacity p-0.5 rounded hover:bg-red-50 text-muted-foreground/40 hover:text-red-500"
                         onClick={(e) => {
-                          e.stopPropagation()
-                          setDeleteConfirmId(conv.id)
+                          e.stopPropagation();
+                          setDeleteConfirmId(conv.id);
                         }}
                         title="Delete conversation"
                       >
@@ -295,7 +302,9 @@ export default function ChatHistory({
                         className="flex items-center gap-1 mt-1.5"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <span className="text-[10px] text-red-600 flex-1">Delete?</span>
+                        <span className="text-[10px] text-red-600 flex-1">
+                          Delete?
+                        </span>
                         <Button
                           variant="ghost"
                           size="sm"
@@ -308,22 +317,26 @@ export default function ChatHistory({
                           size="sm"
                           className="h-5 text-[10px] px-1.5 bg-red-600 hover:bg-red-700 text-white"
                           onClick={() => {
-                            onDelete(conv.id)
-                            setDeleteConfirmId(null)
+                            onDelete(conv.id);
+                            setDeleteConfirmId(null);
                           }}
                           disabled={isDeleting}
                         >
-                          {isDeleting ? <Loader2 className="h-3 w-3 animate-spin" /> : "Yes"}
+                          {isDeleting ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            "Yes"
+                          )}
                         </Button>
                       </motion.div>
                     )}
                   </AnimatePresence>
                 </div>
-              )
+              );
             })}
           </div>
         ))}
       </div>
     </div>
-  )
+  );
 }
