@@ -40,6 +40,7 @@ import { cn, formatRelativeTime, formatDate } from "@/lib/utils"
 import { useMatter, useAskQuestion, useCancelMatterProcessing, useQueryHistory, useDeleteAllQueries, useDeleteQuery, useContractReview, useRunContractReview, useDrafts, useCreateDraft, useAuditLog, useConversations, useCreateConversation, useDeleteConversation } from "@/hooks/use-matters"
 import { useMatterProgress } from "@/hooks/use-progress"
 import type { QueryMessage, Citation, AuditLogEntry, AskSourceItem } from "@/lib/types"
+import { getMatterDocumentPreviewUrl } from "@/lib/api-services"
 import type { RawVerifiedCitation, RawVerifiedClaim, RawIssueItem } from "@/lib/api-services"
 
 export default function MatterWorkspacePage() {
@@ -92,12 +93,16 @@ export default function MatterWorkspacePage() {
         const citations: Citation[] = (item.citations || []).map((s) => ({
           documentName: s.document_name || matterName || "Document",
           pageNumber: parseInt(s.page_num) || 0,
+          pageLabel: s.page_label,
+          retrievalMethod: s.retrieval_method,
           section: s.section_name || "",
           excerpt: s.content?.slice(0, 200) || "",
           relevanceScore: s.relevance_score || 0,
           content: s.content ?? undefined,
           sourceType: (s.source_type as "document" | "case_law") || "document",
-          url: s.url || undefined,
+          url: s.retrieval_method
+            ? getMatterDocumentPreviewUrl(matterId, s.document_id) + (s.page_label ? `#page=${parseInt(s.page_num)}` : "")
+            : s.url,
           courtLevel: s.court_level,
           jurisdictionCode: s.jurisdiction_code,
           authorityScore: s.authority_score,
@@ -162,7 +167,7 @@ export default function MatterWorkspacePage() {
       }
       return restored
     },
-    [matterName]
+    [matterName, matterId]
   )
 
   // When a conversation is selected, load its messages from the backend
@@ -176,9 +181,11 @@ export default function MatterWorkspacePage() {
       try {
         const { getConversation } = await import("@/lib/api-services")
         const data = await getConversation(matterId, conversationId)
-        setMessages(buildMessages(data.queries ?? []))
+        if (loadedConversationRef.current === conversationId) {
+          setMessages(buildMessages(data.queries ?? []))
+        }
       } catch {
-        setMessages([])
+        if (loadedConversationRef.current === conversationId) setMessages([])
       }
     },
     [matterId, buildMessages]
@@ -197,7 +204,7 @@ export default function MatterWorkspacePage() {
   }, [createConversationMutation])
 
   const handleSendMessage = useCallback(
-    (content: string, includeLegalResearch: boolean) => {
+    (content: string) => {
       const userMsg: QueryMessage = {
         id: `msg-${Date.now()}`,
         role: "user",
@@ -207,9 +214,10 @@ export default function MatterWorkspacePage() {
       setMessages((prev) => [...prev, userMsg])
 
       askQuestion.mutate(
-        { question: content, includeLegalResearch, conversationId: activeConversationId ?? undefined },
+        { question: content, conversationId: activeConversationId ?? undefined },
         {
           onSuccess: (result) => {
+            if (loadedConversationRef.current !== activeConversationId) return
             if (result.answer) {
               const citations: Citation[] = (result.sources || []).map((s, idx) => {
                 // Cross-link verification data from citation_verification to each source
@@ -222,12 +230,16 @@ export default function MatterWorkspacePage() {
                 return {
                   documentName: s.document_name || matter?.name || "Document",
                   pageNumber: parseInt(s.page_num) || 0,
+                  pageLabel: s.page_label,
+                  retrievalMethod: s.retrieval_method,
                   section: s.section_name || "",
                   excerpt: s.content?.slice(0, 200) || "",
                   relevanceScore: s.relevance_score || 0,
                   content: s.content ?? undefined,
                   sourceType: (s.source_type as "document" | "case_law") || "document",
-                  url: s.url || undefined,
+                  url: s.retrieval_method
+                    ? getMatterDocumentPreviewUrl(matterId, s.document_id) + (s.page_label ? `#page=${parseInt(s.page_num)}` : "")
+                    : s.url,
                   courtLevel: s.court_level,
                   jurisdictionCode: s.jurisdiction_code,
                   authorityScore: s.authority_score,
@@ -254,9 +266,7 @@ export default function MatterWorkspacePage() {
               })
 
               const confidenceScore =
-                typeof result.confidence === "object"
-                  ? Math.round((result.confidence.score || 0) * 100)
-                  : 0
+                result.confidence ? Math.round(result.confidence.score * 100) : undefined
 
               const aiMsg: QueryMessage = {
                 id: `msg-${Date.now() + 1}`,
@@ -337,6 +347,10 @@ export default function MatterWorkspacePage() {
                   .concat([aiMsg])
               )
               setSelectedCitations(citations)
+              if (result.conversation_id && !activeConversationId) {
+                setActiveConversationId(result.conversation_id)
+                loadedConversationRef.current = result.conversation_id
+              }
             } else {
               const errorMsg: QueryMessage = {
                 id: `msg-${Date.now() + 1}`,
@@ -349,15 +363,13 @@ export default function MatterWorkspacePage() {
               setMessages((prev) => [...prev, errorMsg])
             }
           },
-          onError: (error: Error & { response?: { data?: { detail?: string } } }) => {
-            const detail =
-              error?.response?.data?.detail ||
-              error?.message ||
-              "An error occurred while processing your question. Please try again."
+          onError: (error: Error & { response?: { data?: { detail?: unknown } } }) => {
+            if (loadedConversationRef.current !== activeConversationId) return
+            const detail = error.response?.data?.detail
             const errorMsg: QueryMessage = {
               id: `msg-${Date.now() + 1}`,
               role: "assistant",
-              content: detail,
+              content: typeof detail === "string" ? detail : error.message || "Could not search this matter.",
               timestamp: new Date().toISOString(),
             }
             setMessages((prev) => [...prev, errorMsg])
@@ -365,7 +377,7 @@ export default function MatterWorkspacePage() {
         }
       )
     },
-    [askQuestion, matter, activeConversationId]
+    [askQuestion, matter, matterId, activeConversationId]
   )
 
   const handleClearHistory = useCallback(() => {
@@ -566,11 +578,10 @@ export default function MatterWorkspacePage() {
                   {chunkPreview?.documentName}
                   {chunkPreview != null && (
                     <span className="text-muted-foreground font-normal ml-2">
-                      Page {chunkPreview.pageNumber}
+                      {chunkPreview.pageLabel ? `Page ${chunkPreview.pageLabel}` : (
+                        chunkPreview.retrievalMethod ? undefined : `Page ${chunkPreview.pageNumber}`
+                      )}
                       {chunkPreview.section && ` · ${chunkPreview.section}`}
-                      <span className="ml-2 text-[11px] font-mono">
-                        {Math.round((chunkPreview.relevanceScore ?? 0) * 100)}% relevance
-                      </span>
                     </span>
                   )}
                 </DialogTitle>
@@ -578,6 +589,12 @@ export default function MatterWorkspacePage() {
               <div className="overflow-y-auto flex-1 pr-2 text-[13px] leading-relaxed text-foreground whitespace-pre-wrap border border-border rounded-lg p-4 bg-surface/50">
                 {chunkPreview?.content || chunkPreview?.excerpt || "No content."}
               </div>
+              {chunkPreview?.retrievalMethod && chunkPreview.url && (
+                <a href={chunkPreview.url} target="_blank" rel="noopener noreferrer"
+                  className="self-start text-sm font-medium text-primary underline">
+                  Open source document
+                </a>
+              )}
             </DialogContent>
           </Dialog>
         </TabsContent>

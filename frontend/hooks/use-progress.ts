@@ -40,6 +40,7 @@ export function useMatterProgress(matterId: string | undefined, isProcessing: bo
           // Refresh matter data to pick up new status
           queryClient.invalidateQueries({ queryKey: ["matters", matterId] })
           queryClient.invalidateQueries({ queryKey: ["matters", matterId, "documents"] })
+          queryClient.invalidateQueries({ queryKey: ["matters", matterId, "chunks"] })
           queryClient.invalidateQueries({ queryKey: ["matters"] })
         }
       } catch {

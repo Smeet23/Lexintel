@@ -30,12 +30,13 @@ export default function CitationPanel({ citations, className, onCitationClick }:
           <BookOpen className="h-4 w-4 text-muted" />
         </div>
         <p className="font-display text-[15px] text-foreground">No citations yet</p>
-        <p className="text-[12px] text-muted mt-1">Ask a question to see supporting authorities</p>
+        <p className="text-[12px] text-muted mt-1">Ask a question to see matching passages</p>
       </div>
     )
   }
 
   // Count verified citations
+  const evidenceResults = citations.every(c => Boolean(c.retrievalMethod))
   const verifiedCount = citations.filter(c => c.verification?.status === "verified").length
   const totalVerifiable = citations.filter(c => c.verification).length
 
@@ -43,12 +44,14 @@ export default function CitationPanel({ citations, className, onCitationClick }:
     <div className={cn("space-y-3", className)}>
       <div className="flex items-center justify-between">
         <h4 className="text-[12px] font-medium text-muted uppercase tracking-[0.06em]">
-          Supporting Authorities
+          {evidenceResults ? "Source Passages" : "Supporting Authorities"}
         </h4>
-        <Button variant="ghost" size="sm" className="h-6 text-[11px] text-muted">
-          <Download className="h-3 w-3 mr-1" />
-          Export
-        </Button>
+        {!evidenceResults && (
+          <Button variant="ghost" size="sm" className="h-6 text-[11px] text-muted">
+            <Download className="h-3 w-3 mr-1" />
+            Export
+          </Button>
+        )}
       </div>
 
       <div className="space-y-2">
@@ -121,9 +124,9 @@ export default function CitationPanel({ citations, className, onCitationClick }:
                       <span className="inline-flex items-center rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 border border-blue-200/60">
                         Case Law
                       </span>
-                    ) : (
+                    ) : (citation.pageLabel || !citation.retrievalMethod) && (
                       <span className="text-[11px] text-muted">
-                        Page {citation.pageNumber}
+                        Page {citation.pageLabel || citation.pageNumber}
                       </span>
                     )}
                     {citation.section && <span className="text-[11px] text-muted">&middot; {citation.section}</span>}
@@ -218,8 +221,7 @@ export default function CitationPanel({ citations, className, onCitationClick }:
                   )}
                 </div>
 
-                {/* Confidence score */}
-                <span className={cn(
+                {!citation.retrievalMethod && <span className={cn(
                   "shrink-0 font-mono text-[11px] font-medium px-1.5 py-0.5 rounded-md border",
                   (v?.confidence ?? citation.relevanceScore) >= 0.8
                     ? "bg-emerald-50 text-emerald-700 border-emerald-200/60"
@@ -230,7 +232,7 @@ export default function CitationPanel({ citations, className, onCitationClick }:
                         : "bg-surface text-muted border-border"
                 )}>
                   {Math.round((v?.confidence ?? citation.relevanceScore) * 100)}%
-                </span>
+                </span>}
               </div>
             </button>
           )
@@ -252,8 +254,9 @@ export default function CitationPanel({ citations, className, onCitationClick }:
               </span>
             </>
           )}
-          {" "}&middot;{" "}
-          Avg. relevance: {Math.round((citations.reduce((a, c) => a + c.relevanceScore, 0) / citations.length) * 100)}%
+          {!evidenceResults && (
+            <>{" "}&middot;{" "}Avg. relevance: {Math.round((citations.reduce((a, c) => a + c.relevanceScore, 0) / citations.length) * 100)}%</>
+          )}
         </p>
       </div>
     </div>

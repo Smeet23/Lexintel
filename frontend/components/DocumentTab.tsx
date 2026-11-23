@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useMemo, useRef } from "react"
+import React, { useEffect, useState, useMemo, useRef } from "react"
 import {
   FileText,
   Plus,
@@ -28,8 +28,8 @@ import {
   groupChunksByPage,
   uniqueSections,
 } from "@/components/DocumentViewer"
-import { useMatterDocuments, useMatterChunks, useUploadMatterDocument, useDeleteDocument } from "@/hooks/use-matters"
-import { getMatterDocumentDownloadUrl } from "@/lib/api-services"
+import { useMatterDocuments, useMatterChunks, useUploadMatterDocument, useDeleteDocument, useRetryMatterDocument } from "@/hooks/use-matters"
+import { getMatterDocumentDownloadUrl, getMatterDocumentPreviewUrl } from "@/lib/api-services"
 import type { DocumentResponse } from "@/lib/api-services"
 
 interface DocumentTabProps {
@@ -47,6 +47,12 @@ const STATUS_BADGE: Record<string, "active" | "processing" | "error" | "closed">
   processing: "processing",
   error: "error",
   cancelled: "closed",
+}
+
+const INGESTION_LABELS: Record<string, string> = {
+  awaiting_index: "Parsed",
+  ready_with_warnings: "Ready with warnings",
+  retrying: "Retrying",
 }
 
 export default function DocumentTab({ matterId }: DocumentTabProps) {
@@ -181,7 +187,8 @@ export default function DocumentTab({ matterId }: DocumentTabProps) {
                 </p>
                 <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                   <Badge variant={STATUS_BADGE[doc.status] || "closed"} className="text-[10px] px-1.5 py-0">
-                    {doc.status === "ready" ? "Ready" : doc.status === "processing" ? "Processing" : doc.status}
+                    {INGESTION_LABELS[doc.ingestion_status ?? ""] ??
+                      (doc.status === "ready" ? "Ready" : doc.status === "processing" ? "Processing" : doc.status)}
                   </Badge>
                   {doc.document_type && doc.document_type !== "other" && (
                     <span className="text-[10px] px-1.5 py-0 rounded bg-purple-50 text-purple-700 border border-purple-100">
@@ -283,12 +290,36 @@ interface DocumentChunkViewerProps {
 
 function DocumentChunkViewer({ matterId, document: doc }: DocumentChunkViewerProps) {
   const { data: chunks, isLoading, isError, refetch } = useMatterChunks(matterId, doc.id)
+  const retry = useRetryMatterDocument(matterId)
   const [activeSection, setActiveSection] = useState<string | null>(null)
+  const status = doc.ingestion_status ?? doc.status
+
+  useEffect(() => {
+    if (doc.status !== "processing") void refetch()
+  }, [doc.status, status, refetch])
 
   const pageGroups = useMemo(() => groupChunksByPage(chunks ?? []), [chunks])
   const sections = useMemo(() => uniqueSections(chunks ?? []), [chunks])
 
   const downloadUrl = getMatterDocumentDownloadUrl(matterId, doc.id)
+  const previewUrl = doc.file_type === "docx" && doc.chunk_count > 0
+    ? getMatterDocumentPreviewUrl(matterId, doc.id)
+    : null
+  const canRetry = status === "failed" || status === "awaiting_index" || status === "cancelled"
+  const notice = doc.error_detail ?? (doc.warnings?.length
+    ? "Processing reported warnings. Some passages or tables may be incomplete."
+    : null)
+  const statusPanel = (notice || canRetry) && (
+    <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-border bg-surface">
+      {notice && <p className="text-xs text-muted flex-1" role="status">{notice}</p>}
+      {canRetry && (
+        <Button size="sm" variant="outline" disabled={retry.isPending} onClick={() => retry.mutate(doc.id)}>
+          {retry.isPending ? "Retrying…" : "Retry processing"}
+        </Button>
+      )}
+      {retry.isError && <p className="text-xs" role="alert">Could not retry this document.</p>}
+    </div>
+  )
 
   function scrollToSection(sectionName: string) {
     setActiveSection(sectionName)
@@ -330,7 +361,7 @@ function DocumentChunkViewer({ matterId, document: doc }: DocumentChunkViewerPro
       <div className="flex-1 flex flex-col items-center justify-center gap-2 p-8">
         <Layers className="h-8 w-8 text-muted" />
         <p className="text-sm font-medium text-foreground">No chunks available</p>
-        <p className="text-xs text-muted">The document may still be processing.</p>
+        {statusPanel}
       </div>
     )
   }
@@ -346,16 +377,26 @@ function DocumentChunkViewer({ matterId, document: doc }: DocumentChunkViewerPro
             {chunks.length} chunks &middot; {pageGroups.length} pages
           </span>
         </div>
-        <a
-          href={downloadUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 text-xs text-muted hover:text-foreground transition-colors"
-        >
-          <Download className="h-3.5 w-3.5" />
-          {doc.file_type === "pdf" ? "View Original" : "Download"}
-        </a>
+        <div className="flex shrink-0 flex-wrap items-center gap-3">
+          {previewUrl && (
+            <a href={previewUrl} target="_blank" rel="noopener noreferrer"
+              className="text-xs text-muted hover:text-foreground transition-colors">
+              View PDF Preview
+            </a>
+          )}
+          <a
+            href={downloadUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-xs text-muted hover:text-foreground transition-colors"
+          >
+            <Download className="h-3.5 w-3.5" />
+            {doc.file_type === "pdf" ? "View Original" : "Download"}
+          </a>
+        </div>
       </div>
+
+      {statusPanel}
 
       {/* Document summary bar (if available) */}
       {doc.summary && (
