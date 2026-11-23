@@ -15,12 +15,12 @@ The pilot treats descriptive filenames and page headers as classification inputs
 
 ## Google v. Oracle results
 
-| Variant | Rank 1 | Top 5 | Top 20 | In candidate pool |
-| --- | ---: | ---: | ---: | ---: |
-| Baseline | 5/20 | 7/20 | 9/20 | 9/20 |
-| Filing metadata | 8/20 | 8/20 | 9/20 | 9/20 |
-| Filing and passage labels | 8/20 | 9/20 | 9/20 | 9/20 |
-| Scoped candidates | 9/20 | 14/20 | 15/20 | 16/20 |
+| Variant                   | Rank 1 | Top 5 | Top 20 | In candidate pool |
+| ------------------------- | -----: | ----: | -----: | ----------------: |
+| Baseline                  |   5/20 |  7/20 |   9/20 |              9/20 |
+| Filing metadata           |   8/20 |  8/20 |   9/20 |              9/20 |
+| Filing and passage labels |   8/20 |  9/20 |   9/20 |              9/20 |
+| Scoped candidates         |   9/20 | 14/20 |  15/20 |             16/20 |
 
 All 20 answers were present in the index. All four variants returned 100 of 100 valid page and offset references. This measures whether the reference resolves to its stored source span. The exact evidence ranks measure whether that span actually answers the question.
 
@@ -30,39 +30,39 @@ All 20 answers were present in the index. All four variants returned 100 of 100 
 
 On this local run, warm p95 was 2.22 seconds for the baseline and 2.97 seconds for scoped candidates, measured through reranking. The scoped prototype is close to the application’s three-second ranking request timeout even before network overhead.
 
-| ID | Baseline | Filing metadata | Filing and passage labels | Scoped candidates |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| O01 | – | – | – | 1 |
-| O02 | – | – | – | 3 |
-| O03 | – | – | – | – |
-| O04 | 16 | 7 | 3 | 3 |
-| O05 | 1 | 1 | 1 | 1 |
-| O06 | – | – | – | 2 |
-| O07 | 7 | 1 | 1 | 1 |
-| O08 | – | – | – | 1 |
-| O09 | – | – | – | 25 |
-| O10 | 4 | 1 | 1 | 1 |
-| O11 | – | – | – | – |
-| O12 | 1 | 1 | 1 | 1 |
-| O13 | – | – | – | 3 |
-| O14 | 1 | 1 | 1 | 1 |
-| O15 | 1 | 1 | 1 | 1 |
-| O16 | – | – | – | – |
-| O17 | – | – | – | 11 |
-| O18 | – | – | – | – |
-| O19 | 5 | 1 | 1 | 3 |
-| O20 | 1 | 1 | 1 | 1 |
+| ID  | Baseline | Filing metadata | Filing and passage labels | Scoped candidates |
+| --- | -------: | --------------: | ------------------------: | ----------------: |
+| O01 |        – |               – |                         – |                 1 |
+| O02 |        – |               – |                         – |                 3 |
+| O03 |        – |               – |                         – |                 – |
+| O04 |       16 |               7 |                         3 |                 3 |
+| O05 |        1 |               1 |                         1 |                 1 |
+| O06 |        – |               – |                         – |                 2 |
+| O07 |        7 |               1 |                         1 |                 1 |
+| O08 |        – |               – |                         – |                 1 |
+| O09 |        – |               – |                         – |                25 |
+| O10 |        4 |               1 |                         1 |                 1 |
+| O11 |        – |               – |                         – |                 – |
+| O12 |        1 |               1 |                         1 |                 1 |
+| O13 |        – |               – |                         – |                 3 |
+| O14 |        1 |               1 |                         1 |                 1 |
+| O15 |        1 |               1 |                         1 |                 1 |
+| O16 |        – |               – |                         – |                 – |
+| O17 |        – |               – |                         – |                11 |
+| O18 |        – |               – |                         – |                 – |
+| O19 |        5 |               1 |                         1 |                 3 |
+| O20 |        1 |               1 |                         1 |                 1 |
 
 A dash means the exact evidence was absent from the variant’s entire candidate pool.
 
 ## Regression on the earlier suite
 
-| Variant | Rank 1 | Top 5 | Top 20 |
-| --- | ---: | ---: | ---: |
-| Baseline | 16/30 | 26/30 | 30/30 |
-| Filing metadata | 16/30 | 26/30 | 30/30 |
-| Filing and passage labels | 17/30 | 26/30 | 30/30 |
-| Scoped candidates | 17/30 | 26/30 | 30/30 |
+| Variant                   | Rank 1 | Top 5 | Top 20 |
+| ------------------------- | -----: | ----: | -----: |
+| Baseline                  |  16/30 | 26/30 |  30/30 |
+| Filing metadata           |  16/30 | 26/30 |  30/30 |
+| Filing and passage labels |  17/30 | 26/30 |  30/30 |
+| Scoped candidates         |  17/30 | 26/30 |  30/30 |
 
 Chellammal C1 moved from rank 5 to rank 1. The passage containing the remand order received the disposition boost. The 16 backend tests also passed with a disposable PostgreSQL database.
 
@@ -73,9 +73,9 @@ Start the local Compose services with both benchmark matters imported and their 
 ```bash
 mkdir -p /tmp/lexintel-filing-benchmark
 docker compose run --rm --no-deps -T \
-  -v "$PWD/backend:/bench:ro" \
+  -v "$PWD/apps/api:/bench:ro" \
   -v /tmp/lexintel-filing-benchmark:/results \
-  -e PYTHONPATH=/bench -e HF_HUB_OFFLINE=1 ranking \
+  -e PYTHONPATH=/bench/src -e HF_HUB_OFFLINE=1 ranking \
   python /bench/benchmarks/filing_retrieval.py \
     --matter 525d5fcc-a847-44f4-a135-c91badf70dc3 \
     --suite /bench/benchmarks/oracle.json --output /results/oracle.json

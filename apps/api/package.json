@@ -1,0 +1,11 @@
+{
+  "name": "@lexintel/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "PYTHONPATH=src uv run --locked uvicorn lexintel_ingest.api:app --reload --host 127.0.0.1 --port 8000",
+    "worker": "PYTHONPATH=src uv run --locked python -m lexintel_ingest.worker",
+    "test": "PYTHONPATH=src uv run --locked python -m unittest discover -s tests -v",
+    "cli": "PYTHONPATH=src uv run --locked -m lexintel_ingest"
+  }
+}

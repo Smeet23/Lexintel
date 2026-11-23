@@ -2,14 +2,14 @@ FROM ghcr.io/astral-sh/uv:0.9.17 AS uv
 
 FROM python:3.12-slim-bookworm AS base
 COPY --from=uv /uv /usr/local/bin/uv
-ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 UV_LINK_MODE=copy UV_HTTP_TIMEOUT=180
+ENV PATH="/app/.venv/bin:$PATH" PYTHONPATH=/app/src PYTHONUNBUFFERED=1 UV_LINK_MODE=copy UV_HTTP_TIMEOUT=180
 WORKDIR /app
 
 FROM base AS api
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --locked --no-dev
 RUN useradd --create-home --uid 10001 lexintel && install -d -o lexintel -g lexintel /var/lib/lexintel/files
-COPY lexintel_ingest ./lexintel_ingest
+COPY src ./src
 USER lexintel
 CMD ["uvicorn", "lexintel_ingest.api:app", "--host", "0.0.0.0", "--port", "8000"]
 
@@ -55,6 +55,6 @@ COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --locked --no-dev --group parser
 RUN useradd --create-home --uid 10001 lexintel \
     && install -d -o lexintel -g lexintel /var/lib/lexintel/files /home/lexintel/.cache/huggingface
-COPY lexintel_ingest ./lexintel_ingest
+COPY src ./src
 USER lexintel
 CMD ["python", "-m", "lexintel_ingest.worker"]
