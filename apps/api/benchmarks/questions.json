@@ -3,7 +3,7 @@
     "kiran": {"name": "2025 INSC 1067 - Kiran judgment.pdf", "sha256": "30d7cdf2c46778b4fdf00b3ad9287049d8217dc467bc748815bcc09fc1b4957a", "url": "https://api.sci.gov.in/supremecourt/2025/26602/26602_2025_16_1501_63923_Judgement_01-Sep-2025.pdf"},
     "bhargava": {"name": "judgment.pdf", "sha256": "b872b7f9a12bb7d50d16deb8f7808cea3eed6ed7d113709a36b56f329d52339f", "url": "https://api.sci.gov.in/supremecourt/2019/6692/6692_2019_16_1501_61061_Judgement_22-Apr-2025.pdf"},
     "complaint": {"name": "complaint_patent_infringement.txt", "sha256": "263a4e38c067b41330024ae72347de6d44948a608a5c8242b849b543459b1d1e", "path": "test_cases/matter1_ip_dispute/complaint_patent_infringement.txt"},
-    "agreement": {"name": "agreement.pdf", "sha256": "899b2c5a6c399e6e8f6b9c9e33b9dcb3ed6fa1ca757ba5f3592431621a9234db", "path": "backend/benchmarks/fixtures/services-agreement.pdf"}
+    "agreement": {"name": "agreement.pdf", "sha256": "899b2c5a6c399e6e8f6b9c9e33b9dcb3ed6fa1ca757ba5f3592431621a9234db", "path": "apps/api/benchmarks/fixtures/services-agreement.pdf"}
   },
   "questions": [
     {"id":"K1","document":"kiran","question":"In Kiran, what did the Supreme Court ultimately do to the respondent’s pre-arrest protection?","location":"¶10, p. 23","page":23,"anchor":"stands cancelled"},

@@ -56,8 +56,8 @@ A dash means the labeled evidence was absent from that setup’s top 20. Bold ra
 Ingest the six documents in the manifest and use a separate PostgreSQL database as in the [development benchmark](README.md). Pass the pinned local model directories from that benchmark.
 
 ```bash
-PYTHONPATH=backend backend/.venv/bin/python backend/benchmarks/retrieval.py \
+PYTHONPATH=apps/api/src apps/api/.venv/bin/python apps/api/benchmarks/retrieval.py \
   --api http://127.0.0.1:8000 --dsn "$LEXINTEL_BENCH_DSN" \
-  --suite backend/benchmarks/heldout.json --output /tmp/lexintel-heldout-results.json \
+  --suite apps/api/benchmarks/heldout.json --output /tmp/lexintel-heldout-results.json \
   --e5 "$LEXINTEL_E5_SNAPSHOT" --reranker "$LEXINTEL_RERANKER_SNAPSHOT"
 ```

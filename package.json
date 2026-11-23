@@ -1,0 +1,21 @@
+{
+  "name": "lexintel",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@12.23.0",
+  "engines": {
+    "node": ">=18.17.0"
+  },
+  "scripts": {
+    "dev": "turbo run dev --filter=@lexintel/web",
+    "dev:api": "turbo run dev --filter=@lexintel/api",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "check-types": "turbo run check-types",
+    "test": "turbo run test",
+    "cli": "pnpm --filter @lexintel/api run cli"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.10"
+  }
+}

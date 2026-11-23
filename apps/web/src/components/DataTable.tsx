@@ -1,8 +1,6 @@
 import React from "react"
 import { cn } from "@/lib/utils"
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 interface Column {
   key: string
   header: string

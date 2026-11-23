@@ -638,7 +638,7 @@ export default function MatterWorkspacePage() {
                 {!contractReview.isLoading && !contractReview.isError && !contractReview.data?.exists && !runContractReview.isPending && (
                   <div className="text-center py-12 text-muted">
                     <Shield className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                    <p className="text-sm">No contract review yet. Click "Run Analysis" to analyze this document for risks.</p>
+                    <p className="text-sm">No contract review yet. Click &quot;Run Analysis&quot; to analyze this document for risks.</p>
                   </div>
                 )}
 

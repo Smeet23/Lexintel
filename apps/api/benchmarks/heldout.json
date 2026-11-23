@@ -13,22 +13,22 @@
     "cold_storage": {
       "name": "cold-storage-agreement.pdf",
       "sha256": "9c852afc68819ae5cfac23bf19c85f8bf06ca6a4ebd9d859e5cebdb6ab626d31",
-      "path": "backend/benchmarks/fixtures/heldout/cold-storage-agreement.pdf"
+      "path": "apps/api/benchmarks/fixtures/heldout/cold-storage-agreement.pdf"
     },
     "data_processing": {
       "name": "data-processing-agreement.txt",
       "sha256": "b8463f46c913531a41fed935c2a2f9eb4942f6b7cb310cd69511c199e3e4e2e4",
-      "path": "backend/benchmarks/fixtures/heldout/data-processing-agreement.txt"
+      "path": "apps/api/benchmarks/fixtures/heldout/data-processing-agreement.txt"
     },
     "riverside": {
       "name": "riverside-complaint.txt",
       "sha256": "56c0e93fe19ae99412b8a079dbdc32f844940126dbdf40926c7aeb6e949c989a",
-      "path": "backend/benchmarks/fixtures/heldout/riverside-complaint.txt"
+      "path": "apps/api/benchmarks/fixtures/heldout/riverside-complaint.txt"
     },
     "tideline": {
       "name": "tideline-answer.txt",
       "sha256": "b45816aea4c60bd277e7667f2021d462311e4a175494460d041d0632d201a4bb",
-      "path": "backend/benchmarks/fixtures/heldout/tideline-answer.txt"
+      "path": "apps/api/benchmarks/fixtures/heldout/tideline-answer.txt"
     }
   },
   "questions": [

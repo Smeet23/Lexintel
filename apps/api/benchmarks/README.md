@@ -67,7 +67,7 @@ A dash means the gold passage was outside the top 20. B4 was a ranking failure t
 Upload the four originals linked in [questions.json](questions.json) to the running local app and wait for Parsed. The runner identifies the documents by their hashes and can read them across multiple matters. Use a separate PostgreSQL database with pgvector and pg_textsearch available. Both variants run in isolated schemas that are rolled back after scoring.
 
 ```bash
-PYTHONPATH=backend backend/.venv/bin/python backend/benchmarks/retrieval.py \
+PYTHONPATH=apps/api/src apps/api/.venv/bin/python apps/api/benchmarks/retrieval.py \
   --api http://127.0.0.1:8000 --dsn "$LEXINTEL_BENCH_DSN" \
   --output /tmp/lexintel-retrieval-results.json
 ```

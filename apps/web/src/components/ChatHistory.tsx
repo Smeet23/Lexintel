@@ -217,7 +217,7 @@ export default function ChatHistory({
             <MessageSquare className="h-8 w-8 text-muted-foreground/20 mb-2" />
             <p className="text-[11px] text-muted-foreground">No conversations yet</p>
             <p className="text-[10px] text-muted-foreground/60 mt-0.5">
-              Click "New Chat" to start one
+              Click &quot;New Chat&quot; to start one
             </p>
           </div>
         )}

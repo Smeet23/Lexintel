@@ -73,9 +73,9 @@ Start the local Compose services with both benchmark matters imported and their 
 ```bash
 mkdir -p /tmp/lexintel-filing-benchmark
 docker compose run --rm --no-deps -T \
-  -v "$PWD/backend:/bench:ro" \
+  -v "$PWD/apps/api:/bench:ro" \
   -v /tmp/lexintel-filing-benchmark:/results \
-  -e PYTHONPATH=/bench -e HF_HUB_OFFLINE=1 ranking \
+  -e PYTHONPATH=/bench/src -e HF_HUB_OFFLINE=1 ranking \
   python /bench/benchmarks/filing_retrieval.py \
     --matter 525d5fcc-a847-44f4-a135-c91badf70dc3 \
     --suite /bench/benchmarks/oracle.json --output /results/oracle.json

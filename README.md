@@ -2,6 +2,34 @@
 
 Legal document analysis organized by matter. The ingestion pipeline converts matter files into versioned text, legal structure, source locations, metadata, and search records.
 
+## Repository layout
+
+A Turborepo monorepo managed with pnpm workspaces. Turborepo schedules the tasks below and caches their outputs in `.turbo/`.
+
+| Path | Contents |
+| --- | --- |
+| `apps/web` | Next.js frontend (`@lexintel/web`), source grouped under `src/` |
+| `apps/api` | FastAPI service, ingestion worker, ranking service, database image, and tests (`@lexintel/api`), Python package grouped under `src/` |
+| `apps/api/benchmarks` | Retrieval benchmarks and fixtures |
+| `test_cases/` | Sample matters for manual testing |
+
+Install the JavaScript dependencies once from the root (pnpm is provided via Corepack):
+
+```bash
+pnpm install
+```
+
+| Command | Effect |
+| --- | --- |
+| `pnpm dev` | Start the Next.js dev server in `apps/web` |
+| `pnpm dev:api` | Run the API locally with reload (needs a reachable database, for example from Compose) |
+| `pnpm build` | Production build of the frontend |
+| `pnpm lint` / `pnpm check-types` | Lint and type-check the frontend |
+| `pnpm test` | Backend fast test suite through `uv` |
+| `pnpm cli -- <file.pdf>` | Run the local PDF inspector |
+
+The backend keeps its own Python toolchain (`uv`, `pyproject.toml`, `uv.lock`) inside `apps/api`. Its `package.json` only wraps the common `uv` commands so Turborepo can schedule them.
+
 ## Run ingestion locally
 
 ```bash
@@ -9,7 +37,7 @@ docker compose up --build -d
 docker compose ps
 ```
 
-Docker starts FastAPI, the ingestion worker, and PostgreSQL with pgvector and BM25. The API listens at `http://localhost:8000` and exposes interactive API documentation at `/docs`. The standalone frontend can run with `npm run dev` in `frontend/`. It uses the local API by default. The Compose stack is for local development and uses a loopback API binding.
+Docker starts FastAPI, the ingestion worker, and PostgreSQL with pgvector and BM25. The API listens at `http://localhost:8000` and exposes interactive API documentation at `/docs`. The frontend can run with `pnpm dev` from the repository root. It uses the local API by default. The Compose stack is for local development and uses a loopback API binding.
 
 ```bash
 curl -fsS http://localhost:8000/health
@@ -43,7 +71,7 @@ Indexing uses Voyage 4 Large at 1,024 dimensions. The worker batches distinct se
 Run the fast checks from the repository root:
 
 ```bash
-uv run --locked --project backend --directory backend python -m unittest discover -s tests -v
+npm run test
 ```
 
 Run the integration suite against a separate Docker project. It exercises the real database, job worker, Docling, Tesseract, and LibreOffice with simulated embeddings.
@@ -51,14 +79,14 @@ Run the integration suite against a separate Docker project. It exercises the re
 ```bash
 docker compose -p lexintel-test run --rm --build --user root -T \
   -e LEXINTEL_INTEGRATION_TESTS=1 -e LEXINTEL_PAID_INDEXING=0 \
-  -v "$PWD/backend/tests:/tests:ro" worker \
+  -v "$PWD/apps/api/tests:/tests:ro" worker \
   sh -c 'uv sync --locked --group parser && python -m unittest discover -s /tests -v'
 ```
 
 The local native PDF inspector is also available without starting services:
 
 ```bash
-uv run --locked --project backend --directory backend -m lexintel_ingest /absolute/path/to/document.pdf
+npm run cli -- /absolute/path/to/document.pdf
 ```
 
 ## Search uploaded evidence
@@ -68,8 +96,8 @@ The **Ask AI** tab searches passages from the selected matter with PostgreSQL BM
 For an existing Compose database, apply the retrieval migrations before starting the updated API. The first command backfills BM25 passages. The ranking service fills the local vector table automatically.
 
 ```bash
-docker compose exec -T db psql -v ON_ERROR_STOP=1 --single-transaction -U lexintel -f - < backend/db/retrieval.sql
-docker compose exec -T db psql -v ON_ERROR_STOP=1 --single-transaction -U lexintel -f - < backend/db/local-ranking.sql
+docker compose exec -T db psql -v ON_ERROR_STOP=1 --single-transaction -U lexintel -f - < apps/api/db/retrieval.sql
+docker compose exec -T db psql -v ON_ERROR_STOP=1 --single-transaction -U lexintel -f - < apps/api/db/local-ranking.sql
 ```
 
-The [held-out retrieval benchmark](backend/benchmarks/HELDOUT.md) includes the scored comparison and reproduction commands. Set `LEXINTEL_RANKER_URL=` when starting Compose to use BM25 only.
+The [held-out retrieval benchmark](apps/api/benchmarks/HELDOUT.md) includes the scored comparison and reproduction commands. Set `LEXINTEL_RANKER_URL=` when starting Compose to use BM25 only.
