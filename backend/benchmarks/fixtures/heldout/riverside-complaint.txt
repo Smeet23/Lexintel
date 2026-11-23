@@ -1,0 +1,28 @@
+UNITED STATES DISTRICT COURT
+DISTRICT OF OREGON
+Case No. 3:26-cv-00640
+
+RIVERSIDE SENSORS LLC, Plaintiff,
+v.
+TIDELINE LABS INC., Defendant.
+
+COMPLAINT FOR BREACH OF CONTRACT
+
+I. THE PARTIES
+1. Riverside Sensors LLC manufactures aquatic monitoring devices in Portland, Oregon.
+2. Tideline Labs Inc. operates waterfront testing facilities. Tideline was responsible for accepting shipment at its Astoria site.
+
+II. FACTS
+3. Under purchase order RL-441, Riverside agreed to supply 48 conductivity probes for a fixed price of $96,000.
+4. Riverside alleges it tendered the final batch at the Astoria site on May 18, 2026 and provided a signed delivery manifest.
+5. Riverside alleges all units arrived in factory-sealed cases. It denies that any probe failed a factory acceptance test.
+6. Riverside says Tideline refused to pay the final invoice because it claimed the calibration certificates were absent.
+7. On June 3, 2026 Riverside sent a written demand and attached copies of the calibration certificates along with the manifest.
+
+III. COUNT I
+8. Riverside alleges Tideline breached the purchase order by failing to pay the outstanding balance of $24,000 within 30 days of accepting delivery.
+9. Riverside pleads that Astoria’s harbor closure did not excuse payment because the probes had already been received before the closure.
+
+IV. PRAYER FOR RELIEF
+10. Riverside seeks $24,000 in unpaid principal plus contractual late charges at 1.25% per month.
+11. Riverside also requests an order requiring Tideline to preserve its receiving logs and warehouse camera records for the week of May 18, 2026.

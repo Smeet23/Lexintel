@@ -47,6 +47,8 @@ export interface VerificationSummary {
 export interface Citation {
   documentName: string
   pageNumber: number
+  pageLabel?: string
+  retrievalMethod?: "bm25" | "hybrid_reranked"
   section?: string
   excerpt: string
   relevanceScore: number
@@ -368,8 +370,10 @@ export interface ConversationQueryItem {
 export interface AskSourceItem {
   chunk_id: string
   page_num: string
+  page_label?: string
+  retrieval_method?: "bm25" | "hybrid_reranked"
   section_name: string
-  relevance_score: number
+  relevance_score?: number
   content: string
   document_id: string
   document_name: string

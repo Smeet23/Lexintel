@@ -1,0 +1,120 @@
+{
+  "documents": {
+    "opinion": {
+      "name": "21-869_87ad.pdf",
+      "sha256": "411513bf66427db806d1fcbaeb0c37cd0f35a509eb40506f417fa275ae4e343a",
+      "url": "https://www.supremecourt.gov/opinions/22pdf/21-869_87ad.pdf"
+    },
+    "cert-petition": {
+      "name": "20211209140512568_2021-12-09%20Andy%20Warhol%20Foundation%20Cert%20Petition%20with%20appendix.pdf",
+      "sha256": "4364a37cd3ee9c3d130c3f31d88a205eae32af3e39f66eff8e2c1a63b64ba2d9",
+      "url": "https://www.supremecourt.gov/DocketPDF/21/21-869/204630/20211209140512568_2021-12-09%20Andy%20Warhol%20Foundation%20Cert%20Petition%20with%20appendix.pdf"
+    },
+    "goldsmith-merits": {
+      "name": "20220808150341382_Goldsmith%20Brief%20for%20Respondents%20-%20Final.pdf",
+      "sha256": "39c10c0d31e68210fe396499d2af2f0d6e7464c59a2f28d6b64b595ba046f3c2",
+      "url": "https://www.supremecourt.gov/DocketPDF/21/21-869/232977/20220808150341382_Goldsmith%20Brief%20for%20Respondents%20-%20Final.pdf"
+    },
+    "warhol-reply": {
+      "name": "20220907142051010_2022-09-07%20No.%2021-869%20Petitioner%20Andy%20Warhol%20Foundation%20Reply%20Brief.pdf",
+      "sha256": "0b8fa31373f2709b2736cb03c427e82addbf53d15e3ba623a2deb97d37ab67c0",
+      "url": "https://www.supremecourt.gov/DocketPDF/21/21-869/237248/20220907142051010_2022-09-07%20No.%2021-869%20Petitioner%20Andy%20Warhol%20Foundation%20Reply%20Brief.pdf"
+    },
+    "cert-opposition": {
+      "name": "20220204140247759_AWF%20v.%20Goldsmith%20-%20Brief%20in%20Opposition.pdf",
+      "sha256": "42176d617c316c831eef9fa613fb5430074903bcac15896000391b4dbdb62851",
+      "url": "https://www.supremecourt.gov/DocketPDF/21/21-869/213328/20220204140247759_AWF%20v.%20Goldsmith%20-%20Brief%20in%20Opposition.pdf"
+    },
+    "warhol-merits": {
+      "name": "20220610142915753_2022-06-10%20No.%2021-869%20AWF%20Brief%20for%20Petitioner%20with%20addendum.pdf",
+      "sha256": "c38b486c3e102d70d7849b7cb5a2de81a92c71688cad289efa34d6d8e670281c",
+      "url": "https://www.supremecourt.gov/DocketPDF/21/21-869/227689/20220610142915753_2022-06-10%20No.%2021-869%20AWF%20Brief%20for%20Petitioner%20with%20addendum.pdf"
+    }
+  },
+  "questions": [
+    {
+      "id": "W01",
+      "question": "What did the Supreme Court majority decide about which side the first fair-use factor favored?",
+      "document": "opinion",
+      "page": 44,
+      "anchor": "first factor likewise favors her the judgment of the Court of Appeals is Affirmed"
+    },
+    {
+      "id": "W02",
+      "question": "What specific use did the Supreme Court majority limit its fair-use review to?",
+      "document": "opinion",
+      "page": 27,
+      "anchor": "AWF’s commercial licensing of Orange Prince to Condé Nast is alleged to be infringing"
+    },
+    {
+      "id": "W03",
+      "question": "How did the Supreme Court majority say that commerciality and shared purpose affect the first fair-use factor?",
+      "document": "opinion",
+      "page": 31,
+      "anchor": "commercial nature counsel against fair use absent some other justification for copying"
+    },
+    {
+      "id": "W04",
+      "question": "What did Justice Kagan say in dissent about the ruling’s effect on creative freedom?",
+      "document": "opinion",
+      "page": 55,
+      "anchor": "undermines creative freedom I respectfully dissent"
+    },
+    {
+      "id": "W05",
+      "question": "How much did the Supreme Court opinion say People magazine paid Goldsmith to license her Prince photograph?",
+      "document": "opinion",
+      "page": 13,
+      "anchor": "paid Goldsmith 1 000 to use one of her copyrighted photographs"
+    },
+    {
+      "id": "W06",
+      "question": "In its Supreme Court merits brief, what did Goldsmith ask the Court to do with the appellate judgment?",
+      "document": "goldsmith-merits",
+      "page": 68,
+      "anchor": "the judgment of the court of appeals should be af firmed"
+    },
+    {
+      "id": "W07",
+      "question": "In its Supreme Court merits brief, what did Warhol ask the Court to do with the decision below?",
+      "document": "warhol-merits",
+      "page": 16,
+      "anchor": "the decision below should be reversed"
+    },
+    {
+      "id": "W08",
+      "question": "In Goldsmith’s opposition to certiorari, how did she ask the Supreme Court to rule on the petition?",
+      "document": "cert-opposition",
+      "page": 41,
+      "anchor": "the Court should deny the petition"
+    },
+    {
+      "id": "W09",
+      "question": "What disposition did Warhol’s reply brief on the merits request for the Second Circuit judgment?",
+      "document": "warhol-reply",
+      "page": 29,
+      "anchor": "the Second Circuit’s judgment should be reversed"
+    },
+    {
+      "id": "W10",
+      "question": "What did Warhol’s merits brief say the portrait did to the perception of Prince as vulnerable?",
+      "document": "warhol-merits",
+      "page": 38,
+      "anchor": "into a depiction of an iconic larger than life figure"
+    },
+    {
+      "id": "W11",
+      "question": "What did Warhol say in the reply brief about Goldsmith’s claim that the appellate ruling addressed only the 2016 magazine license?",
+      "document": "warhol-reply",
+      "page": 13,
+      "anchor": "its only citation is to the Second Circuit’s analysis of the fourth fair use factor"
+    },
+    {
+      "id": "W12",
+      "question": "What appellate court action did Warhol’s certiorari petition say took place on March 26, 2021?",
+      "document": "cert-petition",
+      "page": 11,
+      "anchor": "the Second Circuit reversed the judgment of the district court"
+    }
+  ]
+}

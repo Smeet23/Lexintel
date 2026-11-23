@@ -10,6 +10,7 @@ import {
   askQuestion,
   listMatterDocuments,
   uploadMatterDocument,
+  retryMatterDocument,
   fetchMatterChunks,
   getQueryHistory,
   deleteDocument,
@@ -109,12 +110,10 @@ export function useAskQuestion(matterId: string) {
   return useMutation<AskResponse, Error, { question: string; includeLegalResearch?: boolean; conversationId?: string }>({
     mutationFn: ({ question, includeLegalResearch, conversationId }) =>
       askQuestion(matterId, question, includeLegalResearch ?? false, conversationId),
-    onSuccess: (_data, variables) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["matters", matterId] })
       queryClient.invalidateQueries({ queryKey: ["matters", matterId, "queries"] })
-      if (variables.conversationId) {
-        queryClient.invalidateQueries({ queryKey: ["matters", matterId, "conversations"] })
-      }
+      queryClient.invalidateQueries({ queryKey: ["matters", matterId, "conversations"] })
     },
   })
 }
@@ -197,6 +196,14 @@ export function useUploadMatterDocument(matterId: string) {
       queryClient.invalidateQueries({ queryKey: ["matters", matterId] })
       queryClient.invalidateQueries({ queryKey: ["matters"] })
     },
+  })
+}
+
+export function useRetryMatterDocument(matterId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (documentId: string) => retryMatterDocument(matterId, documentId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["matters", matterId] }),
   })
 }
 

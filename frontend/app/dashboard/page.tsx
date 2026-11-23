@@ -7,10 +7,8 @@ import {
   Briefcase,
   Zap,
   AlertCircle,
-  MessageSquare,
+  FolderOpen,
   ArrowRight,
-  FileText,
-  Clock,
   Loader2,
 } from "lucide-react"
 import AppLayout from "@/layouts/AppLayout"
@@ -22,14 +20,7 @@ import { Button } from "@/components/ui/button"
 import { formatRelativeTime } from "@/lib/utils"
 import { useMatters } from "@/hooks/use-matters"
 import type { MatterResponse } from "@/lib/api-services"
-
-const recentActivity = [
-  { action: "Query answered", matter: "Acme vs Global Corp", user: "J. Smith", time: "10 min ago", icon: MessageSquare },
-  { action: "Document uploaded", matter: "Smith Estate Planning", user: "S. Chen", time: "1 hour ago", icon: FileText },
-  { action: "Contract reviewed", matter: "TechStart IP Review", user: "J. Smith", time: "3 hours ago", icon: AlertCircle },
-  { action: "New matter created", matter: "Metro Construction", user: "L. Park", time: "5 hours ago", icon: Briefcase },
-  { action: "Draft exported", matter: "Phoenix Merger", user: "M. Torres", time: "Yesterday", icon: FileText },
-]
+import ErrorState from "@/components/ErrorState"
 
 function mapStatus(status: string): "active" | "review" | "closed" {
   if (status === "ready") return "active"
@@ -49,19 +40,19 @@ const fadeUp = {
 
 export default function DashboardPage() {
   const router = useRouter()
-  const { data: matters, isLoading, error } = useMatters()
+  const { data: matters, isLoading, isError, refetch } = useMatters()
 
   const recentMatters = (matters || []).slice(0, 5)
 
-  const activeCount = (matters || []).filter(m => m.status === "ready").length
-  const processingCount = (matters || []).filter(m => m.status === "processing").length
-  const totalMatters = (matters || []).length
+  const activeCount = matters?.filter(m => m.status === "ready").length
+  const processingCount = matters?.filter(m => m.status === "processing").length
+  const totalMatters = matters?.length
 
   const stats = [
-    { title: "Active Matters", value: String(activeCount), icon: Briefcase, trend: { value: String(totalMatters) + " total", positive: true } },
-    { title: "Processing", value: String(processingCount), icon: Zap, trend: processingCount > 0 ? { value: "in progress", positive: true } : undefined },
-    { title: "Total Matters", value: String(totalMatters), icon: AlertCircle },
-    { title: "Error", value: String((matters || []).filter(m => m.status === "error").length), icon: MessageSquare },
+    { title: "Active Matters", value: isError ? "—" : String(activeCount ?? 0), icon: Briefcase },
+    { title: "Processing", value: isError ? "—" : String(processingCount ?? 0), icon: Zap },
+    { title: "Total Matters", value: isError ? "—" : String(totalMatters ?? 0), icon: FolderOpen },
+    { title: "Error", value: isError ? "—" : String(matters?.filter(m => m.status === "error").length ?? 0), icon: AlertCircle },
   ]
 
   const matterColumns = [
@@ -119,7 +110,7 @@ export default function DashboardPage() {
         className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 mb-8 lg:mb-10"
       >
         {stats.map((stat) => (
-          <motion.div key={stat.title} variants={fadeUp}>
+          <motion.div key={stat.title} variants={fadeUp} className="h-full">
             <StatsCard {...stat} />
           </motion.div>
         ))}
@@ -149,10 +140,8 @@ export default function DashboardPage() {
               <Loader2 className="h-5 w-5 animate-spin text-muted" />
               <span className="ml-2 text-sm text-muted">Loading matters...</span>
             </div>
-          ) : error ? (
-            <div className="px-6 py-12 text-center">
-              <p className="text-sm text-muted">Failed to load matters. Is the backend running?</p>
-            </div>
+          ) : isError ? (
+            <ErrorState onRetry={() => refetch()} />
           ) : recentMatters.length === 0 ? (
             <div className="px-6 py-12 text-center">
               <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-surface mx-auto mb-3">
@@ -180,26 +169,12 @@ export default function DashboardPage() {
           <div className="px-6 py-5 border-b border-border">
             <h3 className="font-display text-[16px] text-foreground">Activity</h3>
           </div>
-          <div className="px-6 py-5 space-y-5">
-            {recentActivity.map((activity, idx) => (
-              <div key={idx} className="flex items-start gap-3.5 group">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface group-hover:bg-surface-hover transition-colors mt-0.5">
-                  <activity.icon className="h-3.5 w-3.5 text-muted" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[13px] text-foreground leading-relaxed">
-                    <span className="font-medium">{activity.action}</span>
-                  </p>
-                  <p className="text-[11px] text-muted truncate mt-0.5">
-                    {activity.matter} &middot; {activity.user}
-                  </p>
-                </div>
-                <span className="text-[11px] text-muted-foreground whitespace-nowrap flex items-center gap-1.5 mt-0.5">
-                  <Clock className="h-3 w-3" />
-                  {activity.time}
-                </span>
-              </div>
-            ))}
+          <div className="px-6 py-8 text-center">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-surface mx-auto mb-3">
+              <Briefcase className="h-4 w-4 text-muted" />
+            </div>
+            <p className="text-sm font-medium text-foreground">No recent activity</p>
+            <p className="text-xs text-muted mt-1">Activity from your matters will appear here.</p>
           </div>
         </motion.div>
       </div>
