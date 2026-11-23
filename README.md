@@ -6,12 +6,12 @@ Legal document analysis organized by matter. The ingestion pipeline converts mat
 
 A Turborepo monorepo managed with pnpm workspaces. Turborepo schedules the tasks below and caches their outputs in `.turbo/`.
 
-| Path | Contents |
-| --- | --- |
-| `apps/web` | Next.js frontend (`@lexintel/web`), source grouped under `src/` |
-| `apps/api` | FastAPI service, ingestion worker, ranking service, database image, and tests (`@lexintel/api`), Python package grouped under `src/` |
-| `apps/api/benchmarks` | Retrieval benchmarks and fixtures |
-| `test_cases/` | Sample matters for manual testing |
+| Path                  | Contents                                                                                                                             |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `apps/web`            | Next.js frontend (`@lexintel/web`), source grouped under `src/`                                                                      |
+| `apps/api`            | FastAPI service, ingestion worker, ranking service, database image, and tests (`@lexintel/api`), Python package grouped under `src/` |
+| `apps/api/benchmarks` | Retrieval benchmarks and fixtures                                                                                                    |
+| `test_cases/`         | Sample matters for manual testing                                                                                                    |
 
 Install the JavaScript dependencies once from the root (pnpm is provided via Corepack):
 
@@ -19,14 +19,16 @@ Install the JavaScript dependencies once from the root (pnpm is provided via Cor
 pnpm install
 ```
 
-| Command | Effect |
-| --- | --- |
-| `pnpm dev` | Start the Next.js dev server in `apps/web` |
-| `pnpm dev:api` | Run the API locally with reload (needs a reachable database, for example from Compose) |
-| `pnpm build` | Production build of the frontend |
-| `pnpm lint` / `pnpm check-types` | Lint and type-check the frontend |
-| `pnpm test` | Backend fast test suite through `uv` |
-| `pnpm cli -- <file.pdf>` | Run the local PDF inspector |
+| Command                          | Effect                                                                                 |
+| -------------------------------- | -------------------------------------------------------------------------------------- |
+| `pnpm dev`                       | Start the web dev server and the API with reload together                              |
+| `pnpm dev:web`                   | Start only the Next.js dev server in `apps/web`                                        |
+| `pnpm dev:api`                   | Run only the API locally with reload (needs a reachable database, for example Compose) |
+| `pnpm dev:worker`                | Run the ingestion worker locally (needs a reachable database)                          |
+| `pnpm build`                     | Production build of the frontend                                                       |
+| `pnpm lint` / `pnpm check-types` | Lint and type-check the frontend                                                       |
+| `pnpm test`                      | Backend fast test suite through `uv`                                                   |
+| `pnpm cli -- <file.pdf>`         | Run the local PDF inspector                                                            |
 
 The backend keeps its own Python toolchain (`uv`, `pyproject.toml`, `uv.lock`) inside `apps/api`. Its `package.json` only wraps the common `uv` commands so Turborepo can schedule them.
 
@@ -52,13 +54,13 @@ Judgment chunks follow numbered paragraphs. When a long paragraph splits at a se
 
 Visit the matter's Documents tab or use these API routes with the IDs returned from upload:
 
-| Route | Output |
-| --- | --- |
-| `GET /matters/{matter}/documents` | Job status, warnings, and embedding request and token counts |
+| Route                                                 | Output                                                                             |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `GET /matters/{matter}/documents`                     | Job status, warnings, and embedding request and token counts                       |
 | `GET /matters/{matter}/documents/{document}/artifact` | Pages and coordinates, profile, sections, tables, references, chunks, and warnings |
-| `GET /matters/{matter}/documents/{document}/preview` | PDF or rendered Word preview and plain-text originals |
-| `GET /matters/{matter}/chunks?document_id={document}` | Parsed chunks, including when indexing is paused |
-| `POST /matters/{matter}/documents/{document}/retry` | Requeue an eligible job using any existing parse and completed embedding batches |
+| `GET /matters/{matter}/documents/{document}/preview`  | PDF or rendered Word preview and plain-text originals                              |
+| `GET /matters/{matter}/chunks?document_id={document}` | Parsed chunks, including when indexing is paused                                   |
+| `POST /matters/{matter}/documents/{document}/retry`   | Requeue an eligible job using any existing parse and completed embedding batches   |
 
 ## Embedding cost
 
