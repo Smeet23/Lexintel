@@ -1,0 +1,29 @@
+{
+  "documents": {
+    "kiran": {"name": "2025 INSC 1067 - Kiran judgment.pdf", "sha256": "30d7cdf2c46778b4fdf00b3ad9287049d8217dc467bc748815bcc09fc1b4957a", "url": "https://api.sci.gov.in/supremecourt/2025/26602/26602_2025_16_1501_63923_Judgement_01-Sep-2025.pdf"},
+    "bhargava": {"name": "judgment.pdf", "sha256": "b872b7f9a12bb7d50d16deb8f7808cea3eed6ed7d113709a36b56f329d52339f", "url": "https://api.sci.gov.in/supremecourt/2019/6692/6692_2019_16_1501_61061_Judgement_22-Apr-2025.pdf"},
+    "complaint": {"name": "complaint_patent_infringement.txt", "sha256": "263a4e38c067b41330024ae72347de6d44948a608a5c8242b849b543459b1d1e", "path": "test_cases/matter1_ip_dispute/complaint_patent_infringement.txt"},
+    "agreement": {"name": "agreement.pdf", "sha256": "899b2c5a6c399e6e8f6b9c9e33b9dcb3ed6fa1ca757ba5f3592431621a9234db", "path": "backend/benchmarks/fixtures/services-agreement.pdf"}
+  },
+  "questions": [
+    {"id":"K1","document":"kiran","question":"In Kiran, what did the Supreme Court ultimately do to the respondent’s pre-arrest protection?","location":"¶10, p. 23","page":23,"anchor":"stands cancelled"},
+    {"id":"K2","document":"kiran","question":"What argument did respondent No. 1’s counsel make about whether Section 18 categorically prevents anticipatory bail?","location":"¶4.2, p. 8","page":8,"anchor":"did not create an absolute bar"},
+    {"id":"K3","document":"kiran","question":"In paragraph 5.6, which precedent did the bench quote on why the exclusion of Section 438 must be read in context?","location":"¶5.6, p. 14","page":14,"anchor":"Prathvi Raj Chauhan (supra) expressed itself thus"},
+    {"id":"K4","document":"kiran","question":"Why could words spoken just outside the complainant’s home satisfy the public-view requirement in Kiran?","location":"¶8, p. 21","page":21,"anchor":"could be viewed by anybody"},
+    {"id":"K5","document":"kiran","question":"Did the Supreme Court’s conclusions on the bail application bind the trial judge when deciding guilt?","location":"¶10.1, p. 23","page":23,"anchor":"trial shall proceed independently"},
+    {"id":"K6","document":"kiran","question":"In Kiran, what did the Court say about weighing evidence or holding a mini trial at the pre-arrest stage?","location":"¶6.2, p. 19","page":19,"anchor":"conduct a mini trial"},
+    {"id":"K7","document":"kiran","question":"In the FIR excerpt, what happened to the household utensils just before the villager stepped in, and who intervened?","location":"¶3.1, p. 3, adjacent sentences","page":3,"anchor":"household utensils were damaged","context":"my friend Yashwant Bodre"},
+    {"id":"B1","document":"bhargava","question":"What amount of compensation did the Supreme Court restore in Nidhi Bhargava?","location":"¶16, p. 11","page":11,"anchor":"as compensation is restored"},
+    {"id":"B2","document":"bhargava","question":"What method did the insurer’s lawyer propose for calculating the deceased’s earnings in Nidhi Bhargava?","location":"¶10, p. 6","page":6,"anchor":"average of the Income Tax Returns"},
+    {"id":"B3","document":"bhargava","question":"How much time did the insurer have to pay before additional interest accrued in Nidhi Bhargava?","location":"¶16, p. 11","page":11,"anchor":"within two months from today"},
+    {"id":"B4","document":"bhargava","question":"Why did the High Court use an older year’s return when reducing the award in Nidhi Bhargava?","location":"¶6, p. 4","page":4,"anchor":"were filed after the date of the accident"},
+    {"id":"P1","document":"complaint","question":"Which AutoMate Studio 5.0 feature is alleged to infringe claims of the ’789 Patent, and which claims are listed?","location":"¶22","page":1,"anchor":"Claims 1, 4, 7, and 12"},
+    {"id":"P2","document":"complaint","question":"How did AutoMate respond to NexGen’s licensing demand according to the complaint?","location":"¶17","page":1,"anchor":"denying any infringement and refusing to engage in licensing discussions"},
+    {"id":"P3","document":"complaint","question":"What did NexGen say its preliminary reasonable-royalty calculation came to?","location":"¶33","page":1,"anchor":"seeks damages of no less than $45,000,000"},
+    {"id":"P4","document":"complaint","question":"What feature of the Enterprise Orchestrator allegedly notices problems and triggers reassignment?","location":"¶30","page":1,"anchor":"Anomaly Detector"},
+    {"id":"A1","document":"agreement","question":"How much advance warning in writing does either party need to end the agreement?","location":"§7.2, p. 1","page":1,"anchor":"30 days' written notice"},
+    {"id":"A2","document":"agreement","question":"What does the agreement charge per day for a late delivery?","location":"Schedule A, Late delivery row, p. 1","page":1,"table":1,"row":1,"anchor":"USD 500 per day"},
+    {"id":"A3","document":"agreement","question":"What is the charge for ending the deal ahead of schedule, and is it per contract?","location":"Schedule A, Early termination row, p. 1","page":1,"table":1,"row":2,"anchor":"USD 1200 per contract"},
+    {"id":"A4","document":"agreement","question":"When did the agreement between Alpha and Beta take effect?","location":"Effective Date, p. 1","page":1,"anchor":"Effective Date: February 1, 2025"}
+  ]
+}

@@ -1,0 +1,286 @@
+{
+  "documents": {
+    "5dae877d16c491c19fddedd0105730a18732c18b05dd21329082cfbfed9c0461": {
+      "name": "JA1 - 2016 jury verdict ECF 1982 [PDF pp 304-304].pdf",
+      "sha256": "5dae877d16c491c19fddedd0105730a18732c18b05dd21329082cfbfed9c0461"
+    },
+    "fc5117fc027c71f30431519241d9ab831255ca4bcefc06d4e7b97ccaee4e02f3": {
+      "name": "JA1 - 2016 jury instructions ECF 1981 [PDF pp 276-303].pdf",
+      "sha256": "fc5117fc027c71f30431519241d9ab831255ca4bcefc06d4e7b97ccaee4e02f3"
+    },
+    "1d7783bb66a7194101cb152985753189c2b7471e15808865f0d673ee02bdf4e3": {
+      "name": "JA1 - 2016 final judgment ECF 1989 [PDF pp 305-305].pdf",
+      "sha256": "1d7783bb66a7194101cb152985753189c2b7471e15808865f0d673ee02bdf4e3"
+    },
+    "4c1cad7aaa2d05fe9bbad3f6871b24ef7bb429d99675f6d9c4fa7576112dd59b": {
+      "name": "2016-09-27 ECF 2070 District Court post-trial order.pdf",
+      "sha256": "4c1cad7aaa2d05fe9bbad3f6871b24ef7bb429d99675f6d9c4fa7576112dd59b"
+    },
+    "5d5554f5abd9fd2f3e6c6f884d43dfa87446dd7d0cb54f5024c5c3a49f17b465": {
+      "name": "JA1 - 2012 jury verdict ECF 1089 [PDF pp 104-106].pdf",
+      "sha256": "5d5554f5abd9fd2f3e6c6f884d43dfa87446dd7d0cb54f5024c5c3a49f17b465"
+    },
+    "65ea806c4f2ec14faef2015b7ec89b107ed91d04c8f545537a0cc33c11b5b2f1": {
+      "name": "2012-05-31 ECF 1202 District Court copyrightability order.pdf",
+      "sha256": "65ea806c4f2ec14faef2015b7ec89b107ed91d04c8f545537a0cc33c11b5b2f1"
+    },
+    "ac7d2b6ab1831529ed1410c799eb7ff96d4b55ca45f1466ef6521de40679f4ed": {
+      "name": "2014-05-09 Federal Circuit first appeal opinion.pdf",
+      "sha256": "ac7d2b6ab1831529ed1410c799eb7ff96d4b55ca45f1466ef6521de40679f4ed"
+    },
+    "0bfe646a1f0387a0a74bd3f965d18609b76ea62359ea2ab4c83bee35d6c233ca": {
+      "name": "2018-03-27 Federal Circuit second appeal opinion.pdf",
+      "sha256": "0bfe646a1f0387a0a74bd3f965d18609b76ea62359ea2ab4c83bee35d6c233ca"
+    },
+    "4037eee853b80db1fb4b3f6efc0e9a92f1e105d3b600de3bf870e3e6fe4e5161": {
+      "name": "2021-04-05 Supreme Court opinion and dissent.pdf",
+      "sha256": "4037eee853b80db1fb4b3f6efc0e9a92f1e105d3b600de3bf870e3e6fe4e5161"
+    },
+    "b0259b7e9ca1f996293c3e1011972577e24d975a0acb56700d739448843547df": {
+      "name": "2020-01-06 Google merits brief.pdf",
+      "sha256": "b0259b7e9ca1f996293c3e1011972577e24d975a0acb56700d739448843547df"
+    },
+    "4623b8df907833bb381badc8e92fb73d04f1f2accf087ad86a264dfcb706db90": {
+      "name": "2020-02-12 Oracle merits brief.pdf",
+      "sha256": "4623b8df907833bb381badc8e92fb73d04f1f2accf087ad86a264dfcb706db90"
+    },
+    "559929cc5e633691ad578ea87fa45c56f2f3dcc464b04c2f8d0ddde6cff98b82": {
+      "name": "2010-10-27 ECF 36 Oracle amended complaint.pdf",
+      "sha256": "559929cc5e633691ad578ea87fa45c56f2f3dcc464b04c2f8d0ddde6cff98b82"
+    },
+    "e86ca65e0e2842210bafde42149857bbc4899e84e474e1266fd659617802dfc8": {
+      "name": "2010-11-10 ECF 51 Google answer to amended complaint.pdf",
+      "sha256": "e86ca65e0e2842210bafde42149857bbc4899e84e474e1266fd659617802dfc8"
+    },
+    "59754439d9dfe0518aa15c1957d3078e7e71a83b861a30d2158bdc74f07aa802": {
+      "name": "Cert Appendices B-C - 2016 District Court orders [PDF pp 060-124].pdf",
+      "sha256": "59754439d9dfe0518aa15c1957d3078e7e71a83b861a30d2158bdc74f07aa802"
+    },
+    "35ea8ae6301792fc851a81056c6cc15c102732543304943ee3977e0449ac946d": {
+      "name": "Cert Appendix G - District Court copyrightability order [PDF pp 216-276].pdf",
+      "sha256": "35ea8ae6301792fc851a81056c6cc15c102732543304943ee3977e0449ac946d"
+    },
+    "c22d174a8b90b610403fbff1024e375674e4aff3b323b9d3b70464645a26c39d": {
+      "name": "Cert Appendix D - 2014 Federal Circuit opinion [PDF pp 125-196].pdf",
+      "sha256": "c22d174a8b90b610403fbff1024e375674e4aff3b323b9d3b70464645a26c39d"
+    },
+    "54e9cc3467356b0f18a7628730449dcb8808ff71a2ae2a25340e02dbe2ac04fb": {
+      "name": "Cert Appendix A - 2018 Federal Circuit opinion and contents [PDF pp 001-059].pdf",
+      "sha256": "54e9cc3467356b0f18a7628730449dcb8808ff71a2ae2a25340e02dbe2ac04fb"
+    }
+  },
+  "questions": [
+    {
+      "id": "O01",
+      "question": "What did the 2016 jury decide about whether Google’s use of the Java code in Android was fair use?",
+      "document": "5dae877d16c491c19fddedd0105730a18732c18b05dd21329082cfbfed9c0461",
+      "page": 1,
+      "anchor": "under the Copyright Act? Yes",
+      "literal": "Yes ________"
+    },
+    {
+      "id": "O02",
+      "question": "How did the judge phrase the question on the blank verdict form given to the jury at the 2016 trial?",
+      "document": "fc5117fc027c71f30431519241d9ab831255ca4bcefc06d4e7b97ccaee4e02f3",
+      "page": 28,
+      "anchor": "shown by a preponderance of the evidence that its use in Android",
+      "literal": "Yes __________"
+    },
+    {
+      "id": "O03",
+      "question": "What did the 2016 jury instructions say was the fourth factor in deciding fair use?",
+      "document": "fc5117fc027c71f30431519241d9ab831255ca4bcefc06d4e7b97ccaee4e02f3",
+      "page": 14,
+      "anchor": "effect of the use upon the potential market for or value of the copyrighted work"
+    },
+    {
+      "id": "O04",
+      "question": "How did the judge instruct the 2016 jury to weigh transformative use against commercial purpose?",
+      "document": "fc5117fc027c71f30431519241d9ab831255ca4bcefc06d4e7b97ccaee4e02f3",
+      "page": 16,
+      "anchor": "you must weigh that and the extent of the transformativeness against the commercial purpose"
+    },
+    {
+      "id": "O05",
+      "question": "Who did the district court enter final judgment for after the 2016 trial?",
+      "document": "1d7783bb66a7194101cb152985753189c2b7471e15808865f0d673ee02bdf4e3",
+      "page": 1,
+      "anchor": "final judgment is hereby entered in favor of defendant Google Inc"
+    },
+    {
+      "id": "O06",
+      "question": "How did the district court dispose of Oracle’s motions for a new trial and judgment as a matter of law in September 2016?",
+      "document": "4c1cad7aaa2d05fe9bbad3f6871b24ef7bb429d99675f6d9c4fa7576112dd59b",
+      "page": 26,
+      "anchor": "motion for a new trial and its motion for judgment as a matter of law are denied",
+      "alternates": [
+        {
+          "document": "4c1cad7aaa2d05fe9bbad3f6871b24ef7bb429d99675f6d9c4fa7576112dd59b",
+          "page": 1,
+          "anchor": "separately moves for a new trial for the reasons stated below both motions are denied"
+        },
+        {
+          "document": "59754439d9dfe0518aa15c1957d3078e7e71a83b861a30d2158bdc74f07aa802",
+          "page": 36,
+          "anchor": "motion for a new trial and its motion for judgment as a matter of law are denied"
+        },
+        {
+          "document": "59754439d9dfe0518aa15c1957d3078e7e71a83b861a30d2158bdc74f07aa802",
+          "page": 1,
+          "anchor": "separately moves for a new trial for the reasons stated below both motions are denied"
+        }
+      ]
+    },
+    {
+      "id": "O07",
+      "question": "In the 2012 verdict, did the jury find infringement of the overall structure, sequence, and organization of the compilable Java code?",
+      "document": "5d5554f5abd9fd2f3e6c6f884d43dfa87446dd7d0cb54f5024c5c3a49f17b465",
+      "page": 1,
+      "anchor": "infringed the overall structure sequence and organization of copyrighted works",
+      "literal": "Yes ______"
+    },
+    {
+      "id": "O08",
+      "question": "What did the 2012 jury decide on infringement of the documentation for the 37 Java API packages?",
+      "document": "5d5554f5abd9fd2f3e6c6f884d43dfa87446dd7d0cb54f5024c5c3a49f17b465",
+      "page": 2,
+      "anchor": "documentation for the 37 Java API packages in question taken as a group",
+      "literal": "No ______"
+    },
+    {
+      "id": "O09",
+      "question": "Why did the district court rule in 2012 that the Java API command structure could not be copyrighted?",
+      "document": "65ea806c4f2ec14faef2015b7ec89b107ed91d04c8f545537a0cc33c11b5b2f1",
+      "page": 4,
+      "anchor": "command structure is a system or method of operation under Section 102(b) of the Copyright Act and therefore cannot be copyrighted",
+      "alternates": [
+        {
+          "document": "35ea8ae6301792fc851a81056c6cc15c102732543304943ee3977e0449ac946d",
+          "page": 5,
+          "anchor": "command structure is a system or method of operation under Section 102(b) of the Copyright Act and therefore cannot be copyrighted"
+        }
+      ]
+    },
+    {
+      "id": "O10",
+      "question": "What did the Federal Circuit hold in its 2014 appeal about copyright protection for the 37 API packages?",
+      "document": "ac7d2b6ab1831529ed1410c799eb7ff96d4b55ca45f1466ef6521de40679f4ed",
+      "page": 69,
+      "anchor": "the 37 Java API packages at issue are entitled to copyright protection",
+      "alternates": [
+        {
+          "document": "c22d174a8b90b610403fbff1024e375674e4aff3b323b9d3b70464645a26c39d",
+          "page": 71,
+          "anchor": "the 37 Java API packages at issue are entitled to copyright protection"
+        }
+      ]
+    },
+    {
+      "id": "O11",
+      "question": "What did the Federal Circuit decide in 2018 about fair use and what did it send back to the district court?",
+      "document": "0bfe646a1f0387a0a74bd3f965d18609b76ea62359ea2ab4c83bee35d6c233ca",
+      "page": 55,
+      "anchor": "reverse the district court’s decisions denying Oracle’s motions for JMOL and remand for a trial on damages",
+      "alternates": [
+        {
+          "document": "0bfe646a1f0387a0a74bd3f965d18609b76ea62359ea2ab4c83bee35d6c233ca",
+          "page": 7,
+          "anchor": "reverse the district court’s decisions denying Oracle’s motions for JMOL and remand for a trial on damages"
+        },
+        {
+          "document": "54e9cc3467356b0f18a7628730449dcb8808ff71a2ae2a25340e02dbe2ac04fb",
+          "page": 59,
+          "anchor": "reverse the district court’s decisions denying Oracle’s motions for JMOL and remand for a trial on damages"
+        },
+        {
+          "document": "54e9cc3467356b0f18a7628730449dcb8808ff71a2ae2a25340e02dbe2ac04fb",
+          "page": 7,
+          "anchor": "reverse the district court’s decisions denying Oracle’s motions for JMOL and remand for a trial on damages"
+        }
+      ],
+      "context": "not fair as a matter of law"
+    },
+    {
+      "id": "O12",
+      "question": "What did the Supreme Court majority ultimately hold about Google’s fair use of the Java API?",
+      "document": "4037eee853b80db1fb4b3f6efc0e9a92f1e105d3b600de3bf870e3e6fe4e5161",
+      "page": 39,
+      "anchor": "copying of the Sun Java API was a fair use of that material as a matter of law",
+      "alternates": [
+        {
+          "document": "4037eee853b80db1fb4b3f6efc0e9a92f1e105d3b600de3bf870e3e6fe4e5161",
+          "page": 5,
+          "anchor": "that the material was copyrightable But we hold that the copying here at issue nonetheless consti tuted a fair use"
+        },
+        {
+          "document": "4037eee853b80db1fb4b3f6efc0e9a92f1e105d3b600de3bf870e3e6fe4e5161",
+          "page": 19,
+          "anchor": "whether Google’s use of part of that API was a fair use Unlike the Federal Circuit we conclude that it was"
+        }
+      ]
+    },
+    {
+      "id": "O13",
+      "question": "Did the Supreme Court majority decide that the copied Java code was copyrightable, or did it assume copyrightability?",
+      "document": "4037eee853b80db1fb4b3f6efc0e9a92f1e105d3b600de3bf870e3e6fe4e5161",
+      "page": 5,
+      "anchor": "we assume for ar gument’s sake that the material was copyrightable",
+      "alternates": [
+        {
+          "document": "4037eee853b80db1fb4b3f6efc0e9a92f1e105d3b600de3bf870e3e6fe4e5161",
+          "page": 19,
+          "anchor": "We shall assume but purely for argument’s sake that the entire Sun Java API falls within the definition of that which can be copy righted"
+        }
+      ]
+    },
+    {
+      "id": "O14",
+      "question": "What was Justice Thomas’s position in dissent on whether Java code was copyrightable and Google’s use was fair?",
+      "document": "4037eee853b80db1fb4b3f6efc0e9a92f1e105d3b600de3bf870e3e6fe4e5161",
+      "page": 45,
+      "anchor": "here is copyrightable and Google’s use of that copy righted code was anything but fair"
+    },
+    {
+      "id": "O15",
+      "question": "In its Supreme Court merits brief, what did Google ask the Court to do to the Federal Circuit judgment?",
+      "document": "b0259b7e9ca1f996293c3e1011972577e24d975a0acb56700d739448843547df",
+      "page": 10,
+      "anchor": "Petitioner Google respectfully requests that the judgment of the United States Court of Appeals for the Federal Circuit be reversed"
+    },
+    {
+      "id": "O16",
+      "question": "In its Supreme Court merits brief, what disposition did Oracle request?",
+      "document": "4623b8df907833bb381badc8e92fb73d04f1f2accf087ad86a264dfcb706db90",
+      "page": 14,
+      "anchor": "This Court should affirm"
+    },
+    {
+      "id": "O17",
+      "question": "In Google’s Supreme Court merits brief, why did Google say it had to copy the declarations?",
+      "document": "b0259b7e9ca1f996293c3e1011972577e24d975a0acb56700d739448843547df",
+      "page": 11,
+      "anchor": "those were the only instructions that could per form their functions"
+    },
+    {
+      "id": "O18",
+      "question": "In Oracle’s Supreme Court merits brief, why did Oracle say the use of its code was commercially unfair?",
+      "document": "4623b8df907833bb381badc8e92fb73d04f1f2accf087ad86a264dfcb706db90",
+      "page": 13,
+      "anchor": "in a competing product for commercial ad vantage which Google also conceded"
+    },
+    {
+      "id": "O19",
+      "question": "In its amended complaint, what did Oracle allege about whether device makers were licensed to use the Java libraries?",
+      "document": "559929cc5e633691ad578ea87fa45c56f2f3dcc464b04c2f8d0ddde6cff98b82",
+      "page": 10,
+      "anchor": "in violation of Oracle’s copyrights Such use is not licensed"
+    },
+    {
+      "id": "O20",
+      "question": "What statutory fair-use defense did Google assert in its answer to Oracle’s amended complaint?",
+      "document": "e86ca65e0e2842210bafde42149857bbc4899e84e474e1266fd659617802dfc8",
+      "page": 12,
+      "anchor": "barred by the doctrine of fair use pursuant to 17 U.S.C. § 107"
+    }
+  ]
+}

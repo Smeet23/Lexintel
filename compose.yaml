@@ -1,0 +1,79 @@
+name: lexintel
+services:
+  db:
+    image: lexintel-db:latest
+    build: ./backend/db
+    command: ["postgres", "-c", "shared_preload_libraries=pg_textsearch"]
+    environment:
+      POSTGRES_DB: lexintel
+      POSTGRES_USER: lexintel
+      POSTGRES_PASSWORD: lexintel-local
+    volumes:
+      - postgres:/var/lib/postgresql/data
+      - ./backend/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./backend/db/retrieval.sql:/docker-entrypoint-initdb.d/02-retrieval.sql:ro
+      - ./backend/db/local-ranking.sql:/docker-entrypoint-initdb.d/03-local-ranking.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U lexintel && psql -U lexintel -d lexintel -tAc 'SELECT 1 FROM ingestion_jobs LIMIT 0'"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    image: lexintel-api:latest
+    build:
+      context: ./backend
+      target: api
+    environment:
+      DATABASE_URL: postgresql://lexintel:lexintel-local@db/lexintel
+      LEXINTEL_RANKER_URL: ${LEXINTEL_RANKER_URL-http://ranking:8001}
+    ports:
+      - "127.0.0.1:${LEXINTEL_PORT:-8000}:8000"
+    volumes:
+      - files:/var/lib/lexintel/files
+    depends_on:
+      db:
+        condition: service_healthy
+
+  worker:
+    image: lexintel-worker:latest
+    init: true
+    build:
+      context: ./backend
+      target: worker
+    environment:
+      DATABASE_URL: postgresql://lexintel:lexintel-local@db/lexintel
+      LEXINTEL_PAID_INDEXING: ${LEXINTEL_PAID_INDEXING:-0}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_API_KEY_FILE: ${OPENROUTER_API_KEY_FILE:-}
+      LEXINTEL_OCR_LANGUAGES: ${LEXINTEL_OCR_LANGUAGES:-eng+hin}
+      HF_HOME: /home/lexintel/.cache/huggingface
+      HF_HUB_OFFLINE: ${HF_HUB_OFFLINE:-0}
+    volumes:
+      - files:/var/lib/lexintel/files
+      - models:/home/lexintel/.cache/huggingface
+    depends_on:
+      db:
+        condition: service_healthy
+
+  ranking:
+    image: lexintel-ranking:latest
+    init: true
+    build:
+      context: ./backend
+      target: worker
+    command: ["uvicorn", "lexintel_ingest.rank_service:app", "--host", "0.0.0.0", "--port", "8001"]
+    environment:
+      DATABASE_URL: postgresql://lexintel:lexintel-local@db/lexintel
+      HF_HOME: /home/lexintel/.cache/huggingface
+      HF_HUB_OFFLINE: ${HF_HUB_OFFLINE:-0}
+    volumes:
+      - models:/home/lexintel/.cache/huggingface
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres:
+  files:
+  models:
