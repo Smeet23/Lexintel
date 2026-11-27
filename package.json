@@ -15,7 +15,8 @@
     "lint": "turbo run lint",
     "check-types": "turbo run check-types",
     "test": "turbo run test",
-    "cli": "pnpm --filter @lexintel/api run cli"
+    "cli": "pnpm --filter @lexintel/api run cli",
+    "scrape": "pnpm --filter @lexintel/api run scrape"
   },
   "devDependencies": {
     "turbo": "^2.5.10"

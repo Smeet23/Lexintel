@@ -29,7 +29,7 @@ pnpm install
 | `pnpm lint` / `pnpm check-types` | Lint and type-check the frontend                                                       |
 | `pnpm test`                      | Backend fast test suite through `uv`                                                   |
 | `pnpm cli -- <file.pdf>`         | Run the local PDF inspector                                                            |
-| `pnpm scrape -- --from 01-01-2024 --to 31-01-2024 --out judgments` | Download Supreme Court of India judgments by date |
+| `pnpm scrape --from 01-01-2024 --to 31-01-2024 --out judgments` | Download Supreme Court of India judgments by date |
 
 The backend keeps its own Python toolchain (`uv`, `pyproject.toml`, `uv.lock`) inside `apps/api`. Its `package.json` only wraps the common `uv` commands so Turborepo can schedule them.
 
@@ -69,13 +69,13 @@ Visit the matter's Documents tab or use these API routes with the IDs returned f
 
 ```bash
 # Metadata and PDFs for a period (max 31 day search windows are split automatically)
-pnpm scrape -- --from 01-01-2024 --to 31-03-2024 --out judgments --manifest judgments/index.json
+pnpm scrape --from 01-01-2024 --to 31-03-2024 --out judgments --manifest judgments/index.json
 
 # Metadata only
-pnpm scrape -- --from 01-01-2024 --to 31-01-2024 --no-pdf
+pnpm scrape --from 01-01-2024 --to 31-01-2024 --no-pdf
 ```
 
-PDFs are written to `--out` named after the court's own filename, and re-running skips files already on disk. `--manifest` records the diary number, case number, parties, advocates, bench, judgment date, and source URL for every judgment as JSON.
+PDFs are written to `--out` named after the court's own filename, and re-running skips files already on disk. The script runs from `apps/api`, so a relative `--out` or `--manifest` resolves there: `--out judgments` writes to `apps/api/judgments/`, which git ignores. `--manifest` records the diary number, case number, parties, advocates, bench, judgment date, and source URL for every judgment as JSON.
 
 The service allows at most 31 days per search, so longer periods are split into consecutive windows. The form nonce is read from the page markup, and the CAPTCHA is bypassed with the same `sci_auto_submit` flag the site's own JavaScript sends. `robots.txt` allows the `/wp-admin/admin-ajax.php` endpoint the service uses. Only direct PDF links are followed; the HTML viewer links in the results return a database error instead of a document.
 
